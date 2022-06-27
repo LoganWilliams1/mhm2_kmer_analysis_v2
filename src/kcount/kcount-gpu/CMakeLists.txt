@@ -1,6 +1,11 @@
-add_library(
-  KCOUNT_GPU_LIBRARY_obj OBJECT parse_and_pack.cpp gpu_hash_table.cpp gqf.cpp
-                                hashutil.cpp partitioned_counter.cpp)
+set(SRCS parse_and_pack.cpp gpu_hash_table.cpp hashutil.cpp partitioned_counter.cpp)
+
+if(MHM2_USE_QF)
+  add_definitions(-DUSE_GQF)
+  set(SRCS ${SRCS} gqf.cpp)
+endif()
+
+add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
   target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
   # unsuccessful attempt to suppress warning about recursion
@@ -9,16 +14,9 @@ if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
     -suppress-stack-size-warning>)
 endif()
 
-set_source_files_properties(parse_and_pack.cpp PROPERTIES LANGUAGE CUDA
-                                                          LINKER_LANGUAGE CUDA)
-set_source_files_properties(gpu_hash_table.cpp PROPERTIES LANGUAGE CUDA
-                                                          LINKER_LANGUAGE CUDA)
-set_source_files_properties(gqf.cpp PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE
-                                                             CUDA)
-set_source_files_properties(hashutil.cpp PROPERTIES LANGUAGE CUDA
-                                                    LINKER_LANGUAGE CUDA)
-set_source_files_properties(partitioned_counter.cpp
-                            PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)
+foreach(_SRC ${SRCS})
+  set_source_files_properties(${_SRC} PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)
+endforeach()
 
 option(KCOUNT_GPU_SHARED "kcount-GPU shared library" OFF)
 option(KCOUNT_GPU_STATIC "kcount-GPU static library" ON)

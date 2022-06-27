@@ -55,7 +55,27 @@
 #include "gpu-utils/gpu_utils.hpp"
 #include "gpu_hash_table.hpp"
 #include "prime.hpp"
+#ifdef USE_GQF
 #include "gqf.hpp"
+#else
+// quotient filter calls stubbed out
+namespace quotient_filter {
+struct QF;
+enum qf_returns { QF_ITEM_INSERTED, QF_ITEM_FOUND, QF_FULL };
+__device__ qf_returns insert_kmer(QF *qf, uint64_t hash, char forward, char backward, char &returnedfwd, char &returnedback) {
+  return QF_FULL;
+}
+void qf_malloc_device(QF **qf, int nbits) {}
+uint64_t qf_estimate_memory(int nbits) {
+  return 0;
+  oueoua
+}
+void qf_destroy_device(QF *qf) {}
+uint64_t host_qf_get_nslots(const QF *qf) { return 0; }
+uint64_t host_qf_get_num_occupied_slots(const QF *qf) { return 0; }
+uint64_t host_qf_get_failures(const QF *qf) { return 0; }
+}  // namespace quotient_filter
+#endif
 
 #include "gpu_hash_funcs.cpp"
 
@@ -505,28 +525,32 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   if (nbits_qf == 0) use_qf = false;
   if (use_qf) {
     qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-    double qf_avail_mem = gpu_avail_mem / 5;
-    // if (!upcxx_rank_me)
-    //   cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n";
-    if (qf_bytes_used > qf_avail_mem) {
-      // For debugging OOMs
-      // size_t prev_bytes_used = qf_bytes_used;
-      // int prev_nbits = nbits_qf;
-      double factor = qf_avail_mem / qf_bytes_used;
-      size_t corrected_max_elems = (max_elems_qf * factor);
-      auto corrected_nbits_qf = log2(corrected_max_elems);
-      if (corrected_nbits_qf >= nbits_qf) corrected_nbits_qf--;
-      nbits_qf = corrected_nbits_qf;
-      // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits corrected to " << nbits_qf << KNORM << endl;
-      //  drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
-      if (kmer_len >= 96) nbits_qf--;
-      if (nbits_qf == 0) nbits_qf = 1;
-      qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-      // if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
+    if (qf_bytes_used == 0) {
+      use_qf = false;
     } else {
-      if (kmer_len >= 64) nbits_qf--;
+      double qf_avail_mem = gpu_avail_mem / 5;
+      // if (!upcxx_rank_me)
+      //   cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n";
+      if (qf_bytes_used > qf_avail_mem) {
+        // For debugging OOMs
+        // size_t prev_bytes_used = qf_bytes_used;
+        // int prev_nbits = nbits_qf;
+        double factor = qf_avail_mem / qf_bytes_used;
+        size_t corrected_max_elems = (max_elems_qf * factor);
+        auto corrected_nbits_qf = log2(corrected_max_elems);
+        if (corrected_nbits_qf >= nbits_qf) corrected_nbits_qf--;
+        nbits_qf = corrected_nbits_qf;
+        // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits corrected to " << nbits_qf << KNORM << endl;
+        //  drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
+        if (kmer_len >= 96) nbits_qf--;
+        if (nbits_qf == 0) nbits_qf = 1;
+        qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
+        // if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
+      } else {
+        if (kmer_len >= 64) nbits_qf--;
+      }
+      quotient_filter::qf_malloc_device(&(dstate->qf), nbits_qf);
     }
-    quotient_filter::qf_malloc_device(&(dstate->qf), nbits_qf);
   }
 
   // now check that we have sufficient memory for the required capacity
