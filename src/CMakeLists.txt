@@ -163,6 +163,10 @@ if(ENABLE_CUDA)
 
   message(STATUS "CMAKE_CUDA_FLAGS=${CMAKE_CUDA_FLAGS}")
 
+elseif(ENABLE_HIP)
+  find_package(hip REQUIRED)
+  enable_language(HIP)
+  message(STATUS "Building for GPUs with HIP")
 else()
   message(STATUS "Building for CPUs")
 endif()
@@ -237,6 +241,13 @@ if(ENABLE_CUDA)
     target_link_libraries(${tgt} ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES})
   endif()
   list(APPEND MHM2_TARGET_OBJECTS $<TARGET_OBJECTS:${tgt}>)
+elseif(ENABLE_HIP)
+  set(tgt devices_gpu)
+  add_library(${tgt} OBJECT ${tgt}.cpp)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
+    target_link_libraries(${tgt} ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES})
+  endif()
+  list(APPEND MHM2_TARGET_OBJECTS $<TARGET_OBJECTS:${tgt}>)
 else()
   set(tgt devices_cpu)
   add_library(${tgt} OBJECT ${tgt}.cpp)
@@ -269,6 +280,11 @@ if(ENABLE_CUDA)
   include_directories("gpu-utils")
   add_subdirectory(gpu-utils)
   set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} GPU_UTILS_LIBRARY_static)
+elseif(ENABLE_HIP)
+  # set_property(TARGET mhm2 PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+  include_directories("gpu-utils")
+  add_subdirectory(gpu-utils)
+  set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} GPU_UTILS_LIBRARY_static)
 endif()
 
 target_link_libraries(mhm2 ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
@@ -291,6 +307,12 @@ configure_file(mhm2.py ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py)
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(PROGRAMS mhm2_parse_run_log.pl DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+# # special spawning script for Summit
+# install(
+#   PROGRAMS upcxx-run-summit
+#   DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+#   RENAME mhm2-upcxx-run-summit)
 
 # special spawning script for Perlmutter
 install(

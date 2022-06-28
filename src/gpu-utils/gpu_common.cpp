@@ -48,9 +48,9 @@
 
 namespace gpu_common {
 
-void gpu_die(cudaError_t code, const char *file, int line, bool abort) {
-  if (code != cudaSuccess) {
-    std::cerr << KLRED << "<" << file << ":" << line << "> ERROR:" << KNORM << cudaGetErrorString(code) << "\n";
+void gpu_die(hipError_t code, const char *file, int line, bool abort) {
+  if (code != hipSuccess) {
+    std::cerr << KLRED << "<" << file << ":" << line << "> ERROR:" << KNORM << hipGetErrorString(code) << "\n";
     std::abort();
     // do not throw exceptions -- does not work properly within progress() throw std::runtime_error(outstr);
   }
@@ -71,23 +71,23 @@ void QuickTimer::inc(double s) { secs += s; }
 double QuickTimer::get_elapsed() { return secs; }
 
 GPUTimer::GPUTimer() {
-  cudaErrchk(cudaEventCreate(&start_event));
-  cudaErrchk(cudaEventCreate(&stop_event));
+  ERROR_CHECK(hipEventCreate(&start_event));
+  ERROR_CHECK(hipEventCreate(&stop_event));
   elapsed_t_ms = 0;
 }
 
 GPUTimer::~GPUTimer() {
-  cudaErrchk(cudaEventDestroy(start_event));
-  cudaErrchk(cudaEventDestroy(stop_event));
+  ERROR_CHECK(hipEventDestroy(start_event));
+  ERROR_CHECK(hipEventDestroy(stop_event));
 }
 
-void GPUTimer::start() { cudaErrchk(cudaEventRecord(start_event, 0)); }
+void GPUTimer::start() { ERROR_CHECK(hipEventRecord(start_event, 0)); }
 
 void GPUTimer::stop() {
-  cudaErrchk(cudaEventRecord(stop_event, 0));
-  cudaErrchk(cudaEventSynchronize(stop_event));
+  ERROR_CHECK(hipEventRecord(stop_event, 0));
+  ERROR_CHECK(hipEventSynchronize(stop_event));
   float ms;
-  cudaErrchk(cudaEventElapsedTime(&ms, start_event, stop_event));
+  ERROR_CHECK(hipEventElapsedTime(&ms, start_event, stop_event));
   elapsed_t_ms += ms;
 }
 

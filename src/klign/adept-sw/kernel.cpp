@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -51,13 +52,13 @@ __inline__ __device__ short gpu_bsw::warpReduceMax_with_index_reverse(short val,
   short ind = myIndex;
   short ind2 = myIndex2;
   myMax = val;
-  unsigned mask = __ballot_sync(0xffffffff, threadIdx.x < lengthSeqB);  // blockDim.x
+  // unsigned mask = __ballot_sync(0xffffffff, threadIdx.x < lengthSeqB);  // blockDim.x
   // unsigned newmask;
   for (int offset = warpSize / 2; offset > 0; offset /= 2) {
-    int tempVal = __shfl_down_sync(mask, val, offset);
+    int tempVal = __shfl_down(val, offset);
     val = max(val, tempVal);
-    newInd = __shfl_down_sync(mask, ind, offset);
-    newInd2 = __shfl_down_sync(mask, ind2, offset);
+    newInd = __shfl_down(ind, offset);
+    newInd2 = __shfl_down(ind2, offset);
 
     //  if(threadIdx.x == 0)printf("index1:%d, index2:%d, max:%d\n", newInd, newInd2, val);
     if (val != myMax) {
@@ -88,13 +89,13 @@ __inline__ __device__ short gpu_bsw::warpReduceMax_with_index(short val, short& 
   short ind = myIndex;
   short ind2 = myIndex2;
   myMax = val;
-  unsigned mask = __ballot_sync(0xffffffff, threadIdx.x < lengthSeqB);  // blockDim.x
+  // unsigned mask = __ballot_sync(0xffffffff, threadIdx.x < lengthSeqB);  // blockDim.x
   // unsigned newmask;
   for (int offset = warpSize / 2; offset > 0; offset /= 2) {
-    int tempVal = __shfl_down_sync(mask, val, offset);
+    int tempVal = __shfl_down(val, offset);
     val = max(val, tempVal);
-    newInd = __shfl_down_sync(mask, ind, offset);
-    newInd2 = __shfl_down_sync(mask, ind2, offset);
+    newInd = __shfl_down(ind, offset);
+    newInd2 = __shfl_down(ind2, offset);
     if (val != myMax) {
       ind = newInd;
       ind2 = newInd2;
@@ -314,11 +315,11 @@ __global__ void gpu_bsw::sequence_dna_kernel(char* seqA_array, char* seqB_array,
     __syncthreads();  // this is needed so that all the shmem writes are completed.
 
     if (is_valid[thread_Id] && thread_Id < minSize) {
-      unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
+      // unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
       short fVal = _prev_F + extendGap;
       short hfVal = _prev_H + startGap;
-      short valeShfl = __shfl_sync(mask, _prev_E, laneId - 1, 32);
-      short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
+      short valeShfl = __shfl(_prev_E, laneId - 1, 32);
+      short valheShfl = __shfl(_prev_H, laneId - 1, 32);
       short eVal = 0, heVal = 0;
 
       if (diag >= maxSize) {
@@ -338,7 +339,7 @@ __global__ void gpu_bsw::sequence_dna_kernel(char* seqA_array, char* seqB_array,
       _curr_F = (fVal > hfVal) ? fVal : hfVal;
       _curr_E = (eVal > heVal) ? eVal : heVal;
 
-      short testShufll = __shfl_sync(mask, _prev_prev_H, laneId - 1, 32);
+      short testShufll = __shfl(_prev_prev_H, laneId - 1, 32);
       short final_prev_prev_H = 0;
       if (diag >= maxSize) {
         final_prev_prev_H = local_spill_prev_prev_H[thread_Id - 1];
@@ -488,11 +489,11 @@ __global__ void gpu_bsw::sequence_dna_reverse(char* seqA_array, char* seqB_array
     __syncthreads();
 
     if (is_valid[thread_Id] && thread_Id < minSize) {
-      unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
+      // unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
       short fVal = _prev_F + extendGap;
       short hfVal = _prev_H + startGap;
-      short valeShfl = __shfl_sync(mask, _prev_E, laneId - 1, 32);
-      short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
+      short valeShfl = __shfl(_prev_E, laneId - 1, 32);
+      short valheShfl = __shfl(_prev_H, laneId - 1, 32);
 
       short eVal = 0;
       short heVal = 0;
@@ -514,7 +515,7 @@ __global__ void gpu_bsw::sequence_dna_reverse(char* seqA_array, char* seqB_array
       }
       _curr_F = (fVal > hfVal) ? fVal : hfVal;
       _curr_E = (eVal > heVal) ? eVal : heVal;
-      short testShufll = __shfl_sync(mask, _prev_prev_H, laneId - 1, 32);
+      short testShufll = __shfl(_prev_prev_H, laneId - 1, 32);
       short final_prev_prev_H = 0;
 
       if (diag >= maxSize) {
@@ -677,12 +678,12 @@ __global__ void gpu_bsw::sequence_aa_kernel(char* seqA_array, char* seqB_array, 
     __syncthreads();  // this is needed so that all the shmem writes are completed.
 
     if (is_valid[thread_Id] && thread_Id < minSize) {
-      unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
+      // unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
 
       short fVal = _prev_F + extendGap;
       short hfVal = _prev_H + startGap;
-      short valeShfl = __shfl_sync(mask, _prev_E, laneId - 1, 32);
-      short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
+      short valeShfl = __shfl(_prev_E, laneId - 1, 32);
+      short valheShfl = __shfl(_prev_H, laneId - 1, 32);
 
       short eVal = 0, heVal = 0;
 
@@ -701,7 +702,7 @@ __global__ void gpu_bsw::sequence_aa_kernel(char* seqA_array, char* seqB_array, 
       _curr_F = (fVal > hfVal) ? fVal : hfVal;
       _curr_E = (eVal > heVal) ? eVal : heVal;
 
-      short testShufll = __shfl_sync(mask, _prev_prev_H, laneId - 1, 32);
+      short testShufll = __shfl(_prev_prev_H, laneId - 1, 32);
       short final_prev_prev_H = 0;
       if (diag >= maxSize) {
         final_prev_prev_H = local_spill_prev_prev_H[thread_Id - 1];
@@ -870,12 +871,12 @@ __global__ void gpu_bsw::sequence_aa_reverse(char* seqA_array, char* seqB_array,
     __syncthreads();
 
     if (is_valid[thread_Id] && thread_Id < minSize) {
-      unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
+      // unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
 
       short fVal = _prev_F + extendGap;
       short hfVal = _prev_H + startGap;
-      short valeShfl = __shfl_sync(mask, _prev_E, laneId - 1, 32);
-      short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
+      short valeShfl = __shfl(_prev_E, laneId - 1, 32);
+      short valheShfl = __shfl(_prev_H, laneId - 1, 32);
 
       short eVal = 0;
       short heVal = 0;
@@ -898,7 +899,7 @@ __global__ void gpu_bsw::sequence_aa_reverse(char* seqA_array, char* seqB_array,
       }
       _curr_F = (fVal > hfVal) ? fVal : hfVal;
       _curr_E = (eVal > heVal) ? eVal : heVal;
-      short testShufll = __shfl_sync(mask, _prev_prev_H, laneId - 1, 32);
+      short testShufll = __shfl(_prev_prev_H, laneId - 1, 32);
       short final_prev_prev_H = 0;
 
       if (diag >= maxSize) {

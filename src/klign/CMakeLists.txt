@@ -31,6 +31,19 @@ if(ENABLE_CUDA)
   set(KLIGN_TARGET_OBJECTS
       ${KLIGN_TARGET_OBJECTS}
       PARENT_SCOPE)
+
+elseif(ENABLE_HIP)
+  set(tgt block_align_gpu)
+  add_library(${tgt} OBJECT ${tgt}.cpp)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
+    target_link_libraries(${tgt} ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES})
+  endif()
+
+  list(APPEND KLIGN_TARGET_OBJECTS $<TARGET_OBJECTS:${tgt}>)
+  set(KLIGN_TARGET_OBJECTS
+      ${KLIGN_TARGET_OBJECTS}
+      PARENT_SCOPE)
+
 else()
   set(tgt block_align_cpu)
   add_library(${tgt} OBJECT ${tgt}.cpp)
@@ -53,6 +66,13 @@ if(ENABLE_CUDA)
   add_subdirectory(adept-sw)
   set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} ADEPT_SW_LIBRARY_static)
 endif()
+
+if(ENABLE_HIP)
+  include_directories("adept-sw")
+  add_subdirectory(adept-sw)
+  set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} ADEPT_SW_LIBRARY_shared)
+endif()
+
 
 target_link_libraries(KLIGN_LIBRARY ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
                       ${UPCXX_UTILS_LIBRARIES})

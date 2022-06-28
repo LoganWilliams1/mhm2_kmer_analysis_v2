@@ -85,6 +85,8 @@ endif()
 
 include(CheckLanguage)
 check_language(CUDA)
+check_language(HIP)
+
 if(CMAKE_CUDA_COMPILER)
   option(ENABLE_CUDA "Enable CUDA" ON)
   if(ENABLE_CUDA)
@@ -99,6 +101,15 @@ else()
       OFF
       CACHE BOOL "Enable CUDA" FORCE)
 endif()
+
+if(CMAKE_HIP_COMPILER)
+  option(ENABLE_HIP "Enable HIP" ON)
+  if(ENABLE_HIP)
+    find_package(hip)
+      # set(CMAKE_HIP_FLAGS "-fgpu-rdc --hip-link")
+  endif()
+endif()
+
 if(ENABLE_CUDA)
   message(STATUS "Building for GPU with CUDA")
 else()

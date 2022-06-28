@@ -45,8 +45,8 @@
 #include <chrono>
 #include <array>
 #include <iomanip>
-#include <cuda_runtime_api.h>
-#include <cuda.h>
+#include <hip/hip_runtime_api.h>
+#include <hip/hip_runtime.h>
 
 #include "gpu_utils.hpp"
 #include "upcxx_utils/colors.h"
@@ -59,8 +59,8 @@ static int _rank_me = -1;
 
 static int get_gpu_device_count() {
   if (!_device_count) {
-    auto res = cudaGetDeviceCount(&_device_count);
-    if (res != cudaSuccess) return 0;
+    auto res = hipGetDeviceCount(&_device_count);
+    if (res != hipSuccess) return 0;
   }
   return _device_count;
 }
@@ -71,27 +71,27 @@ void gpu_utils::set_gpu_device(int rank_me) {
     exit(1);
   }
   int num_devs = get_gpu_device_count();
-  cudaErrchk(cudaSetDevice(rank_me % num_devs));
+  ERROR_CHECK(hipSetDevice(rank_me % num_devs));
 }
 
 size_t gpu_utils::get_gpu_tot_mem() {
   set_gpu_device(_rank_me);
-  cudaDeviceProp prop;
-  cudaErrchk(cudaGetDeviceProperties(&prop, 0));
+  hipDeviceProp_t prop;
+  ERROR_CHECK(hipGetDeviceProperties(&prop, 0));
   return prop.totalGlobalMem;
 }
 
 size_t gpu_utils::get_gpu_avail_mem() {
   set_gpu_device(_rank_me);
   size_t free_mem, tot_mem;
-  cudaErrchk(cudaMemGetInfo(&free_mem, &tot_mem));
+  ERROR_CHECK(hipMemGetInfo(&free_mem, &tot_mem));
   return free_mem;
 }
 
 string gpu_utils::get_gpu_device_name() {
   set_gpu_device(_rank_me);
-  cudaDeviceProp prop;
-  cudaErrchk(cudaGetDeviceProperties(&prop, 0));
+  hipDeviceProp_t prop;
+  ERROR_CHECK(hipGetDeviceProperties(&prop, 0));
   return prop.name;
 }
 
@@ -107,16 +107,15 @@ vector<string> gpu_utils::get_gpu_uuids() {
   vector<string> uuids;
   int num_devs = get_gpu_device_count();
   for (int i = 0; i < num_devs; ++i) {
-    cudaDeviceProp prop;
-    cudaErrchk(cudaGetDeviceProperties(&prop, i));
-#if (CUDA_VERSION >= 10000)
-    uuids.push_back(get_uuid_str(prop.uuid.bytes));
-#else
+    hipDeviceProp_t prop;
+    ERROR_CHECK(hipGetDeviceProperties(&prop, i));
+// #if (CUDA_VERSION >= 10000)
+//     uuids.push_back(get_uuid_str(prop.uuid.bytes));
+// #else
     ostringstream os;
-    os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID << ':' << prop.pciDomainID << ':'
-       << prop.multiGpuBoardGroupID;
+    os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;// << ':' << prop.pciDomainID << prop.multiGpuBoardGroupID;
     uuids.push_back(os.str());
-#endif
+// #endif
   }
   return uuids;
 }
@@ -136,33 +135,33 @@ void gpu_utils::initialize_gpu(double& time_to_initialize, int rank_me) {
   if (!gpus_present()) return;
   _rank_me = rank_me;
   set_gpu_device(_rank_me);
-  cudaErrchk(cudaDeviceReset());
+  ERROR_CHECK(hipDeviceReset());
   elapsed = chrono::high_resolution_clock::now() - t;
   time_to_initialize = elapsed.count();
 }
 
 string gpu_utils::get_gpu_device_descriptions() {
-  cudaDeviceProp prop;
+  hipDeviceProp_t prop;
   int num_devs = get_gpu_device_count();
   ostringstream os;
   os << "Number of GPU devices visible: " << num_devs << "\n";
   for (int i = 0; i < num_devs; ++i) {
-    cudaErrchk(cudaGetDeviceProperties(&prop, i));
+    ERROR_CHECK(hipGetDeviceProperties(&prop, i));
 
     os << "GPU Device number: " << i << "\n";
     os << "  Device name: " << prop.name << "\n";
     os << "  PCI device ID: " << prop.pciDeviceID << "\n";
     os << "  PCI bus ID: " << prop.pciBusID << "\n";
-    os << "  PCI domainID: " << prop.pciDomainID << "\n";
-    os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
-#if (CUDA_VERSION >= 10000)
-    os << "  UUID: " << get_uuid_str(prop.uuid.bytes) << "\n";
-#endif
+    // os << "  PCI domainID: " << prop.pciDomainID << "\n";
+    // os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
+// #if (CUDA_VERSION >= 10000)
+//     os << "  UUID: " << get_uuid_str(prop.uuid.bytes) << "\n";
+// #endif
     os << "  Compute capability: " << prop.major << "." << prop.minor << "\n";
     os << "  Clock Rate: " << prop.clockRate << "kHz\n";
     os << "  Total SMs: " << prop.multiProcessorCount << "\n";
-    os << "  Shared Memory Per SM: " << prop.sharedMemPerMultiprocessor << " bytes\n";
-    os << "  Registers Per SM: " << prop.regsPerMultiprocessor << " 32-bit\n";
+    os << "  Max Shared Memory Per SM: " << prop.maxSharedMemoryPerMultiProcessor << " bytes\n";
+    os << "  Registers Per Block: " << prop.regsPerBlock << " 32-bit\n";
     os << "  Max threads per SM: " << prop.maxThreadsPerMultiProcessor << "\n";
     os << "  L2 Cache Size: " << prop.l2CacheSize << " bytes\n";
     os << "  Total Global Memory: " << prop.totalGlobalMem << " bytes\n";
