@@ -70,7 +70,7 @@ endif()
 if(ENABLE_HIP)
   include_directories("adept-sw")
   add_subdirectory(adept-sw)
-  set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} ADEPT_SW_LIBRARY_shared)
+  set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} ADEPT_SW_LIBRARY_static)
 endif()
 
 

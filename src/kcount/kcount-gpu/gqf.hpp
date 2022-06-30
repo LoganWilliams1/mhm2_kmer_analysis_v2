@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #pragma once
 
 /*
@@ -9,7 +10,7 @@
  * ============================================================================
  */
 
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <inttypes.h>
 #include <stdbool.h>
 

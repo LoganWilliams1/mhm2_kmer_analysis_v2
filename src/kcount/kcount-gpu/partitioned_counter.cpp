@@ -8,7 +8,7 @@
  */
 
 //#define _GNU_SOURCE
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
