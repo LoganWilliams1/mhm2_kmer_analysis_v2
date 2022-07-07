@@ -4,6 +4,7 @@ module load PrgEnv-gnu
 module load git
 module load cmake
 
+module load rocm
 module rm xl
 module load gcc
 #module load cuda

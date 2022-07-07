@@ -1,4 +1,5 @@
 #!/bin/bash
+-x
 
 mhm2_install_dir=$(dirname $(dirname $(realpath $0) ) )
 if [ -n "$1" -a -d "$1" ] || [ ! -x ${mhm2_install_dir}/bin/ci_asm_qual_test.sh ]
