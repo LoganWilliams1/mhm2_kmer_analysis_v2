@@ -9,7 +9,8 @@ module load gcc
 #module load cuda
 #module load upcxx
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
-module load upcxx
+# module load upcxx
+module load upcxx/bleeding-edge
 module load rocm/4.5.2
 module list
 which upcxx
