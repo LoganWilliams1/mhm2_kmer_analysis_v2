@@ -97,7 +97,11 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedRea
     alns.dump_rank_file("scaff-" + to_string(scaff_kmer_len) + ".alns.gz");
 #endif
     begin_gasnet_stats("alignment_depths sk = " + to_string(scaff_kmer_len));
-    compute_aln_depths("", ctgs, alns, max_kmer_len, 0, {}, true);
+    vector<string> read_group_names;
+    for(auto pr : packed_reads_list) {
+      read_group_names.push_back(pr->get_fname());
+    }
+    compute_aln_depths("", ctgs, alns, max_kmer_len, 0, read_group_names, true);
     end_gasnet_stats();
     // always recalculate the insert size because we may need it for resumes of failed runs
     tie(ins_avg, ins_stddev) = calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);

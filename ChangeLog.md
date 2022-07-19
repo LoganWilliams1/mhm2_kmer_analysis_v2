@@ -3,14 +3,7 @@
 
 This is the ChangeLog for MetaHipMer with development at [bitbucket](https://bitbucket.org/berkeleylab/mhm2)
 
-### 2.1.0 2021-01-24
-   * Major improvements in GPU performance in kcount and adept
-   * Added quotient filtering to GPU kcount
-   * Improved Continuous Integration testsing
-   * Optionally trim read adapters to improve load balance and assembly quality
-   * Fixed issues #108, #112, #109, #107, #83, #97, #91, #89, #39, #10, #84
-
-### 2.0.2 2022-01-24
+### 2.1.0.1 2022-01-24
    * Major updates to GPU offloading in kcount - PR #48
       * Removed bloom filters from CPU & GPU kcount
    * Counting quotient filter in kcount (GPU only) - PR #54

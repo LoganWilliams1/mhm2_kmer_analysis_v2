@@ -56,6 +56,8 @@
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
 
+#include "zstr.hpp"
+
 using namespace upcxx_utils;
 using std::make_shared;
 using std::ostringstream;
@@ -123,47 +125,97 @@ bool FastqReader::get_fq_name(string &header) {
   return true;
 }
 
+int64_t FastqReader::tellg() {
+  return in->tellg();
+
+}
+
+void FastqReader::seekg(int64_t pos) {
+  in->seekg(pos);
+  assert(tellg() == pos);
+}
+
 int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // first record is the first record, include it.  Every other partition will be at least 1 full record after offset.
-  if (offset == 0) return 0;
+  // but read the first few lines anyway
+
   // eof - do not read anything
   if (offset >= file_size) return file_size;
 
   io_t.start();
-  if (fseek(f, offset, SEEK_SET) != 0) DIE("Could not fseek in ", fname, " to ", offset, ": ", strerror(errno));
-  // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
-  if (!fgets(buf, BUF_SIZE, f)) {
+
+  in->seekg(offset);
+  if (!in->good()) DIE("Could not fseek in ", fname, " to ", offset, ": ", strerror(errno));
+  
+  if (offset != 0) {
+    // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
+    std::getline(*in, buf);
+  }
+  if (buf.empty() && (in->eof() || in->fail())) {
     io_t.stop();
-    return ftell(f);
+    DBG("Got eof, fail or empty getline at ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
+    return file_size;
+  }
+  int64_t last_tell = tellg();
+
+  // read up to 20 lines and store tellg() at each line, then process them below...
+  std::vector<string> lines;
+  lines.reserve(20);
+  std::vector<int64_t> tells;
+  tells.reserve(20);
+  for (int i = 0; i < 20; i++) {
+    tells.push_back(tellg());
+    std::getline(*in, buf);
+    if (in->eof() || in->fail() || buf.empty()) {
+      DBG("Got eof, fail or empty getline at ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
+      break;
+    }
+    assert(buf.back() != '\n');
+    lines.push_back(buf);
   }
 
   char last_pair = '\0', this_pair = '\1';
-  int64_t last_tell = ftell(f);
-  for (int i = 0;; i++) {
-    int64_t this_tell = ftell(f);
-    if (!fgets(buf, BUF_SIZE, f)) {
-      io_t.stop();
-      return ftell(f);
-    }
-
-    if (buf[0] == '@') {
-      string header(buf);
+  int i;
+  string possible_header, last_header;
+  for (i = 0; i < lines.size(); i++) {
+    int64_t this_tell = tells[i];
+    string &tmp = lines[i];
+    if (tmp[0] == '@') {
+      string header(tmp);
+      possible_header = header;
+      if (possible_header.compare(last_header) == 0) {
+        // test and possibly fix identical read pair names without corresponding header field - Issue124
+        if (_is_paired) {
+          _fix_paired_name = true;
+          LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname, "\n");
+          if (offset == 0) WARN(this->fname, " is paired but read names are indistinguisable.  example: ", possible_header, "\n");
+        } else {
+          DIE("Invalid unpaired fastq file that contains identical sequential read names: ", last_header, " in ", this->fname, "\n");
+        }
+      }
       rtrim(header);
       if (!get_fq_name(header)) continue;
 
       // now read another three lines, but check that next line is sequence and the third line is a + separator and the fourth line
       // is the same length as the second
-      int64_t test_tell = ftell(f);
+      int64_t test_tell = tells[i];
       int seqlen = 0;
       bool record_found = true;
       DBG_VERBOSE("Testing for header: ", header, "\n");
       for (int j = 0; j < 3; j++) {
-        if (!fgets(buf, BUF_SIZE, f)) DIE("Missing record info at pos ", ftell(f));
+        if (i + 1 + j >= lines.size()) DIE("Missing record info at pos ", tells[i]);
+        string &tmp2 = lines[i + 1 + j];
+
         if (j == 0) {
+          if (tmp2[0] == '@') {
+            // previous was quality line, this next line is the header line.
+            record_found = false;
+            break;
+          }
           // sequence line should have only sequence characters
-          seqlen = strlen(buf);
+          seqlen = tmp2.size();
           for (int k = 0; k < seqlen; k++) {
-            switch (buf[k]) {
+            switch (tmp2[k]) {
               case ('a'):
               case ('c'):
               case ('g'):
@@ -173,28 +225,28 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
               case ('G'):
               case ('T'):
               case ('N'): break;  // okay
-              case ('\n'):
-                // newline.  okay if last char
+              case ('\n'):        
+                // newline is not expected here, but okay if last char
                 record_found = k == seqlen - 1;
-                break;
-              case ('@'):  // previous was quality line, this next line is the header line.
-              default:     // not okay
-                DBG_VERBOSE("Found non-seq '", buf[k], "' at ", k, " in: ", buf, "\n");
+                if (record_found) break;
+              case ('@'):         // previous was quality line, this next line is the header line.
+              default:            // not okay
+                DBG_VERBOSE("Found non-seq '", tmp2[k], "' at ", k, " in: ", tmp2, "\n");
                 record_found = false;
             }
             if (!record_found) break;
           }
           if (!record_found) break;
         }
-        if (j == 1 && buf[0] != '+') {
+        if (j == 1 && tmp2[0] != '+') {
           // this is not a correct boundary for a fastq record - move on
-          DBG_VERBOSE("Found non + ", buf, "\n");
+          DBG_VERBOSE("Found non + ", tmp2, "\n");
           record_found = false;
           break;
         }
-        if (j == 2 && seqlen != strlen(buf)) {
+        if (j == 2 && seqlen != tmp2.size()) {
           // qual should be same length as sequence
-          DBG_VERBOSE("Found different len ", seqlen, " vs ", strlen(buf), " in ", buf, "\n");
+          DBG_VERBOSE("Found different len ", seqlen, " vs ", tmp2.size(), " in ", tmp2, "\n");
           record_found = false;
           break;
         }
@@ -203,9 +255,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
         // good
         i += 3;
       } else {
-        // rewind and test next line as a potential header
-        DBG_VERBOSE("Did not find proper pair, rewinding\n");
-        if (fseek(f, test_tell, SEEK_SET) != 0) DIE("Could not fseek in ", fname, " to ", offset, ": ", strerror(errno));
+        // test next line as a potential header
         continue;
       }
 
@@ -219,9 +269,16 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       this_pair = header[header.length() - 1];
       DBG("Found possible pair ", (char)this_pair, ", header: ", header, "\n");
       if (last_pair == this_pair) {
-        // one of two split files or a merged file without pairs
-        DBG("Same pair, so keep the first\n");
-        break;
+        if (_fix_paired_name) {
+          if (last_header.compare(possible_header) == 0) {
+            DBG("Second indistinguishable pair, so keep at the first record\n");
+            break;
+          }
+        } else if (header[header.length() - 2] == '/') {
+          // one of two split files or a merged file without pairs
+          DBG("Same pair, so keep at the first record\n");
+          break;
+        }
       } else if (last_pair == '1' && this_pair == '2') {
         // proper pair
         DBG("Found proper pair 1&2\n");
@@ -231,58 +288,75 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       // did not find valid new start of (possibly paired) record
       last_tell = this_tell;
       last_pair = this_pair;
+      last_header = possible_header;
     }
-    if (i > 20) DIE("Could not find a valid line in the fastq file ", fname, ", last line: ", buf);
+    if (i >= lines.size()) DIE("Could not find a valid line in the fastq file ", fname, ", last line: ", buf);
   }
   io_t.stop();
   DBG("Found record at ", last_tell, " after offset ", offset, "\n");
+  if (offset == 0 && last_tell != 0) {
+    WARN("First rank to read really should return the first byte for ", fname, " offset=", offset, " last_tell=", last_tell, "\n");
+  }
   return last_tell;
 }
 
-FastqReader::FastqReader(const string &_fname, bool wait, upcxx::future<> first_wait)
+FastqReader::FastqReader(const string &_fname, upcxx::future<> first_wait)
     : fname(_fname)
-    , f(nullptr)
+    , in(nullptr)
     , max_read_len(0)
+    , read_count(0)
     , fqr2(nullptr)
     , first_file(true)
     , _is_paired(true)
+    , _fix_paired_name(false)
+    , _first_pair(true)
     , io_t("fastq IO for " + fname)
     , dist_prom(world())
     , open_fut(make_future()) {
   Timer construction_timer("FastqReader construct " + get_basename(fname));
   construction_timer.initiate_entrance_reduction();
+  bool need_wait = first_wait.ready();
   string fname2;
   size_t pos;
+  LOG("Constructed FastqReader with fname=", fname, " first_wait=", (first_wait.ready() ? "Ready" : "NOT READY"), "\n");
   if ((pos = fname.find(':')) != string::npos) {
     if (pos == fname.size() - 1) {
-      // unpaird/single file
+      // unpaired/single file
       _is_paired = false;
       fname = fname.substr(0, pos);
+      LOG("New unpaired fname=", fname, "\n");
     } else {
       // colon separating a pair into two files
       fname2 = fname.substr(pos + 1);
       fname = fname.substr(0, pos);
+      LOG("New two file paired fname=", fname, " fname2=", fname2, "\n");
     }
   }
-  int fd = -1;
-  if (!rank_me()) {
+  static int rotate_rank = 0;
+  int query_rank = rotate_rank++ % rank_n();
+  if (rank_me() == query_rank) {
     // only one rank gets the file size, to prevent many hits on metadata
     io_t.start();
-    fd = open(fname.c_str(), O_RDONLY);
-    if (fd < 0) DIE("Could not open file ", fname, ": ", strerror(errno));
-    file_size = get_file_size(fd);
+    file_size = upcxx_utils::get_file_size(fname);
+    in = std::make_unique<ifstream>(fname);
     io_t.stop();
+    buf.reserve(BUF_SIZE);
+    DBG("Found file_size=", file_size, " for ", fname, "\n");
   }
 
-  future<> file_size_fut = upcxx::broadcast(file_size, 0).then([&file_size = this->file_size](int64_t sz) { file_size = sz; });
+  future<> file_size_fut = upcxx::broadcast(file_size, query_rank).then([&self = *this](int64_t sz) {
+    self.file_size = sz;
+    assert(sz>=0);
+  });
+  file_size_fut = file_size_fut.then([&self = *this]() { self.know_file_size.fulfill_anonymous(1); });
 
   // continue opening IO operations to find this rank's start record in a separate thread
-  open_fut = when_all(open_fut, file_size_fut, first_wait).then([this, fd]() { return this->continue_open(fd); });
+  open_fut = when_all(open_fut, file_size_fut, first_wait).then([&self = *this]() { return self.continue_open(); });
 
   if (!fname2.empty()) {
     // this second reader is generally hidden from the user
     LOG("Opening second FastqReader with ", fname2, "\n");
-    fqr2 = make_shared<FastqReader>(fname2, wait, open_fut);
+    fqr2 = make_shared<FastqReader>(fname2, open_fut);
     open_fut = when_all(open_fut, fqr2->open_fut);
 
     // find the positions in the file that correspond to matching pairs
@@ -305,7 +379,9 @@ FastqReader::FastqReader(const string &_fname, bool wait, upcxx::future<> first_
     upcxx_utils::Timings::set_pending(free_mem);                                     // eventualy will clean up
   }
 
-  if (wait) {
+  DBG("Constructed new FQR on ", fname, " - ", (void *)this, "\n");
+
+  if (need_wait) {
     open_fut.wait();
     if (fqr2) fqr2->open_fut.wait();
   }
@@ -313,11 +389,17 @@ FastqReader::FastqReader(const string &_fname, bool wait, upcxx::future<> first_
 
 future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, dist_object<PromStartStop> &dist_start_stop1,
                                         dist_object<PromStartStop> &dist_start_stop2) {
+
   DBG("Starting matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
-  assert(fqr1.f && "FQ 1 is open");
-  assert(fqr2.f && "FQ 2 is open");
-  assert(fqr1.start_read == ftell(fqr1.f) && "fqr1 is at the naive start");
-  assert(fqr2.start_read == ftell(fqr2.f) && "fqr2 is at the naive start");
+  assert(fqr1.in && "FQ 1 is open");
+  assert(fqr2.in && "FQ 2 is open");
+  assert(fqr1.start_read == fqr1.tellg() && "fqr1 is at the naive start");
+  assert(fqr2.start_read == fqr2.tellg() && "fqr2 is at the naive start");
+  // disable subsampling temporarily
+  auto old_subsample = fqr1.subsample_pct;
+  assert(fqr2.subsample_pct == old_subsample);
+  fqr1.subsample_pct = 100;
+  fqr2.subsample_pct = 100;
   int64_t pos1 = fqr1.start_read, pos2 = fqr2.start_read;
   // allow search to extend past the original block size
   fqr1.end_read = fqr1.file_size;
@@ -390,27 +472,87 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
     dist_start_stop2->stop_prom.fulfill_result(fqr2.file_size);
   }
   auto fut1 = dist_start_stop1->set(fqr1).then([&fqr1]() {
-    fqr1.seek();
+    fqr1.seek_start();
     fqr1.first_file = true;
   });
-  auto fut2 = dist_start_stop2->set(fqr2).then([&fqr2]() { fqr2.seek(); });
-  return when_all(fut1, fut2).then([&fqr1, &fqr2]() {
+  auto fut2 = dist_start_stop2->set(fqr2).then([&fqr2]() { fqr2.seek_start(); });
+  return when_all(fut1, fut2).then([&fqr1, &fqr2, old_subsample]() {
+    // restore subsampling
+    fqr1.subsample_pct = old_subsample;
+    fqr2.subsample_pct = old_subsample;
     DBG("Found matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
   });
 }
 
-// all ranks open, 1 rank per node finds block boundaries
-upcxx::future<> FastqReader::continue_open(int fd) {
-  assert(upcxx::master_persona().active_with_caller());
-  io_t.start();
-  if (fd < 0) {
-    f = fopen(fname.c_str(), "r");
-  } else {
-    f = fdopen(fd, "r");
+// Find my boundary start and communicate to prev rank for their boundary end (if my start>0)...
+upcxx::future<> FastqReader::continue_open() {
+  if (block_size == -1) return continue_open_default_per_rank_boundaries();  // the old algorithm
+  // use custome block start and block_size
+  if (block_size == 0) {
+    // this rank does not read this file
+    DBG("This rank will not read ", fname, "\n");
+    dist_prom->start_prom.fulfill_result(file_size);
+    dist_prom->stop_prom.fulfill_result(file_size);
+    return dist_prom->set(*this);
   }
-  if (!f) {
+
+  io_t.start();
+  if (!in) {
+    in.reset(new ifstream(fname));
+    LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
+  }
+  if (!in) {
     SDIE("Could not open file ", fname, ": ", strerror(errno));
   }
+  DBG("in.tell=", in->tellg(), "\n");
+
+  io_t.stop();
+
+  using DPSS = dist_object<PromStartStop>;
+  assert(block_start <= file_size);
+  int64_t my_start = get_fptr_for_next_record(block_start);
+  if (rank_me() > 0 && my_start != 0) {
+    rpc_ff(rank_me() - 1,
+           [](DPSS &dpss, int64_t end_pos) {
+             DBG("end_pos=", end_pos, "\n");
+             dpss->stop_prom.fulfill_result(end_pos);
+           },
+           dist_prom, my_start);
+  }
+  dist_prom->start_prom.fulfill_result(my_start);
+
+  DBG("my_start=", my_start, "\n");
+
+  if (block_start + block_size >= file_size) {
+    // next rank will never send their end as it will not even try to open this file
+    dist_prom->stop_prom.fulfill_result(file_size);
+  } else {
+    // expecting an rpc from rank_me + 1
+  }
+  auto fut_set = dist_prom->set(*this);
+  auto fut_seek = fut_set.then([this]() {
+    DBG("start_read=", start_read, " end_read=", end_read, "\n");
+    if (start_read != end_read) this->seek_start();
+  });
+  progress();
+  return fut_seek;
+}
+
+// all ranks open, 1 rank per node finds block boundaries
+upcxx::future<> FastqReader::continue_open_default_per_rank_boundaries() {
+  assert(upcxx::master_persona().active_with_caller());
+  assert(know_file_size.get_future().ready());
+  assert(block_size == -1);
+  auto sz = INT_CEIL(file_size, rank_n());
+  set_block(sz * rank_me(), sz);
+  io_t.start();
+  if (!in) {
+    in.reset(new ifstream(fname));
+  }
+  if (!in) {
+    SDIE("Could not open file ", fname, ": ", strerror(errno));
+  }
+  DBG("in.tell=", in->tellg(), "\n");
   LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
   io_t.stop();
   if (rank_me() == 0) {
@@ -429,7 +571,8 @@ upcxx::future<> FastqReader::continue_open(int fd) {
     DBG_VERBOSE("Fseeking for the team\n");
     // do all the fseeking for the local team
     using DPSS = dist_object<PromStartStop>;
-    int64_t read_block = INT_CEIL(file_size, rank_n());
+    int64_t file_bytes = file_size;
+    int64_t read_block = INT_CEIL(file_bytes, rank_n());
     auto first_rank = rank_me() + 1 - local_team().rank_n();
     for (auto rank = first_rank; rank < first_rank + local_team().rank_n(); rank++) {
       // just a part of the file is read by this thread
@@ -438,9 +581,9 @@ upcxx::future<> FastqReader::continue_open(int fd) {
         continue;
       }
       assert(rank > 0);
-      start_read = read_block * rank;
-      auto pos = get_fptr_for_next_record(start_read);
-      DBG_VERBOSE("Notifying with rank=", rank, " pos=", pos, " after start_read=", start_read, "\n");
+      auto pos = block_start;
+      pos = get_fptr_for_next_record(block_start);
+      DBG_VERBOSE("Notifying with rank=", rank, " pos=", pos, " after block_start=", block_start, "\n");
       wait_prom.get_future().then([rank, pos, &dist_prom = this->dist_prom]() {
         DBG_VERBOSE("Sending pos=", pos, " to stop ", rank - 1, " and start ", rank, "\n");
         // send end to prev rank
@@ -453,16 +596,18 @@ upcxx::future<> FastqReader::continue_open(int fd) {
   // all the seeks are done, send results to local team
   wait_prom.fulfill_anonymous(1);
   auto fut_set = dist_prom->set(*this);
-  auto fut_seek = fut_set.then([this]() { this->seek(); });
+  auto fut_seek = fut_set.then([this]() { this->seek_start(); });
   progress();
   return fut_seek;
 }
 
 void FastqReader::advise(bool will_need) {
+  return;  // TODO fix support for ifstream!
 #if defined(__APPLE__) && defined(__MACH__)
 // TODO
 #else
 #ifndef MHM2_NO_FADVISE
+/* TODO Find a way to support this with ifstream!
   BaseTimer advise_t("Advise " + fname);
   advise_t.start();
   if (will_need) {
@@ -472,6 +617,8 @@ void FastqReader::advise(bool will_need) {
     posix_fadvise(fileno(f), start_read, end_read - start_read, POSIX_FADV_DONTNEED);
     LOG("advised ", fname, " POSIX_FADV_DONTNEED in ", advise_t.get_elapsed_since_start(), "s\n");
   }
+  advise_t.end();
+  */
 #else
   SLOG_VERBOSE("No posix_fadvice to ", fname, "\n");
 #endif
@@ -479,15 +626,24 @@ void FastqReader::advise(bool will_need) {
   if (fqr2) fqr2->advise(will_need);  // advise the second file too!
 }
 
-void FastqReader::seek() {
+void FastqReader::set_block(int64_t start, int64_t size) {
+  if (size > 0) LOG("set_block: file=", fname, " start=", start, " size=", size, " file_size=", file_size, "\n");
+  block_start = start;
+  block_size = size;
+}
+
+void FastqReader::seek_start() {
   // seek to first record
+  DBG("Seeking to start_read=", start_read, " reading through end_read=", end_read, " my_file_size=", my_file_size(),
+      " fname=", fname, "\n");
   io_t.start();
-  if (fseek(f, start_read, SEEK_SET) != 0) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
+  seekg(start_read);
+  if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
   SLOG_VERBOSE("Reading FASTQ file ", fname, "\n");
   double fseek_t = io_t.get_elapsed_since_start();
   io_t.stop();
-  LOG("Reading fastq file ", fname, " at pos ", start_read, " ", ftell(f), " seek ", fseek_t, "s io to open+find+seek ",
-      io_t.get_elapsed(), "s\n");
+  LOG("Reading fastq file ", fname, " at pos ", start_read, "==", tellg(), " to ", end_read, " seek ", fseek_t,
+      "s io to open+find+seek ", io_t.get_elapsed(), "s\n");
 }
 
 FastqReader::~FastqReader() {
@@ -496,25 +652,62 @@ FastqReader::~FastqReader() {
     open_fut.wait();
   }
 
-  if (f) {
+  if (in) {
     io_t.start();
-    fclose(f);
+    in->close();
     io_t.stop();
   }
-  f = nullptr;
+  in.reset();
 
   io_t.done_all_async();  // will print in Timings' order eventually
   FastqReader::overall_io_t += io_t.get_elapsed();
+  DBG("Deconstructed FQR on ", fname, " - ", (void *)this, "\n");
 }
 
 string FastqReader::get_fname() { return fname; }
 
-size_t FastqReader::my_file_size() { return end_read - start_read + (fqr2 ? fqr2->my_file_size() : 0); }
+size_t FastqReader::my_file_size() {
+  size_t size = 0;
+  size = end_read - start_read;
+  if (fqr2) size += fqr2->my_file_size();
+  return size;
+}
+
+future<int64_t> FastqReader::get_file_size() const {
+  return know_file_size.get_future().then([this]() { return this->file_size; });
+}
 
 size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, bool wait_open) {
   if (wait_open && !open_fut.ready()) {
     WARN("Attempt to read ", fname, " before it is ready. wait on open_fut first to avoid this warning!\n");
     open_fut.wait();
+  }
+  if (end_read == start_read) return 0;
+  if (subsample_pct != 100) {
+    assert(subsample_pct > 0);
+
+    if (fqr2) assert(subsample_pct == fqr2->subsample_pct);
+    if (fqr2 && fqr2->read_count != read_count) {
+      // return the second mate normally
+    } else {
+      int modulo = (read_count / (_is_paired ? 2 : 1)) % 100;
+      if (modulo >= subsample_pct) {
+        // fast forward and discard
+        auto tmp_read_count = read_count;
+        int skip = (_is_paired ? 2 : 1) * (100 - modulo);
+        DBG_VERBOSE("Skipping ", skip, " reads for ", (_is_paired ? "PAIRED " : ""), "subsample ", subsample_pct,
+                    "% read_count=", read_count, "\n");
+        for (int i = 0; i < skip; i++) {
+          read_count = 0;
+          auto bytes_read = get_next_fq_record(id, seq, quals, wait_open);
+          if (bytes_read == 0) return bytes_read;
+        }
+        read_count = tmp_read_count + skip;
+        assert(read_count % (_is_paired ? 200 : 100) == 0);
+      }
+      // read normally
+      read_count++;
+    }
   }
   if (fqr2) {
     // return a single interleaved file
@@ -522,17 +715,21 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
       first_file = false;
     } else {
       first_file = true;
-      return fqr2->get_next_fq_record(id, seq, quals, wait_open);
+      assert(read_count > fqr2->read_count);
+      auto bytes_read = fqr2->get_next_fq_record(id, seq, quals, wait_open);
+      assert(read_count == fqr2->read_count);
+      if (_fix_paired_name) id[id.length()-1] = '2'; // this is read2
+      return bytes_read;
     }
   }
-  if (feof(f) || ftell(f) >= end_read) return 0;
+  if (!in || in->eof() || tellg() >= end_read) return 0;
   io_t.start();
   size_t bytes_read = 0;
   id = "";
   char id2 = '\0';
   for (int i = 0; i < 4; i++) {
-    char *bytes = fgets(buf, BUF_SIZE, f);
-    if (!bytes) DIE("Read record terminated on file ", fname, " before full record at position ", ftell(f));
+    std::getline(*in, buf);
+    if (!in->good()) DIE("Read record terminated on file ", fname, " before full record at position ", tellg());
     if (i == 0)
       id.assign(buf);
     else if (i == 1)
@@ -541,22 +738,32 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
       id2 = buf[0];
     else if (i == 3)
       quals.assign(buf);
-    bytes_read += strlen(buf);
+    bytes_read += buf.size();
   }
   rtrim(id);
   rtrim(seq);
   rtrim(quals);
-  if (id[0] != '@') DIE("Invalid FASTQ in ", fname, ": expected read name (@), got: id=", id, " at ", ftell(f), "\n");
-  if (id2 != '+') DIE("Invalid FASTQ in ", fname, ": expected '+', got: '", id2, "' id=", id, " at ", ftell(f), "\n");
+  if (id[0] != '@') DIE("Invalid FASTQ in ", fname, ": expected read name (@), got: id=", id, " at ", tellg(), "\n");
+  if (id2 != '+') DIE("Invalid FASTQ in ", fname, ": expected '+', got: '", id2, "' id=", id, " at ", tellg(), "\n");
   // construct universally formatted name (illumina 1 format)
   if (!get_fq_name(id)) DIE("Invalid FASTQ in ", fname, ": incorrect name format '", id, "'");
   // get rid of spaces
   replace_spaces(id);
+  if (_is_paired & _fix_paired_name) {
+    if (fqr2) {
+      id += "/1";
+    } else {
+      if (_first_pair) id += "/1";
+      else id += "/2";
+    }
+  }
   if (seq.length() != quals.length())
     DIE("Invalid FASTQ in ", fname, ": sequence length ", seq.length(), " != ", quals.length(), " quals length\n", "id:   ", id,
         "\nseq:  ", seq, "\nquals: ", quals);
   if (seq.length() > max_read_len) max_read_len = seq.length();
   io_t.stop();
+  DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
+  _first_pair = !_first_pair;
   return bytes_read;
 }
 
@@ -565,18 +772,24 @@ int FastqReader::get_max_read_len() { return std::max(max_read_len, fqr2 ? fqr2-
 double FastqReader::get_io_time() { return overall_io_t; }
 
 void FastqReader::reset() {
+  DBG("reset on FQR of ", fname, "\n");
   if (!open_fut.ready()) {
     open_fut.wait();
   }
-  if (!f) {
-    DIE("Reset called on unopened file\n");
+  if (block_size > 0) {
+    if (!in) {
+      DIE("Reset called on unopened file\n");
+    }
+    io_t.start();
+    assert(in && "reset called on active file");
+    seekg(start_read);
+    if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
+    io_t.stop();
+    read_count = 0;
+    first_file = true;
+    DBG("reset on ", fname, " tellg=", in->tellg(), "\n");
   }
-  io_t.start();
-  assert(f && "reset called on active file");
-  if (fseek(f, start_read, SEEK_SET) != 0) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
-  io_t.stop();
   if (fqr2) fqr2->reset();
-  first_file = true;
 }
 
 //
@@ -586,20 +799,44 @@ void FastqReader::reset() {
 FastqReaders::FastqReaders()
     : readers() {}
 
-FastqReaders::~FastqReaders() { close_all(); }
+FastqReaders::~FastqReaders() {
+  DBG("Deconstruct FastqReaders!\n");
+  close_all();
+}
 FastqReaders &FastqReaders::getInstance() {
   static FastqReaders _;
   return _;
 }
 
-FastqReader &FastqReaders::open(const string fname) {
+bool FastqReaders::is_open(const string fname) {
+  FastqReaders &me = getInstance();
+  auto it = me.readers.find(fname);
+  return it != me.readers.end() && it->second->is_open();
+}
+
+size_t FastqReaders::get_open_file_size(const string fname) {
+  assert(is_open(fname));
+  FastqReaders &me = getInstance();
+  auto it = me.readers.find(fname);
+  assert(it != me.readers.end());
+  auto fut_sz = it->second->get_file_size();
+  assert(fut_sz.ready());
+  return fut_sz.wait();
+}
+
+FastqReader &FastqReaders::open(const string fname, int subsample_pct, upcxx::future<> first_wait) {
   FastqReaders &me = getInstance();
   auto it = me.readers.find(fname);
   if (it == me.readers.end()) {
+    DBG("Opening a new FQR ", fname, "\n");
     upcxx::discharge();  // opening itself may take some time
-    it = me.readers.insert(it, {fname, make_shared<FastqReader>(fname, false)});
+    auto sh_fqr = make_shared<FastqReader>(fname, first_wait);
+    if (subsample_pct < 100) sh_fqr->set_subsample_pct(subsample_pct);
+    it = me.readers.insert(it, {fname, sh_fqr});
     upcxx::discharge();  // opening requires a broadcast with to complete
     upcxx::progress();   // opening requires some user progress too
+  } else {
+    DBG("Re-opened an existing FQR ", fname, "\n");
   }
   assert(it != me.readers.end());
   assert(it->second);
@@ -621,6 +858,7 @@ void FastqReaders::close(const string fname) {
 }
 
 void FastqReaders::close_all() {
+  DBG("close_all\n");
   FastqReaders &me = getInstance();
   me.readers.clear();
 }

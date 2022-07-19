@@ -240,13 +240,13 @@ TEST(MHMTest, AdeptSW) {
   size_t total_mem;
 #ifdef ENABLE_GPUS
   gpu_utils::initialize_gpu(time_to_initialize, 0);
-//  if (device_count > 0) {
-//    EXPECT_TRUE(total_mem > 32 * 1024 * 1024);  // >32 MB
-//  }
+  //  if (device_count > 0) {
+  //    EXPECT_TRUE(total_mem > 32 * 1024 * 1024);  // >32 MB
+  //  }
 
   double init_time = 0;
   adept_sw::GPUDriver gpu_driver(0, 1, (short)aln_scoring.match, (short)-aln_scoring.mismatch, (short)-aln_scoring.gap_opening,
-                                   (short)-aln_scoring.gap_extending, 300, init_time);
+                                 (short)-aln_scoring.gap_extending, 300, init_time);
   std::cout << "Initialized gpu in " << time_to_initialize << "s and " << init_time << "s\n";
 #endif
 
@@ -424,4 +424,127 @@ TEST(MHMTest, AdeptSW) {
   check_alns_gpu(alns, qstarts, qends, rstarts, rends);
   // cuda tear down happens in driver destructor
 #endif
+}
+
+TEST(MHMTest, Issue118) {
+  /* From stacktrace:
+  [14] #9  0x00000000107a864c in banded_sw (ref=0x200f6c71926c "\001\001\002", read=0x200f6c71a39c "\001\001\002", refLen=138,
+  readLen=138, score=248, weight_gapO=4, weight_gapE=2, band_width2=1 , mat=0x4a93aba0
+  "\002\374\374\374\377\374\002\374\374\377\374\374\002\374\377\374\374\374\002\377\377\377\377\377\377", n=5) at
+  /ccs/home/rsegan/workspace/mhm2/src/ssw/ssw_core.cpp:943 [14] #10 0x00000000107a9bcc in ssw_align (prof=0x200f6c361ab0,
+  ref=0x200f6c719260 "", refLen=138, weight_gapO=4 '\004', weight_gapE=2 '\002', flag=15 '\017', filters=0, filterd=32767, maskLen=
+  75) at /ccs/home/rsegan/workspace/mhm2/src/ssw/ssw_core.cpp:1212
+  [14] #11 0x00000000107a2b98 in StripedSmithWaterman::Aligner::Align (this=0x7fffe6dccb60, query=0x4b9156c0
+  "AGCGGTGAATCGCCGATCGAGACGGTGCCGCCCGACGCCCGCACCACGCCTGCGACGATCGCGAGCCCCAGGCCGCTGCCCCCG
+  GCATCCCTCGCCCGTCCTTCGTCGAGGCGAACGAAGCGTTCGAACACCCGCTCTCGCTCCGAGGCC", query_len=@0x200f68cddc6c: 150, ref=0x4b915760
+  "AGCGGTCACTATCCGATCGAGACGGTGCCGCGCGACGCCCGCACCACGCCTGCGACGTTCGCGAGCCCCAGGCCG
+  CTGCCCCCGGCATCCCTCGACCGTCCTTAGTCGAGGCTAACGAAGCGTTCGAACACCCGCTCTCGCTCCGAGGCC", ref_len=@0x200f68cddc68: 150, filter=...,
+  alignment=0x200f68cddc70, maskLen=75) at /ccs/home/rsegan/workspace/mhm2 /src/ssw/ssw.cpp:457 [14] #12 0x0000000010c054f4 in
+  CPUAligner::ssw_align_read (ssw_aligner=..., ssw_filter=..., alns=0x6b92bdd0, aln_scoring=..., aln=..., cseq=..., rseq=...,
+  read_group_id=0) at /ccs/home/rsegan/ workspace/mhm2/src/klign/aligner_cpu.cpp:169
+  */
+
+  Alns alns;
+  Aln aln[10] = {};
+  string query, ref, exp_sam, exp_aln;
+
+  query = string("AGCGGTGAATCGCCGATCGAGACGGTGCCGCCCGACGCCCGCACCACGCCTGCGACGATCGCGAGCCCCAGGCCGCTGCCCCCGGCATCCCTCGCCCGTCCTTCGTCGAGGCG"
+                 "AACGAAGCGTTCGAACACCCGCTCTCGCTCCGAGGCC");
+  ref = string("AGCGGTCACTATCCGATCGAGACGGTGCCGCGCGACGCCCGCACCACGCCTGCGACGTTCGCGAGCCCCAGGCCGCTGCCCCCGGCATCCCTCGACCGTCCTTAGTCGAGGCTAA"
+               "CGAAGCGTTCGAACACCCGCTCTCGCTCCGAGGCC");
+
+  aln[0] = Aln("a", 0, 0, query.size() - 1, query.size(), 0, ref.size() - 1, ref.size(), '+', 0, 0, 0, -1);
+  exp_aln = "a\t1\t150\t150\tContig0\t1\t150\t150\tPlus\t248\t114";
+  exp_sam = "a\t0\tContig0\t1\t7\t6=1X1=2I2=2D19=1X25=1X36=1X8=1X8=1X37=\t*\t0\t151\t*\t*\tAS:i:248\tNM:i:10\tRG:Z:0";
+  // minimap cigar: 12S19=1X25=1X36=1X8=1X8=1X37=
+
+  CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, cigar_aln_scoring, aln[0], string_view(query),
+                             string_view(ref), 0);
+  EXPECT_EQ(alns.size(), 1) << "did not align query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(0).to_paf_string(), exp_aln) << "did align correctly query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(0).sam_string, exp_sam) << "did align correctly cigar query=" << query << " ref=" << ref;
+
+  aln[1] = Aln("b", 0, 0, ref.size() - 1, ref.size(), 0, query.size() - 1, query.size(), '+', 0, 0, 0, -1);
+  exp_aln = "b\t1\t150\t150\tContig0\t1\t150\t150\tPlus\t248\t114";
+  exp_sam = "b\t0\tContig0\t1\t7\t6=1X1=2D2=2I19=1X25=1X36=1X8=1X8=1X37=\t*\t0\t151\t*\t*\tAS:i:248\tNM:i:10\tRG:Z:0";
+
+  CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, cigar_aln_scoring, aln[1], string_view(ref),
+                             string_view(query), 0);
+  EXPECT_EQ(alns.size(), 2) << "did not align query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(1).to_paf_string(), exp_aln) << "did align correctly query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(1).sam_string, exp_sam) << "did align correctly cigar query=" << query << " ref=" << ref;
+
+  /*
+  [20] #8  <signal handler called>
+  [20] #9  0x00000000107a12a8 in (anonymous namespace)::ConvertAlignment (s_al=..., query_len=@0x200f68cddc5c: 150,
+  al=0x200f68cddc60) at /ccs/home/rsegan/workspace/mhm2/src/ssw/ssw.cpp:60 [20] #10 0x00000000107a2bc0 in
+  StripedSmithWaterman::Aligner::Align (this=0x7fffd8932ac0, query=0x56a4cf70
+  "CAAGTCAACAAACGTAAAGTGATGGGTATGTTCTGACTCTTTGATTTTAAATTTCGAAATCTGAGCTTTTTGGGGGATGTGGCG
+  TGTGAAAGCAGCTAAATCATTCCTCCCACTCAAATTTCAGGCAACGCCATTGAGTACAGGTTGTGA", query_len=@0x200f68cddc5c: 150, ref=0x555f4830
+  "CCAATCAACACGCATAAAGTGATGGAGCGGTTCTGATCCCTTGGTTTAAAATTTCGAAATCTGAGCTTTTCGAGG
+  GATGTGACTTGCGAAAGCAGCTAAATAATTCCTCCCGCTCAAATTTCAGGCAACGCCATTGAGTACAGGTTGTGA", ref_len=@0x200f68cddc58: 150, filter=...,
+  alignment=0x200f68cddc60, maskLen=75) at /ccs/home/rsegan/workspace/mhm2 /src/ssw/ssw.cpp:463 [20] #11 0x0000000010c05394 in
+  CPUAligner::ssw_align_read (ssw_aligner=..., ssw_filter=..., alns=0x76e32000, aln_scoring=..., aln=..., cseq=..., rseq=...,
+  read_group_id=0) at /ccs/home/rsegan/ workspace/mhm2/src/klign/aligner_cpu.cpp:169 [20] #12 0x0000000010c05a54 in
+  CPUAligner::<lambda()>::operator()(void) const (__closure=0x7569a2f8) at
+  /ccs/home/rsegan/workspace/mhm2/src/klign/aligner_cpu.cpp:207
+  */
+
+  query = string("CAAGTCAACAAACGTAAAGTGATGGGTATGTTCTGACTCTTTGATTTTAAATTTCGAAATCTGAGCTTTTTGGGGGATGTGGCGTGTGAAAGCAGCTAAATCATTCCTCCCAC"
+                 "TCAAATTTCAGGCAACGCCATTGAGTACAGGTTGTGA");
+  ref = string("CCAATCAACACGCATAAAGTGATGGAGCGGTTCTGATCCCTTGGTTTAAAATTTCGAAATCTGAGCTTTTCGAGGGATGTGACTTGCGAAAGCAGCTAAATAATTCCTCCCGCTC"
+               "AAATTTCAGGCAACGCCATTGAGTACAGGTTGTGA");
+
+  aln[2] = Aln("c", 0, 0, query.size() - 1, query.size(), 0, ref.size() - 1, ref.size(), '+', 0, 0, 0, -1);
+  exp_aln = "c\t2\t150\t150\tContig0\t1\t150\t150\tPlus\t186\t68";
+  exp_sam = "c\t0\tContig0\t1\t8\t1S3=1D5=2D3=2I11=1I1=1D2X7=1I1=1D1=1X3=1X3=1X22=1X1=1X8=1X1=1X2=1X14=1X9=1X38=\t*\t0\t151\t*\t*"
+            "\tAS:i:186\tNM:i:21\tRG:Z:0";
+
+  CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, cigar_aln_scoring, aln[2], string_view(query),
+                             string_view(ref), 0);
+  EXPECT_EQ(alns.size(), 3) << "did not align query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(2).to_paf_string(), exp_aln) << "did align correctly query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(2).sam_string, exp_sam) << "did align correctly cigar query=" << query << " ref=" << ref;
+
+  aln[3] = Aln("d", 0, 0, ref.size() - 1, ref.size(), 0, query.size() - 1, query.size(), '+', 0, 0, 0, -1);
+  exp_aln = "d\t1\t150\t150\tContig0\t2\t150\t150\tPlus\t186\t68";
+  exp_sam =
+      "d\t0\tContig0\t2\t8\t3=1I5=2I3=2D11=1D1=1I2X7=1I1=1D1=1X3=1X3=1X22=1X1=1X8=1X1=1X2=1X14=1X9=1X38=\t*\t0\t150\t*\t*\tAS:"
+      "i:186\tNM:i:21\tRG:Z:0";
+
+  CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, cigar_aln_scoring, aln[3], string_view(ref),
+                             string_view(query), 0);
+  EXPECT_EQ(alns.size(), 4) << "did not align query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(3).to_paf_string(), exp_aln) << "did align correctly query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(3).sam_string, exp_sam) << "did align correctly cigar query=" << query << " ref=" << ref;
+
+  /*
+   * cseq=CTTTTAGTTTCCCATTTCTAATTTCTCATTTGTCATTTCTCATTTTAAAGTCTTTCTCATTTTTTTAAAGCTTTTCCTCTCAAAAATGCCTTGATTGTTGGGAATAATCACTAAACAAACTTAAAAATTACCGATAAAATCA
+   * rseq=AGGGATGGGACTCTTTTTTTTTAGTTTTCCATTTCTCATTTGTCATTTGTCATTTCTCATTTTTTTAAAGTTTTTCCTCTCAAAAATGCCTTGATTGTTGGGAATAATCACTAAACAAACTTAAAAATTACCGTTAAAATCA
+   * */
+  query = string("AGGGATGGGACTCTTTTTTTTTAGTTTTCCATTTCTCATTTGTCATTTGTCATTTCTCATTTTTTTAAAGTTTTTCCTCTCAAAAATGCCTTGATTGTTGGGAATAATCACTA"
+                 "AACAAACTTAAAAATTACCGTTAAAATCA");
+  ref = string("CTTTTAGTTTCCCATTTCTAATTTCTCATTTGTCATTTCTCATTTTAAAGTCTTTCTCATTTTTTTAAAGCTTTTCCTCTCAAAAATGCCTTGATTGTTGGGAATAATCACTAAA"
+               "CAAACTTAAAAATTACCGATAAAATCA");
+
+  aln[4] = Aln("e", 0, 0, query.size() - 1, query.size(), 0, ref.size() - 1, ref.size(), '+', 0, 0, 0, -1);
+  exp_aln = "e\t22\t142\t142\tContig0\t26\t142\t142\tPlus\t190\t72";
+  exp_sam = "e\t0\tContig0\t26\t8\t21S4=1I5=1X6=1X6=4I3=1D18=1X62=1X8=\t*\t0\t118\t*\t*\tAS:i:190\tNM:i:10\tRG:Z:0";
+
+  CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, cigar_aln_scoring, aln[4], string_view(query),
+                             string_view(ref), 0);
+  EXPECT_EQ(alns.size(), 5) << "did not align query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(4).to_paf_string(), exp_aln) << "did align correctly query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(4).sam_string, exp_sam) << "did align correctly cigar query=" << query << " ref=" << ref;
+
+  aln[5] = Aln("f", 0, 0, ref.size() - 1, ref.size(), 0, query.size() - 1, query.size(), '+', 0, 0, 0, -1);
+  exp_aln = "f\t26\t142\t142\tContig0\t22\t142\t142\tPlus\t190\t78";
+  exp_sam = "f\t0\tContig0\t22\t7\t25S4=1D5=1X6=1X6=4D3=1I18=1X62=1X8=\t*\t0\t122\t*\t*\tAS:i:190\tNM:i:10\tRG:Z:0";
+  // minimap cigar                 25S4=1D5=1X6=1X6=4D3=1I18=1X62=1X8=
+
+  CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, cigar_aln_scoring, aln[5], string_view(ref),
+                             string_view(query), 0);
+  EXPECT_EQ(alns.size(), 6) << "did not align query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(5).to_paf_string(), exp_aln) << "did align correctly query=" << query << " ref=" << ref;
+  EXPECT_EQ(alns.get_aln(5).sam_string, exp_sam) << "did align correctly cigar query=" << query << " ref=" << ref;
 }

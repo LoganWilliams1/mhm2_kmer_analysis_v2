@@ -422,6 +422,7 @@ def main():
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument("--procs", default=0, type=int, help="Total numer of processes")
     argparser.add_argument("--gasnet-stats", action="store_true", help="Collect GASNet communication statistics")
+    argparser.add_argument("--gasnet-trace", action="store_true", help="Collect GASNet trace in separate files")
     argparser.add_argument("--preproc", default=None, help="Comma separated preprocesses and options like (valgrind,--leak-check=full) or options to upcxx-run before binary")
     argparser.add_argument("--binary", default="mhm2", help="File name for UPC++ binary (default mhm2)")
 
@@ -445,16 +446,28 @@ def main():
 
     cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
 
-    # special spawner for summit -- executes jsrun and picks up job size from the environment!
+    # special spawner for summit that auto-detects the job size and calls jsrun to properly bind cpus, gpus and hca network devices
     if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "summit":
-        # expect mhm2-upcxx-run-summit to be in same directory as mhm2.py too
-        cmd = [os.path.split(sys.argv[0])[0] + '/mhm2-upcxx-run-summit']
-        print("This is Summit - executing custom script mhm2-upcxx-run-summit to spawn the job", cmd)
+        cmd = ['upcxx-jsrun']
         if 'UPCXX_RUN_SUMMIT_OPTS' in os.environ:
-            cmd.extend(os.environ['UPCXX_RUN_SUMMIT_OPTS'].split())
+            # use environmental variable override
+            if os.environ['UPCXX_RUN_SUMMIT_OPTS'] != '':
+                cmd.extend(os.environ['UPCXX_RUN_SUMMIT_OPTS'].split())
+        else:
+            # default to split ranks by gpu
+            cmd.extend(['--by-gpu'])
+        print("This is Summit - executing custom script upcxx-jsrun to spawn the job", cmd)
 
     if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
-        cmd.extend(['-shared-heap', options.shared_heap]) # both upcxx-run and upcxx-run-summit support this
+        cmd.extend(['-shared-heap', options.shared_heap])
+
+    # special spawning for perlmutter that requires srun, not upcxx-run for now
+    if 'NERSC_HOST' in os.environ and os.environ['NERSC_HOST'] == 'perlmutter':
+        cmd = ['srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
+        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
+            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
+        print("This is Perlmutter - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
@@ -486,9 +499,10 @@ def main():
         #runtime_vars += ' GASNET_STATSNODES="0-%d", ' % (cores * num_nodes)
         runtime_vars += runtime_output_vars
 
-    # it appears that this GASNET_COLL_SCRATCH_SIZE  is still needed
-    print("Setting GASNET_COLL_SCRATCH_SIZE=4M", runtime_vars)
-    runenv = eval('dict(os.environ, GASNET_COLL_SCRATCH_SIZE="4M", %s MHM2_RUNTIME_PLACEHOLDER="")' % (runtime_vars))
+    if options.gasnet_trace:
+        runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_TRACEMASK="U", GASNET_STATSMASK="", '
+
+    runenv = eval('dict(os.environ, %s MHM2_RUNTIME_PLACEHOLDER="")' % (runtime_vars))
     #print("Runtime environment: ", runenv)
 
     mhm2_lib_path = os.path.split(sys.argv[0])[0] + '/../lib'
@@ -585,6 +599,10 @@ def main():
                         got_signal = signame
                 #err_msgs.append("ERROR: subprocess terminated with return code " + str(_proc.returncode) + " " + signame)
                 print_err_msgs(err_msgs, _proc.returncode)
+                for trace in os.listdir('.'):
+                    if 'trace_' in trace:
+                        os.rename(trace, _output_dir + "/" + trace)
+
                 if completed_round and options.auto_resume:
                     print_red('Trying to restart with output directory ', _output_dir)
                     restarting = True

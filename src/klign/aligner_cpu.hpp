@@ -56,6 +56,7 @@
 
 using std::string;
 using std::string_view;
+using upcxx_utils::IntermittentTimer;
 
 struct AlnScoring {
   int match, mismatch, gap_opening, gap_extending, ambiguity;
@@ -100,5 +101,5 @@ struct CPUAligner {
 
   void ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id);
 
-  upcxx::future<> ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns);
+  upcxx::future<> ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, IntermittentTimer &aln_kernel_timer);
 };

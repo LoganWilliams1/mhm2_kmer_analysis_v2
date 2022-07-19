@@ -174,7 +174,7 @@ void Kmer<MAX_K>::get_kmers(unsigned kmer_len, const std::string_view &seq, std:
   assert(lastLong >= 0 && lastLong < N_LONGS);
   kmers.resize(seq.size() - Kmer::k + 1, {});
   assert(kmers[0] != Kmer::get_invalid());
-  longs_t buf[bufsize];
+  longs_t *buf = new longs_t[bufsize];
   uint8_t *bufPtr = (uint8_t *)buf;
   memset(buf, 0, bufsize * 8);
   const char *s = seq.data();
@@ -254,6 +254,7 @@ void Kmer<MAX_K>::get_kmers(unsigned kmer_len, const std::string_view &seq, std:
       //        }
     }
   }
+  delete[] buf;
 }
 
 template <int MAX_K>

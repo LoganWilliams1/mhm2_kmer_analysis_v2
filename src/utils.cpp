@@ -153,14 +153,21 @@ int hamming_dist(string_view s1, string_view s2, bool require_equal_len) {
 
 string get_merged_reads_fname(string reads_fname) {
   // always relative to the current working directory
-  if (reads_fname.find(':') != string::npos) {
-    // remove the first pair, if it exists
-    reads_fname = reads_fname.substr(reads_fname.find(':'));
+  auto col_pos = reads_fname.find(':');
+  if (col_pos != string::npos) {
+    if (col_pos == reads_fname.size() - 1) {
+      // unpaired read file, remove just the colon
+      reads_fname = reads_fname.substr(0, col_pos);
+    } else {
+      // paired read files
+      // remove the first pair, if it exists
+      reads_fname = reads_fname.substr(col_pos);
+    }
   }
   return upcxx_utils::remove_file_ext(get_basename(reads_fname)) + "-merged.fastq";
 }
 
-void switch_orient(int &start, int &stop, int &len) {
+void switch_orient(int &start, int &stop, int len) {
   int tmp = start;
   start = len - stop;
   stop = len - tmp;
@@ -345,4 +352,5 @@ void pin_numa() {
   pin_proc(my_cpu_list);
   SLOG("Pinning to ", numa_nodes_to_use, " NUMA domains each with ", cores_per_numa_node, " cores, ", hdw_threads_per_numa_node,
        " cpus: process 0 on node 0 is pinned to cpus ", get_proc_pin(), "\n");
+  DBG("Pinned to ", get_proc_pin(), "\n");
 }

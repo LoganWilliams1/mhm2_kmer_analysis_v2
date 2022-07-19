@@ -176,8 +176,11 @@ while (<>) {
             $stats{'tmpMergedReads'} += $1;
         }
 
-        if (/Found (\d+) .* unique kmers/) {
+        if (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/) {
             $stats{"DistinctKmersWithFP"} = $1;
+        }
+        if (defined $stats{"DistinctKmersWithFP"} && /Purged (\d+) kmers \( /) {
+            $stats{'MinDepthKmers'} = $stats{"DistinctKmersWithFP"} - $1;
         }
         if (/After purge of kmers < .*, there are (\d+) unique kmers/) {
             if (defined $stats{"MinDepthKmers"}) {

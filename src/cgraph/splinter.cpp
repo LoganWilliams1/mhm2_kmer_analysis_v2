@@ -87,20 +87,11 @@ static void get_alns_for_read(Alns &alns, int64_t &i, vector<Aln> &alns_for_read
     if (start_read_id != "" && aln.read_id != start_read_id) return;
     (*nalns)++;
     // convert to coords for use here
-    if (aln.orient == '-') {
-      int tmp = aln.cstart;
-      aln.cstart = aln.clen - aln.cstop;
-      aln.cstop = aln.clen - tmp;
-    }
-    int unaligned_left = min(aln.rstart, aln.cstart);
-    int unaligned_right = min(aln.rlen - aln.rstop, aln.clen - aln.cstop);
-    if (unaligned_left > KLIGN_UNALIGNED_THRES || unaligned_right > KLIGN_UNALIGNED_THRES) {
-      (*unaligned)++;
-      //      DBG("unaligned ", aln.read_id, " ", aln.rstart, " ", aln.rstop, " ", aln.rlen, " ",
-      //          aln.cid, " ", aln.cstart, " ", aln.cstop, " ", aln.clen, " ", aln.orient, " ", aln.score1, " ", aln.score2, "\n");
-    } else {
-      alns_for_read.push_back(aln);
-    }
+
+    // FIXME: do we need to do this??
+
+    if (aln.orient == '-') switch_orient(aln.cstart, aln.cstop, aln.clen);
+    alns_for_read.push_back(aln);
     start_read_id = aln.read_id;
     progress();
   }

@@ -73,7 +73,7 @@ int hamming_dist(string_view s1, string_view s2, bool require_equal_len = true);
 
 string get_merged_reads_fname(string reads_fname);
 
-void switch_orient(int &start, int &stop, int &len);
+void switch_orient(int &start, int &stop, int len);
 
 void dump_single_file(const string &fname, const string &out_str, bool append = false);
 

@@ -191,12 +191,12 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(int max_elems, bool use_qf) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, bool use_qf) {
   this->use_qf = use_qf;
   state = new HashTableInserterState();
   double init_time;
   // calculate total slots for hash table. Reserve space for parse and pack
-  int bytes_for_pnp = KCOUNT_SEQ_BLOCK_SIZE * (2 + Kmer<MAX_K>::get_N_LONGS() * sizeof(uint64_t) + sizeof(int));
+  size_t bytes_for_pnp = KCOUNT_SEQ_BLOCK_SIZE * (2 + Kmer<MAX_K>::get_N_LONGS() * sizeof(uint64_t) + sizeof(int));
   size_t gpu_bytes_reqd = 0, ht_bytes_used = 0, qf_bytes_used = 0;
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   auto gpu_avail_mem_per_rank = (get_avail_gpu_mem_per_rank() - bytes_for_pnp) * 0.9;
@@ -218,7 +218,7 @@ void HashTableInserter<MAX_K>::init(int max_elems, bool use_qf) {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init_ctg_kmers(int max_elems) {
+void HashTableInserter<MAX_K>::init_ctg_kmers(size_t max_elems) {
   assert(state != nullptr);
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   // we don't need to reserve space for either pnp or the read kmers because those have already reduced the gpu_avail_mem
@@ -267,12 +267,20 @@ void HashTableInserter<MAX_K>::flush_inserts() {
     uint64_t num_unique_qf = reduce_one((uint64_t)insert_stats.num_unique_qf, op_fast_add, 0).wait();
     // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
     SLOG_GPU("  QF filtered out ", perc_str(num_unique_qf - num_inserts, num_unique_qf), " singletons\n");
-    SLOG_GPU("  QF load factor ", state->ht_gpu_driver.get_qf_load_factor(), "\n");
+    auto qf_max_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_max, 0).wait();
+    auto qf_tot_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_add, 0).wait();
+    double qf_avg_load = (double)qf_tot_load / rank_n();
+    SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
+             " balance\n");
+    uint64_t qf_failures = (uint64_t)state->ht_gpu_driver.get_qf_failures();
+    //if (qf_failures) WARN("GQF failed to insert ", qf_failures, " items, load factor ", state->ht_gpu_driver.get_qf_load_factor());
+    auto all_qf_failures = reduce_one(qf_failures, op_fast_add, 0).wait();
+    if (all_qf_failures) SWARN("GQF failed to insert ", all_qf_failures, " items");
   }
   double load = (double)(insert_stats.new_inserts) / capacity;
   double avg_load_factor = reduce_one(load, op_fast_add, 0).wait() / rank_n();
   double max_load_factor = reduce_one(load, op_fast_max, 0).wait();
-  SLOG_GPU("  load factor ", fixed, setprecision(3), avg_load_factor, " avg, ", max_load_factor, " max\n");
+  SLOG_GPU("  load factor ", fixed, setprecision(2), avg_load_factor, " avg, ", max_load_factor, " max\n");
   SLOG_GPU("  final size per rank is ", insert_stats.new_inserts, " entries\n");
 }
 

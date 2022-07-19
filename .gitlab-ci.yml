@@ -125,7 +125,7 @@ Cori:validation:
     - export OPTS="-r ${ARCTIC}/arctic_sample_0.fq -v --checkpoint=yes"
     - export GASNET_BACKTRACE=1
     - echo "Submitting job on 3 nodes - on 2 nodes roughly RWDI=400s, DBG --kmer-lens 63 =456s  ...REL=170s"
-    - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/rwdi && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/dbg && echo Good")
+    - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/knl-rwdi-0 && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/knl-dbg-0-k63 && echo Good")
     - echo "KNL JOB ${knl_job}"
     - echo "Submitting build on cori gpu"
     - mkdir -p ${SCRATCH}/src
@@ -141,10 +141,10 @@ Cori:validation:
     - cat slurm-${knl_job}.out
     - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
     - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job} failed somehow - ${wasgood}"; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/rwdi/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rwdi" ; fi
-    - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/rwdi --expected-quals ${RWDI}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on rwdi"
-    - if [ ! -f ${RUN_PREFIX}/dbg/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on dbg" ; fi
-    - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg --expected-quals ${RWDI}/../share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || echo "WARN Did not pass check_asm_quality.py on dbg with reduced workflow k63"
+    - if [ ! -f ${RUN_PREFIX}/knl-rwdi-0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-rwdi-0" ; fi
+    - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-rwdi-0 --expected-quals ${RWDI}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on knl-rwdi-0"
+    - if [ ! -f ${RUN_PREFIX}/knl-dbg-0-k63/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-dbg-0-k63" ; fi
+    - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-dbg-0-k63 --expected-quals ${RWDI}/../share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || echo "WARN Did not pass check_asm_quality.py on knl-dbg-0-k63 with reduced workflow k63"
     - echo "Waiting for gpu job ${gpu_job}"
     - module load cgpu
     - date
@@ -348,10 +348,10 @@ HULK:validation:
     - if [ ! -f ./test-arctic-sample0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta for rwdi in test-arctic-sample0" ; fi
     - mv test-arctic-sample0 ${RUN_PREFIX}/rwdi-test-arctic-sample0
     - echo "Starting debug run on with reduced workflow"
-    - ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg --kmer-lens 31,63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
-    - echo "verify dbg results $(ls -la ${RUN_PREFIX}/dbg)"
-    - if [ ! -f ${RUN_PREFIX}/dbg/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on dbg" ; fi
-    - ${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || echo "WARN did not pass check_asm_quality.py for dbg with reduced workflow k31k63"
+    - ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
+    - echo "verify dbg-k3163 results $(ls -la ${RUN_PREFIX}/dbg-k3163)"
+    - if [ ! -f ${RUN_PREFIX}/dbg-k3163/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on dbg-k3163" ; fi
+    - ${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg-k3163 --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || echo "WARN did not pass check_asm_quality.py for dbg-k3163 with reduced workflow k31k63"
     - if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
     - echo "Completed"
 

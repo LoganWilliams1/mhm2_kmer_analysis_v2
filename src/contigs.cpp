@@ -56,7 +56,6 @@
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
-#include "zstr.hpp"
 
 using std::endl;
 using std::max;

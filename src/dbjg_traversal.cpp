@@ -350,11 +350,8 @@ static bool is_overlap(const string &left_seq, const string &right_seq, int over
 }
 
 static string get_frag_seq(FragElem &frag_elem) {
-  char *buf = new char[frag_elem.frag_len + 1];
-  rget(frag_elem.frag_seq, buf, frag_elem.frag_len + 1).wait();
-  string frag_seq(buf);
-  assert(frag_seq.length() == frag_elem.frag_len);
-  delete[] buf;
+  string frag_seq(frag_elem.frag_len, ' ');
+  rget(frag_elem.frag_seq, frag_seq.data(), frag_elem.frag_len).wait();
   return frag_seq;
 }
 

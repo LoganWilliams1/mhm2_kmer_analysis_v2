@@ -66,8 +66,6 @@ using namespace upcxx_utils;
 //#define DBG_INSERT_KMER DBG
 #define DBG_INSERT_KMER(...)
 
-static int num_inserts = 0;
-
 void Supermer::pack(const string &unpacked_seq) {
   // each position in the sequence is an upper or lower case nucleotide, not including Ns
   seq = string(unpacked_seq.length() / 2 + unpacked_seq.length() % 2, 0);
@@ -104,13 +102,14 @@ void Supermer::unpack() {
 int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 
 template <int MAX_K>
-KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, int max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf)
+KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf)
     : local_kmers({})
     , ht_inserter({})
     , kmer_store()
     , max_kmer_store_bytes(max_kmer_store_bytes)
     , my_num_kmers(my_num_kmers)
-    , max_rpcs_in_flight(max_rpcs_in_flight) {
+    , max_rpcs_in_flight(max_rpcs_in_flight)
+    , num_supermer_inserts(0) {
   // minimizer len depends on k
   minimizer_len = Kmer<MAX_K>::get_k() * 2 / 3 + 1;
   if (minimizer_len < 15) minimizer_len = 15;
@@ -130,7 +129,9 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, int max_kmer_store_bytes, int max
   SLOG_VERBOSE("With adjustment factor of ", adjustment_factor, " require ", get_size_str(max_reqd_space), " per node (",
                my_adjusted_num_kmers, " kmers per rank), and there is ", get_size_str(lowest_free_mem), " to ",
                get_size_str(highest_free_mem), " available on the nodes\n");
-  if (lowest_free_mem * 0.80 < max_reqd_space) SWARN("Insufficient memory available: this could crash with OOM (lowest=", get_size_str(lowest_free_mem), " vs reqd=", get_size_str(max_reqd_space), ")");
+  if (lowest_free_mem * 0.80 < max_reqd_space)
+    SWARN("Insufficient memory available: this could crash with OOM (lowest=", get_size_str(lowest_free_mem),
+          " vs reqd=", get_size_str(max_reqd_space), ")");
 
   kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, useHHSS);
 
@@ -145,10 +146,11 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, int max_kmer_store_bytes, int max
                node0_cores * my_adjusted_num_kmers, " entries on node 0\n");
   double init_free_mem = get_free_mem();
   if (my_adjusted_num_kmers <= 0) DIE("no kmers to reserve space for");
-  kmer_store.set_update_func([&ht_inserter = this->ht_inserter](Supermer supermer) {
-    num_inserts++;
-    ht_inserter->insert_supermer(supermer.seq, supermer.count);
-  });
+  kmer_store.set_update_func(
+      [&ht_inserter = this->ht_inserter, &num_supermer_inserts = this->num_supermer_inserts](Supermer supermer) {
+        num_supermer_inserts++;
+        ht_inserter->insert_supermer(supermer.seq, supermer.count);
+      });
   // this is conservative, actually varies from around 1/2 to 1/5
   if (use_qf) my_num_kmers *= 0.6;
   ht_inserter->init(my_num_kmers, use_qf);
@@ -205,6 +207,11 @@ KmerCounts *KmerDHT<MAX_K>::get_local_kmer_counts(Kmer<MAX_K> &kmer) {
 }
 
 template <int MAX_K>
+int64_t KmerDHT<MAX_K>::get_num_supermer_inserts() {
+  return num_supermer_inserts;
+}
+
+template <int MAX_K>
 bool KmerDHT<MAX_K>::kmer_exists(Kmer<MAX_K> kmer_fw) {
   const Kmer<MAX_K> kmer_rc = kmer_fw.revcomp();
   const Kmer<MAX_K> *kmer = (kmer_rc < kmer_fw) ? &kmer_rc : &kmer_fw;
@@ -239,6 +246,7 @@ void KmerDHT<MAX_K>::finish_updates() {
   double insert_time, kernel_time;
   ht_inserter->get_elapsed_time(insert_time, kernel_time);
   stage_timers.kernel_kmer_analysis->inc_elapsed(kernel_time);
+  LOG("Total time for local hashtables: insert_time=", insert_time, "kernel_time=", kernel_time, "\n");
 }
 
 // one line per kmer, format:

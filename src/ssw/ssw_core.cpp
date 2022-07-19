@@ -865,9 +865,24 @@ static cigar *banded_sw(const int8_t * ref,
     int32_t i, j, e, f, temp1, temp2, s = 16, s1 = 8, l, max = 0;
     int64_t s2 = 1024;
     char op, prev_op;
-    int32_t width, width_d, *h_b, *e_b, *h_c;
+    int32_t max_bw, width, width_d, *h_b, *e_b, *h_c;
     int8_t *direction, *direction_line;
     cigar *result = (cigar *) malloc(sizeof (cigar));
+
+    if (band_width >= 3 || 2 * band_width >= s2 / ((readLen*3)-1) ) {
+        // Avoid unnecessary reallocs in first iteration
+        width = band_width * 2 + 3, width_d = band_width * 2 + 1;
+        while (width >= s1) {
+            ++s1;
+            kroundup32(s1);
+        }
+        while (width_d * readLen * 3 >= s2) {
+            ++s2;
+            kroundup32(s2);
+        }
+        direction = direction_line = nullptr;
+    }
+    max_bw = readLen > refLen ? refLen : readLen;
 
     h_b = (int32_t *) malloc(s1 * sizeof (int32_t));
     e_b = (int32_t *) malloc(s1 * sizeof (int32_t));
@@ -946,6 +961,7 @@ static cigar *banded_sw(const int8_t * ref,
             }
         }
         band_width *= 2;
+        if (UNLIKELY(band_width > 2 * max_bw)) break; // Hack to fix Issue118
     } while (LIKELY(max < score));
     band_width /= 2;
 
@@ -1071,7 +1087,6 @@ s_profile *ssw_init(const int8_t *read, const int32_t readLen, const int8_t *mat
     p->profile_byte = 0;
     p->profile_word = 0;
     p->bias = 0;
-
     if (score_size == 0 || score_size == 2) {
         /* Find the bias to use in the substitution matrix */
         int32_t bias = 0, i;
@@ -1096,9 +1111,13 @@ s_profile *ssw_init(const int8_t *read, const int32_t readLen, const int8_t *mat
 }
 
 void init_destroy(s_profile *p) {
-    free(p->profile_byte);
-    free(p->profile_word);
-    free(p);
+    if (p) {
+      if (p->profile_byte) free(p->profile_byte);
+      p->profile_byte = nullptr;
+      if (p->profile_word) free(p->profile_word);
+      p->profile_byte = nullptr;
+      free(p);
+    }
 }
 
 s_align *ssw_align(const s_profile *prof,
@@ -1167,10 +1186,10 @@ s_align *ssw_align(const s_profile *prof,
     read_reverse = seq_reverse(prof->read, r->read_end1);
     if (word == 0) {
         vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
-        bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, prof->bias, maskLen);
+        bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, prof->bias, maskLen); // FIXME Issue60 This does not always match score from original
     } else {
         vP = qP_word(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
-        bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, maskLen);
+        bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, maskLen); // FIXME Issue60 This does not always match score from original
     }
     free(vP);
     free(read_reverse);
@@ -1187,8 +1206,9 @@ s_align *ssw_align(const s_profile *prof,
     band_width = abs(refLen - readLen) + 1;
     path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
     if (path == 0) {
-        free(r);
-        r = NULL;
+	r->cigar = NULL; // gracefully fail to get CIGAR string but still return the alignment (Issue60)
+        //free(r);
+        //r = NULL;
     } else {
         r->cigar = path->seq;
         r->cigarLen = path->length;
@@ -1205,8 +1225,11 @@ s_align *align_alloc() {
 }
 
 void align_destroy(s_align *a) {
-    free(a->cigar);
-    free(a);
+    if (a) {
+      if (a->cigar) free(a->cigar);
+      a->cigar = nullptr;
+      free(a);
+    }
 }
 
 /*!     @function               Produce CIGAR 32-bit unsigned integer from CIGAR operation and CIGAR length

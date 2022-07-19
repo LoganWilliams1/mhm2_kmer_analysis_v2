@@ -57,10 +57,8 @@ using namespace upcxx;
 using namespace upcxx_utils;
 
 bool bad_alignment(Aln *aln) {
-  if (aln->rstart > KLIGN_UNALIGNED_THRES) return true;
-  if (aln->rlen - aln->rstop > KLIGN_UNALIGNED_THRES) return true;
-  // with match and mismatch scores of 1 this means at most two errors
-  if (aln->score1 < aln->rlen - 2) return true;
+  // with match and mismatch scores of 2 this means at most two errors
+  if (aln->score1 < aln->rlen - 4) return true;
   return false;
 }
 
@@ -104,7 +102,7 @@ pair<int, int> calculate_insert_size(Alns &alns, int expected_ins_avg, int expec
 #ifdef DEBUG
           // i.e. when one read mate has two mappings to the same contig (i.e. repetitive region)
           // OR this can happen when the mapping is wildly wrong.  Keep a count an report it.
-          LOG("pair nums wrong: ", prev_pair_num, " ", pair_num, ", aln:", aln.to_string(), "\n");
+          LOG("pair nums wrong: ", prev_pair_num, " ", pair_num, ", aln:", aln.to_paf_string(), "\n");
 #endif
           prev_aln = nullptr;
           num_repetitive_conflicts++;

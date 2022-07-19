@@ -43,6 +43,7 @@
 #include "klign.hpp"
 #include "kmer.hpp"
 #include "aligner_cpu.hpp"
+#include "upcxx_utils/timers.hpp"
 
 using namespace std;
 using namespace upcxx;
@@ -59,6 +60,6 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     shared_ptr<AlignBlockData> aln_block_data =
         make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id, cpu_aligner.aln_scoring);
     assert(kernel_alns.empty());
-    active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns);
+    active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
   }
 }

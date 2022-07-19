@@ -66,40 +66,8 @@ void localassm(int max_kmer_len, int kmer_len, vector<PackedReads *> &packed_rea
 // void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Alns &alns, Contigs &ctgs);
 void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Contigs &ctgs);
 
-static uint64_t estimate_num_kmers(unsigned kmer_len, vector<PackedReads *> &packed_reads_list) {
-  BarrierTimer timer(__FILEFUNC__);
-  int64_t num_kmers = 0;
-  int64_t num_reads = 0;
-  int64_t tot_num_reads = 0;
-  for (auto packed_reads : packed_reads_list) {
-    tot_num_reads += packed_reads->get_local_num_reads();
-    packed_reads->reset();
-    string id, seq, quals;
-    ProgressBar progbar(packed_reads->get_local_num_reads(), "Scanning reads to estimate number of kmers");
-
-    for (int i = 0; i < 100000; i++) {
-      if (!packed_reads->get_next_read(id, seq, quals)) break;
-      progbar.update();
-      // do not read the entire data set for just an estimate
-      if (seq.length() < kmer_len) continue;
-      num_kmers += seq.length() - kmer_len + 1;
-      num_reads++;
-    }
-    progbar.done();
-    barrier();
-  }
-  DBG("This rank processed ", num_reads, " reads, and found ", num_kmers, " kmers\n");
-  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
-  auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
-  auto all_num_kmers = reduce_all(num_kmers, op_fast_add).wait();
-
-  SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
-               (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
-  return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
-}
-
 template <int MAX_K>
-void contigging(int kmer_len, int prev_kmer_len, int rlen_limit, vector<PackedReads *> &packed_reads_list, Contigs &ctgs,
+void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedReads *> &packed_reads_list, Contigs &ctgs,
                 int &max_expected_ins_size, int &ins_avg, int &ins_stddev, shared_ptr<Options> options) {
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");
@@ -117,7 +85,7 @@ void contigging(int kmer_len, int prev_kmer_len, int rlen_limit, vector<PackedRe
     Kmer<MAX_K>::set_k(kmer_len);
     // duration of kmer_dht
     stage_timers.analyze_kmers->start();
-    int64_t my_num_kmers = estimate_num_kmers(kmer_len, packed_reads_list);
+    int64_t my_num_kmers = PackedReads::estimate_num_kmers(kmer_len, packed_reads_list);
     // use the max among all ranks
     my_num_kmers = reduce_all(my_num_kmers, op_fast_max).wait();
     dist_object<KmerDHT<MAX_K>> kmer_dht(world(), my_num_kmers, max_kmer_store, options->max_rpcs_in_flight,
@@ -143,17 +111,16 @@ void contigging(int kmer_len, int prev_kmer_len, int rlen_limit, vector<PackedRe
 
   if (kmer_len < options->kmer_lens.back()) {
     if (kmer_len == options->kmer_lens.front()) {
-      size_t num_reads = 0;
-      for (auto packed_reads : packed_reads_list) {
-        num_reads += packed_reads->get_local_num_reads();
-      }
+      size_t num_reads = PackedReads::get_total_local_num_reads(packed_reads_list);
       auto avg_num_reads = reduce_one(num_reads, op_fast_add, 0).wait() / rank_n();
       auto max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
       SLOG_VERBOSE("Avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (balance ",
                    (double)avg_num_reads / max_num_reads, ")\n");
       if (options->shuffle_reads) {
         stage_timers.shuffle_reads->start();
+        begin_gasnet_stats("shuffle_reads k = " + to_string(kmer_len));
         shuffle_reads(options->qual_offset, packed_reads_list, ctgs);
+        end_gasnet_stats();
         stage_timers.shuffle_reads->stop();
         num_reads = 0;
         for (auto packed_reads : packed_reads_list) {
@@ -163,6 +130,11 @@ void contigging(int kmer_len, int prev_kmer_len, int rlen_limit, vector<PackedRe
         max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
         SLOG_VERBOSE("After shuffle: avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (load balance ",
                      (double)avg_num_reads / max_num_reads, ")\n");
+
+        rlen_limit = 0;
+        for (auto packed_reads : packed_reads_list) {
+          rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
+        }
       }
     }
     barrier();

@@ -64,7 +64,8 @@ void init_devices();
 void done_init_devices();
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
-                 vector<PackedReads *> &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len);
+                 vector<PackedReads *> &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
+                 int subsample_pct);
 
 int main(int argc, char **argv) {
   BaseTimer init_timer("upcxx::init");
@@ -181,17 +182,18 @@ int main(int argc, char **argv) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }
     double elapsed_write_io_t = 0;
-    if ((!options->restart || !options->checkpoint_merged) && !options->kmer_lens.empty()) {
+    if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
       // merge the reads and insert into the packed reads memory cache
       begin_gasnet_stats("merge_reads");
       stage_timers.merge_reads->start();
       merge_reads(options->reads_fnames, options->qual_offset, elapsed_write_io_t, packed_reads_list, options->checkpoint_merged,
-                  options->adapter_fname, options->kmer_lens[0]);
+                  options->adapter_fname, options->min_kmer_len, options->subsample_fastq_pct);
       stage_timers.merge_reads->stop();
       end_gasnet_stats();
     } else {
       // since this is a restart with checkpoint_merged true, the merged reads should be on disk already
       // load the merged reads instead of merge the original ones again
+      SLOG_VERBOSE("Restarting and expecting merged reads to be checkpointed on disk\n");
       stage_timers.cache_reads->start();
       double free_mem = (!rank_me() ? get_free_mem() : 0);
       upcxx::barrier();
@@ -200,9 +202,9 @@ int main(int argc, char **argv) {
       SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - get_free_mem()), " memory on node 0",
                    KNORM, "\n");
     }
-    unsigned rlen_limit = 0;
+    int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
-      rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
+      rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
 
@@ -350,30 +352,8 @@ int main(int argc, char **argv) {
 
   // post processing
   if (options->post_assm_aln || options->post_assm_only || options->post_assm_abundances) {
-    int kmer_len = 33;
     if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname);
-    auto max_k = (kmer_len / 32 + 1) * 32;
-
-#define POST_ASSEMBLY(KMER_LEN) \
-  case KMER_LEN: post_assembly<KMER_LEN>(kmer_len, ctgs, options, max_expected_ins_size); break
-
-    switch (max_k) {
-      POST_ASSEMBLY(32);
-#if MAX_BUILD_KMER >= 64
-      POST_ASSEMBLY(64);
-#endif
-#if MAX_BUILD_KMER >= 96
-      POST_ASSEMBLY(96);
-#endif
-#if MAX_BUILD_KMER >= 128
-      POST_ASSEMBLY(128);
-#endif
-#if MAX_BUILD_KMER >= 160
-      POST_ASSEMBLY(160);
-#endif
-      default: DIE("Built for maximum kmer of ", MAX_BUILD_KMER, " not ", max_k); break;
-    }
-#undef POST_ASSEMBLY
+    post_assembly(ctgs, options, max_expected_ins_size);
     FastqReaders::close_all();
   }
 

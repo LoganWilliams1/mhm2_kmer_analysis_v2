@@ -170,7 +170,9 @@ endif()
 # a bit of jiggery-pokery to get a list of all compile time definitions in the
 # code
 get_directory_property(dir_defs COMPILE_DEFINITIONS)
-set(all_defs "")
+get_directory_property(dir_compile_opts COMPILE_OPTIONS)
+string(TOUPPER "CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}" flags_var)
+set(all_defs "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ENABLE_CUDA=${ENABLE_CUDA} COMPILE_OPTIONS='${dir_compile_opts}' CMAKE_CXX_FLAGS='${CMAKE_CXX_FLAGS}' ${flags_var}='${${flags_var}}'")
 message("Definitions:")
 foreach(d ${dir_defs})
   message("  " ${d})
@@ -197,7 +199,7 @@ list(APPEND MHM2_TARGET_OBJECTS $<TARGET_OBJECTS:hash_funcs>)
 # build all the extern template souce code instantiation explosion
 
 foreach(KMER_LENGTH ${MHM2_KMER_LENGTHS})
-  foreach(TEMPLATE "contigging" "scaffolding" "post_assembly" "kmer")
+  foreach(TEMPLATE "contigging" "scaffolding" "kmer")
     set(TEMPLATE_FILE "${TEMPLATE}-extern-template-${KMER_LENGTH}")
     string(TOUPPER ${TEMPLATE} TEMPLATE_UPPER)
     configure_file("extern_template.in.cpp" "${TEMPLATE_FILE}.cpp" @ONLY)
@@ -219,6 +221,7 @@ foreach(
   aln_depths
   shuffle_reads
   gasnet_stats
+  post_assembly
   ${EXTERN_TEMPLATE_FILES})
   add_library(${tgt} OBJECT ${tgt}.cpp)
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13 AND DEFINED UPCXX_LIBRARIES)
@@ -288,3 +291,9 @@ configure_file(mhm2.py ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py)
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(PROGRAMS mhm2_parse_run_log.pl DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+# special spawning script for Perlmutter
+install(
+  PROGRAMS mps-wrapper-perlmutter.sh
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+  RENAME mhm2-mps-wrapper-perlmutter.sh)

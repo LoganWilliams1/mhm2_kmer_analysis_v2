@@ -415,16 +415,19 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
       bool update_only = (use_qf && !ctg_kmers);
       bool updated = gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count,
                                      new_inserts, dropped_inserts, ctg_kmers, use_qf, update_only);
+
       if (update_only && !updated) {
         // not found in the hash table - look in the qf
-        quotient_filter::qf_returns qf_insert_result = quotient_filter::QF_ITEM_FOUND;
-        qf_insert_result = quotient_filter::insert_kmer(qf, hash_val, left_ext, right_ext, prev_left_ext, prev_right_ext);
+        auto qf_insert_result = quotient_filter::insert_kmer(qf, hash_val, left_ext, right_ext, prev_left_ext, prev_right_ext);
         if (qf_insert_result == quotient_filter::QF_ITEM_INSERTED) {
           num_unique_qf++;
           assert(prev_left_ext == '0' && prev_right_ext == '0');
         } else if (qf_insert_result == quotient_filter::QF_ITEM_FOUND) {
           gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
                           dropped_inserts, ctg_kmers, use_qf, false);
+        } else if (qf_insert_result == quotient_filter::QF_FULL) {
+          // printf(KLRED "WARNING [%s:%d]" KNORM " GQF is full\n", __FILE__, __LINE__);
+          dropped_inserts++;
         }
       }
     }
@@ -496,30 +499,30 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // max ratio of singletons to dups
   uint64_t max_elems_qf = max_elems * 5;
   int nbits_qf = log2(max_elems_qf);
+  // set this with small-arctic.fq to 22 to test QF overflow - should hit load of 1.2
+  // nbits_qf = 22;
+  // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits " << nbits_qf << KNORM << endl;
   if (nbits_qf == 0) use_qf = false;
   if (use_qf) {
     qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
     double qf_avail_mem = gpu_avail_mem / 5;
     // if (!upcxx_rank_me)
-    //  cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n" ;
+    //   cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n";
     if (qf_bytes_used > qf_avail_mem) {
       // For debugging OOMs
       // size_t prev_bytes_used = qf_bytes_used;
       // int prev_nbits = nbits_qf;
       double factor = qf_avail_mem / qf_bytes_used;
       size_t corrected_max_elems = (max_elems_qf * factor);
-      nbits_qf = log2(corrected_max_elems) - 1;
-      // drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
+      auto corrected_nbits_qf = log2(corrected_max_elems);
+      if (corrected_nbits_qf >= nbits_qf) corrected_nbits_qf--;
+      nbits_qf = corrected_nbits_qf;
+      // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits corrected to " << nbits_qf << KNORM << endl;
+      //  drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
       if (kmer_len >= 96) nbits_qf--;
       if (nbits_qf == 0) nbits_qf = 1;
       qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-      if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
-      /*
-      // uncomment to debug if crashing with OOM when allocating
-      cout << "****** QF nbits corrected to " << nbits_qf << " from " << prev_nbits << "\n";
-      cout << "****** QF will take " << (qf_bytes_used / 1024 / 1024) << "MB instead of " << (prev_bytes_used / 1024 / 1024)
-           << "MB\n";
-      */
+      // if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
     } else {
       if (kmer_len >= 64) nbits_qf--;
     }
@@ -652,7 +655,7 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries)
   num_entries = counts_host[1];
   auto expected_num_entries = read_kmers_stats.new_inserts - num_purged;
   if (num_entries != (int)expected_num_entries)
-    cout << KLRED << "[" << upcxx_rank_me << "] WARNING mismatch " << num_entries << " != " << expected_num_entries << " diff "
+    cerr << KLRED << "[" << upcxx_rank_me << "] WARNING mismatch " << num_entries << " != " << expected_num_entries << " diff "
          << (num_entries - (int)expected_num_entries) << " new inserts " << read_kmers_stats.new_inserts << " num purged "
          << num_purged << KNORM << endl;
   read_kmers_dev.num = num_entries;
@@ -785,6 +788,12 @@ template <int MAX_K>
 double HashTableGPUDriver<MAX_K>::get_qf_load_factor() {
   if (!dstate->qf) return 0;
   return (double)quotient_filter::host_qf_get_num_occupied_slots(dstate->qf) / quotient_filter::host_qf_get_nslots(dstate->qf);
+}
+
+template <int MAX_K>
+uint64_t HashTableGPUDriver<MAX_K>::get_qf_failures() {
+  if (!dstate->qf) return 0;
+  return quotient_filter::host_qf_get_failures(dstate->qf);
 }
 
 template class kcount_gpu::HashTableGPUDriver<32>;

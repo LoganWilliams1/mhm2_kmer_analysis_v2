@@ -311,10 +311,7 @@ message(STATUS "added upcxx_utils (${UPCXX_UTILS_VERSION})")
 include_directories("zstr/src")
 
 add_subdirectory(src)
-install(
-  PROGRAMS upcxx-run-summit
-  DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
-  RENAME mhm2-upcxx-run-summit)
+
 install(PROGRAMS ci/check_asm_quality.py ci/ci_asm_qual_test.sh
                  ci/ci_asm_qual_test-full.sh
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)

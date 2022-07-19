@@ -47,6 +47,7 @@ def main():
     report_path = 'mq.out/combined_reference/report.txt'
     report_exists = os.path.exists(options.asm_dir + "/" + report_path)
     options.refs = os.path.realpath(options.refs)
+    print("Executing as: " + " ".join(sys.argv))
     os.chdir(options.asm_dir)
 
     if not report_exists:
@@ -59,7 +60,7 @@ def main():
         test_exec_shifter = which('shifter')
         test_exec_docker = which('docker')
         if test_exec_shifter:
-            shifter = ['shifter', '--image=robegan21/quast:latest']
+            shifter = ['shifter', '--image=robegan21/quast:latest', '--module=none']
             shifter.extend(cmd)
             cmd = shifter
         elif test_exec_docker:
@@ -100,6 +101,18 @@ def main():
                 d_abs = abs(d_real)
                 d_max = max(float(val), float(new_quals[key]))
                 d = d_abs / d_max
+                # allow better metrics to deviate significantly
+                if ((key.startswith('Total length') and key.find('>=') == -1) or key.startswith('Total aligned length') or key.startswith('Largest') \
+                    or key.startswith('N') or key.startswith('auN') or key.startswith('Genome Fraction') or key.startswith('# predicted rRNA genes')):
+                    if d_real > 0.0:
+                        print(key, " ", new_quals[key], " is better than benchmark ", val, " d = %.3f" % d)
+                        d = 0
+                elif ((key.startswith('L') and key.find('0') > 0) or key.find('per 100 kbp') > 0 or key.find('naligned') >= 0 \
+                    or key.find('isassemb') > 0):
+                    if d_real < 0.0:
+                        print(key, " ", new_quals[key], " is better than benchmark ", val, " d = %.3f" % d)
+                        d = 0
+                # warn when metrics are not excessive
                 if (key.startswith('# contigs') or key.startswith('# misassemblies') or key.startswith('# misassembled contigs') \
                     or key.startswith('# local misassemblies')) and d > thres and d < 4:
                     print("WARN: adjusted threshold: ", key, val, "!=", new_quals[key], 'd = %.3f' % d)

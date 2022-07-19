@@ -1,5 +1,7 @@
 set(KLIGN_TARGET_FILES)
 
+list(APPEND KLIGN_TARGET_FILES "klign-common.cpp")
+
 foreach(KMER_LENGTH ${MHM2_KMER_LENGTHS})
   set(TEMPLATE "klign")
   set(TEMPLATE_FILE "${TEMPLATE}-extern-template-${KMER_LENGTH}")

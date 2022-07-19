@@ -253,6 +253,7 @@ uint64_t qf_get_num_occupied_slots(const QF *qf);
 
 __host__ uint64_t host_qf_get_nslots(const QF *qf);
 __host__ uint64_t host_qf_get_num_occupied_slots(const QF *qf);
+__host__ uint64_t host_qf_get_failures(const QF *qf);
 
 /* Bit-sizes info. */
 uint64_t qf_get_num_key_bits(const QF *qf);

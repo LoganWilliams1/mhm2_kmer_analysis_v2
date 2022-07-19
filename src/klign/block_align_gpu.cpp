@@ -75,22 +75,15 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     auto aln_results = gpu_driver->get_aln_results();
 
     for (int i = 0; i < aln_block_data->kernel_alns.size(); i++) {
-      // progress();
       Aln &aln = aln_block_data->kernel_alns[i];
-      aln.rstop = aln.rstart + aln_results.query_end[i] + 1;
-      aln.rstart += aln_results.query_begin[i];
-      aln.cstop = aln.cstart + aln_results.ref_end[i] + 1;
-      aln.cstart += aln_results.ref_begin[i];
-      if (aln.orient == '-') switch_orient(aln.rstart, aln.rstop, aln.rlen);
-      aln.score1 = aln_results.top_scores[i];
-      // FIXME: needs to be set to the second best
-      aln.score2 = 0;
-      // FIXME: need to get the mismatches
-      aln.mismatches = 0;  // ssw_aln.mismatches;
-      aln.identity = 100 * aln.score1 / aln_block_data->aln_scoring.match / aln.rlen;
-      aln.read_group_id = aln_block_data->read_group_id;
-      // FIXME: need to get cigar
-      if (report_cigar) set_sam_string(aln, "*", "*");  // FIXME until there is a valid:ssw_aln.cigar_string);
+      // FIXME: need to get the second best score
+      // FIXME: need to get the number of mismatches
+      aln.set(aln_results.ref_begin[i], aln_results.ref_end[i], aln_results.query_begin[i], aln_results.query_end[i],
+              aln_results.top_scores[i], 0, 0, aln_block_data->read_group_id);
+      if (report_cigar) {
+        SWARN("Trying to produce SAM outputs with GPU alignments, which is not supported");
+        aln.set_sam_string("*", "*");  // FIXME until there is a valid:ssw_aln.cigar_string);
+      }
       aln_block_data->alns->add_aln(aln);
     }
   });
@@ -111,7 +104,7 @@ void init_aligner(AlnScoring &aln_scoring, int rlen_limit) {
     gpu_driver = new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)aln_scoring.match,
                                          (short)-aln_scoring.mismatch, (short)-aln_scoring.gap_opening,
                                          (short)-aln_scoring.gap_extending, rlen_limit, init_time);
-    SLOG_VERBOSE("Initialized adept_sw driver in ", init_time, " s\n");
+    SLOG_VERBOSE("Initialized GPU adept_sw driver in ", init_time, " s\n");
   }
 }
 
@@ -157,13 +150,16 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     assert(kernel_alns.empty());
     // for now, the GPU alignment doesn't support cigars
     if (!cpu_aligner.ssw_filter.report_cigar && gpu_utils::gpus_present()) {
+      SLOG_VERBOSE("GPU align block\n");
       active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer);
+    } else if (!gpu_utils::gpus_present()) {
+      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
     } else {
 #ifdef __PPC64__
       SWARN("FIXME Issue #49,#60 no cigars for gpu alignments\n");
       active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer);
 #else
-      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns);
+      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
 #endif
     }
   }

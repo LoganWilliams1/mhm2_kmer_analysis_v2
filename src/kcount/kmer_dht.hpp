@@ -102,9 +102,9 @@ class HashTableInserter {
   HashTableInserter();
   ~HashTableInserter();
 
-  void init(int num_elems, bool use_qf);
+  void init(size_t num_elems, bool use_qf);
 
-  void init_ctg_kmers(int max_elems);
+  void init_ctg_kmers(size_t max_elems);
 
   void insert_supermer(const std::string &supermer_seq, kmer_count_t supermer_count);
 
@@ -125,6 +125,7 @@ class KmerDHT {
   int64_t max_kmer_store_bytes;
   int64_t my_num_kmers;
   int max_rpcs_in_flight;
+  int64_t num_supermer_inserts;
   std::chrono::time_point<std::chrono::high_resolution_clock> start_t;
 
   int minimizer_len = 15;
@@ -132,7 +133,7 @@ class KmerDHT {
  public:
   bool using_ctg_kmers = false;
 
-  KmerDHT(uint64_t my_num_kmers, int max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf);
+  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf);
 
   void clear_stores();
 
@@ -149,6 +150,8 @@ class KmerDHT {
   upcxx::intrank_t get_kmer_target_rank(const Kmer<MAX_K> &kmer, const Kmer<MAX_K> *kmer_rc = nullptr) const;
 
   KmerCounts *get_local_kmer_counts(Kmer<MAX_K> &kmer);
+
+  int64_t get_num_supermer_inserts();
 
   bool kmer_exists(Kmer<MAX_K> kmer);
 

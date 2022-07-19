@@ -85,6 +85,7 @@ class Options {
   vector<string> unpaired_fnames;
   string adapter_fname;
   vector<unsigned> kmer_lens = {};
+  int min_kmer_len = -1;
   int max_kmer_len = 0;
   int prev_kmer_len = 0;
   vector<unsigned> scaff_kmer_lens = {};
@@ -94,6 +95,7 @@ class Options {
   int max_rpcs_in_flight = 100;
   bool use_heavy_hitters = false;  // only enable when files are localized
   int dmin_thres = 2.0;
+  int subsample_fastq_pct = 100;  // percentage of fastq files to read
   bool checkpoint = true;
   bool checkpoint_merged = false;
   bool klign_kmer_cache = false;

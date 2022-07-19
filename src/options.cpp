@@ -89,6 +89,7 @@ bool Options::find_restart(string stage_type, int k) {
     SLOG("Could not find restart file: ", new_ctgs_fname, "\n");
     return false;
   }
+  if (min_kmer_len > 0 && min_kmer_len > k) min_kmer_len = k;
   if (stage_type == "contigs") {
     if (k == kmer_lens.back() && stage_type == "contigs") {
       max_kmer_len = kmer_lens.back();
@@ -269,6 +270,7 @@ double Options::setup_output_dir() {
     if (chdir_attempts++ > 10) DIE("Cannot change to output directory ", output_dir, ": ", strerror(errno));
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
+  DBG("Changed dir to ", output_dir, "\n");
   upcxx::barrier();
 
   chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - t_start;
@@ -406,6 +408,8 @@ bool Options::load(int argc, char **argv) {
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
       ->check(CLI::Range(1, 100));
   // performance trade-offs
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (default 100 (all)).")
+      ->check(CLI::Range(1, 100));
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
       ->check(CLI::Range(0, 5000));
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
@@ -510,7 +514,7 @@ bool Options::load(int argc, char **argv) {
     // disable scaffolding rounds
     scaff_kmer_lens.clear();
   }
-
+  min_kmer_len = kmer_lens.empty() ? (scaff_kmer_lens.empty() ? -1 : scaff_kmer_lens[scaff_kmer_lens.size()-1]) : kmer_lens[0];
   // save to per_rank, but hardlink to output_dir
   string config_file = "per_rank/mhm2.config";
   string linked_config_file = "mhm2.config";

@@ -77,12 +77,16 @@ add_definitions(-DKLIGN_MAX_ALNS_PER_READ=20)
 add_definitions(-DKLIGN_CTG_FETCH_BUF_SIZE=1000000)
 # decreasing this value increases the alignment computation time, and it may improve results slightly
 add_definitions(-DKLIGN_SEED_SPACE=8)
-# max number of unaligned bases to allow on the side of an alignment
+# max number of unaligned bases to allow on either side of an alignment
 add_definitions(-DKLIGN_UNALIGNED_THRES=1)
+# threshold in percent identity for considering an alignment good
+add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 # the block size of alignments to be dispatched to the GPU
 add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 # turns off code used for kmer caches (i.e. disables --klign-kmer-cache option)
 add_definitions(-DUSE_KMER_CACHE)
+# determine the output format of alignments when not using cigars
+add_definitions(-DBLAST6_OUTPUT_FORMAT)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
@@ -117,11 +121,12 @@ add_definitions(-DALN_MISMATCH_COST=1)
 add_definitions(-DALN_GAP_OPENING_COST=1)
 add_definitions(-DALN_GAP_EXTENDING_COST=1)
 add_definitions(-DALN_AMBIGUITY_COST=1)
-# previous defaults
+# BLASTN defaults
+# add_definitions(-DALN_MATCH_SCORE=2)
 # add_definitions(-DALN_MISMATCH_COST=3)
 # add_definitions(-DALN_GAP_OPENING_COST=5)
 # add_definitions(-DALN_GAP_EXTENDING_COST=2)
-# add_definitions(-DALN_AMBIGUITY_COST=2)
+# add_definitions(-DALN_AMBIGUITY_COST=1)
 
 # max and min kmer lengths for local assembly kmer walks
 add_definitions(-DLASSM_MAX_KMER_LEN=121)
@@ -140,3 +145,5 @@ add_definitions(-DLASSM_RATING_THRES=0)
 # limit to restrict the computational overhead
 add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
+# seed length used for post assembly alignment
+add_definitions(-DPOST_ASM_ALN_K=21)

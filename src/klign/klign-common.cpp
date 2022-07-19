@@ -1,5 +1,3 @@
-#pragma once
-
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -42,32 +40,16 @@
  form.
 */
 
-#include "contigs.hpp"
-#include "options.hpp"
-#include "packed_reads.hpp"
+#include <upcxx/upcxx.hpp>
 
-template <int MAX_K>
-void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, std::vector<PackedReads *> &packed_reads_list, Contigs &ctgs,
-                int &max_expected_ins_size, int &ins_avg, int &ins_stddev, std::shared_ptr<Options> options);
+#include "klign.hpp"
+#include "upcxx_utils/timers.hpp"
 
-#define __MACRO_CONTIGGING__(KMER_LEN, MODIFIER)                                                                    \
-  MODIFIER void contigging<KMER_LEN>(int, int, int &, std::vector<PackedReads *> &, Contigs &, int &, int &, int &, \
-                                     std::shared_ptr<Options>);
+using namespace upcxx_utils;
 
-// Reduce compile time by instantiating templates of common types
-// extern template declarations are in contigging.hpp
-// template instantiations each happen in src/CMakeLists via contigging-extern-template.in.cpp
+IntermittentTimer aln_cpu_bypass_timer(string("klign:CPU_BSW-bypass"));
+IntermittentTimer fetch_ctg_seqs_timer(string("klign:Fetch ctg seqs"));
+IntermittentTimer compute_alns_timer(string("klign:Compute alns"));
+IntermittentTimer get_ctgs_timer(string("klign:Get ctgs with kmer"));
+IntermittentTimer aln_kernel_timer(string("klign:GPU_BSW"));
 
-__MACRO_CONTIGGING__(32, extern template);
-#if MAX_BUILD_KMER >= 64
-__MACRO_CONTIGGING__(64, extern template);
-#endif
-#if MAX_BUILD_KMER >= 96
-__MACRO_CONTIGGING__(96, extern template);
-#endif
-#if MAX_BUILD_KMER >= 128
-__MACRO_CONTIGGING__(128, extern template);
-#endif
-#if MAX_BUILD_KMER >= 160
-__MACRO_CONTIGGING__(160, extern template);
-#endif

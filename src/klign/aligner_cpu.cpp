@@ -57,14 +57,15 @@ AlignBlockData::AlignBlockData(vector<Aln> &_kernel_alns, vector<string> &_ctg_s
     , read_group_id(read_group_id)
     , aln_scoring(aln_scoring) {
   // copy/swap/reserve necessary data and configs
+  size_t batch_sz = std::max(kernel_alns.size(), _kernel_alns.size());
   kernel_alns.swap(_kernel_alns);
-  kernel_alns.reserve(_kernel_alns.size());
+  _kernel_alns.reserve(batch_sz);
   ctg_seqs.swap(_ctg_seqs);
-  ctg_seqs.reserve(_ctg_seqs.size());
+  _ctg_seqs.reserve(batch_sz);
   read_seqs.swap(_read_seqs);
-  read_seqs.reserve(_read_seqs.size());
+  _read_seqs.reserve(batch_sz);
   alns = make_shared<Alns>();
-  alns->reserve(_kernel_alns.size());
+  alns->reserve(kernel_alns.size());
 }
 
 int get_cigar_length(const string &cigar) {
@@ -94,50 +95,6 @@ int get_cigar_length(const string &cigar) {
   return base_count;
 }
 
-void set_sam_string(Aln &aln, string_view read_seq, string cigar) {
-  assert(aln.is_valid());
-  aln.sam_string = aln.read_id + "\t";
-  string tmp;
-  if (aln.orient == '-') {
-    aln.sam_string += "16\t";
-    if (read_seq != "*") {
-      tmp = revcomp(string(read_seq.data(), read_seq.size()));
-      read_seq = string_view(tmp.data(), tmp.size());
-    }
-    // reverse(read_quals.begin(), read_quals.end());
-  } else {
-    aln.sam_string += "0\t";
-  }
-  aln.sam_string += "Contig" + to_string(aln.cid) + "\t" + to_string(aln.cstart + 1) + "\t";
-  uint32_t mapq;
-  // for perfect match, set to same maximum as used by minimap or bwa
-  if (aln.score2 == 0) {
-    mapq = 60;
-  } else {
-    mapq = -4.343 * log(1 - (double)abs(aln.score1 - aln.score2) / (double)aln.score1);
-    mapq = (uint32_t)(mapq + 4.99);
-    mapq = mapq < 254 ? mapq : 254;
-  }
-  aln.sam_string += to_string(mapq) + "\t";
-  // aln.sam_string += cigar + "\t*\t0\t0\t" + read_subseq + "\t*\t";
-  // Don't output either the read sequence or quals - that causes the SAM file to bloat up hugely, and that info is already
-  // available in the read files
-  aln.sam_string += cigar + "\t*\t0\t0\t*\t*\t";
-  aln.sam_string +=
-      "AS:i:" + to_string(aln.score1) + "\tNM:i:" + to_string(aln.mismatches) + "\tRG:Z:" + to_string(aln.read_group_id);
-  // for debugging
-  // aln.sam_string += " rstart " + to_string(aln.rstart) + " rstop " + to_string(aln.rstop) + " cstop " + to_string(aln.cstop) +
-  //                  " clen " + to_string(aln.clen) + " alnlen " + to_string(aln.rstop - aln.rstart);
-  /*
-#ifdef DEBUG
-  // only used if we actually include the read seq and quals in the SAM, which we don't
-  int base_count = get_cigar_length(cigar);
-  if (base_count != read_seq.length())
-    DIE("number of bases in cigar != aln rlen, ", base_count, " != ", read_subseq.length(), "\nsam string ", aln.sam_string);
-#endif
-  */
-}
-
 CPUAligner::CPUAligner(bool compute_cigar)
     : ssw_aligner() {
   // default for normal alignments in the pipeline, but for final alignments, uses minimap2 defaults
@@ -148,7 +105,9 @@ CPUAligner::CPUAligner(bool compute_cigar)
                    .gap_extending = ALN_GAP_EXTENDING_COST,
                    .ambiguity = ALN_AMBIGUITY_COST};
   else
-    aln_scoring = {.match = 2, .mismatch = 4, .gap_opening = 4, .gap_extending = 2, .ambiguity = 1};
+    // these are BLASTN defaults (https://www.arabidopsis.org/Blast/BLASToptions.jsp) - except match is actually 2
+    // there is no BLAST value for ambiguity
+    aln_scoring = {.match = 2, .mismatch = 3, .gap_opening = 5, .gap_extending = 2, .ambiguity = 1};
   SLOG_VERBOSE("Alignment scoring parameters: ", aln_scoring.to_string(), "\n");
 
   // aligner construction: SSW internal defaults are 2 2 3 1
@@ -161,34 +120,39 @@ CPUAligner::CPUAligner(bool compute_cigar)
 void CPUAligner::ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter, Alns *alns,
                                 AlnScoring &aln_scoring, Aln &aln, const string_view &cseq, const string_view &rseq,
                                 int read_group_id) {
+  // debugging with these alignments
+  // missing from mhm:
+  // CP000510.1-101195/2	Contig6043	96.667	150	5	0	1	150	109	258	1.44e-66	249
+  // probably too close to this one, which is found by mhm:
+  // CP000510.1-101195/2	Contig6043	92.708	96	7	0	6	101	1	96	1.54e-34	142
+
   assert(aln.clen >= cseq.length() && "contig seq is contained within the greater contig");
   assert(aln.rlen >= rseq.length() && "read seq is contained with the greater read");
 
   StripedSmithWaterman::Alignment ssw_aln;
+
   // align query, ref, reflen
-  ssw_aligner.Align(cseq.data(), cseq.length(), rseq.data(), rseq.length(), ssw_filter, &ssw_aln,
+  ssw_aligner.Align(rseq.data(), rseq.length(), cseq.data(), cseq.length(), ssw_filter, &ssw_aln,
                     max((int)(rseq.length() / 2), 15));
-
-  aln.rstop = aln.rstart + ssw_aln.ref_end + 1;
-  aln.rstart += ssw_aln.ref_begin;
-  aln.cstop = aln.cstart + ssw_aln.query_end + 1;
-  aln.cstart += ssw_aln.query_begin;
-  if (aln.orient == '-') switch_orient(aln.rstart, aln.rstop, aln.rlen);
-
-  aln.score1 = ssw_aln.sw_score;
-  aln.score2 = ssw_aln.sw_score_next_best;
-  aln.mismatches = ssw_aln.mismatches;
-  aln.identity = (unsigned)100 * (unsigned)ssw_aln.sw_score / (unsigned)aln_scoring.match / (unsigned)aln.rlen;
-  aln.read_group_id = read_group_id;
-  if (ssw_filter.report_cigar) set_sam_string(aln, rseq, ssw_aln.cigar_string);
+  aln.set(ssw_aln.ref_begin, ssw_aln.ref_end, ssw_aln.query_begin, ssw_aln.query_end, ssw_aln.sw_score, ssw_aln.sw_score_next_best,
+          ssw_aln.mismatches, read_group_id);
+  if (ssw_filter.report_cigar) aln.set_sam_string(rseq, ssw_aln.cigar_string);
   alns->add_aln(aln);
+  /*
+  if (ssw_filter.report_cigar && (aln.read_id == "CP000510.1-101195/2")) {
+    cout << KLGREEN << "aln: " << aln.to_string() << KNORM << endl;
+    cout << KLGREEN << "rseq " << rseq << KNORM << endl;
+    cout << KLGREEN << "cseq " << cseq << KNORM << endl;
+    cout << KLGREEN << "ssw aln: ref begin " << ssw_aln.ref_begin << " ref_end " << ssw_aln.ref_end << " query begin "
+         << ssw_aln.query_begin << " query end " << ssw_aln.query_end << KNORM << endl;
+  }*/
 }
 
 void CPUAligner::ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id) {
   ssw_align_read(ssw_aligner, ssw_filter, alns, aln_scoring, aln, cseq, rseq, read_group_id);
 }
 
-upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns) {
+upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, IntermittentTimer &aln_kernel_timer) {
   AsyncTimer t("ssw_align_block (thread)");
   future<> fut = upcxx_utils::execute_in_thread_pool(
       [&ssw_aligner = this->ssw_aligner, &ssw_filter = this->ssw_filter, &aln_scoring = this->aln_scoring, aln_block_data, t]() {
@@ -200,15 +164,17 @@ upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block
           Aln &aln = aln_block_data->kernel_alns[i];
           string &cseq = aln_block_data->ctg_seqs[i];
           string &rseq = aln_block_data->read_seqs[i];
+          DBG_VERBOSE("aligning ", i, " of ", aln_block_data->kernel_alns.size(), " ", aln.read_id, "\n");
           ssw_align_read(ssw_aligner, ssw_filter, alns_ptr, aln_scoring, aln, cseq, rseq, aln_block_data->read_group_id);
         }
         t.stop();
       });
-  fut = fut.then([alns = alns, aln_block_data, t]() {
+  fut = fut.then([alns = alns, aln_block_data, t, &aln_kernel_timer]() {
     SLOG_VERBOSE("Finished CPU SSW aligning block of ", aln_block_data->kernel_alns.size(), " in ", t.get_elapsed(), " s (",
                  (t.get_elapsed() > 0 ? aln_block_data->kernel_alns.size() / t.get_elapsed() : 0.0), " aln/s)\n");
     DBG_VERBOSE("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
+    aln_kernel_timer += t;
   });
 
   return fut;

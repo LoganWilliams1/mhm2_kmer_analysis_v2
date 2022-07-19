@@ -54,7 +54,6 @@
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/timers.hpp"
-#include "zstr.hpp"
 
 using std::string;
 using std::string_view;
@@ -227,11 +226,26 @@ void PackedReads::clear() {
   LOG_MEM("Cleared Packed Reads");
 }
 
-string PackedReads::get_fname() { return fname; }
+string PackedReads::get_fname() const { return fname; }
 
-unsigned PackedReads::get_max_read_len() { return max_read_len; }
+unsigned PackedReads::get_max_read_len() const { return max_read_len; }
 
-int64_t PackedReads::get_local_num_reads() { return packed_reads.size(); }
+void PackedReads::set_max_read_len() {
+  max_read_len = 0;
+  for (auto &packed_read : packed_reads) {
+    max_read_len = max((unsigned)packed_read.get_read_len(), max_read_len);
+  }
+}
+
+int64_t PackedReads::get_local_num_reads() const { return packed_reads.size(); }
+
+int64_t PackedReads::get_total_local_num_reads(const vector<PackedReads *> &packed_reads_list) {
+  int64_t total_local_num_reads = 0;
+  for (const PackedReads *pr : packed_reads_list) {
+    total_local_num_reads += pr->get_local_num_reads();
+  }
+  return total_local_num_reads;
+}
 
 int PackedReads::get_qual_offset() { return qual_offset; }
 
@@ -273,9 +287,13 @@ upcxx::future<> PackedReads::load_reads_nb() {
     if (!bytes_read) break;
     tot_bytes_read += bytes_read;
   }
-  int64_t bytes_per_record = num_records == 0 ? 0 : tot_bytes_read / num_records;
-  int64_t estimated_records = bytes_per_record == 0 ? 0 : fqr.my_file_size() / bytes_per_record;
-  int64_t reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
+  int64_t reserve_records = 0;
+  int64_t estimated_records = 0;
+  if (num_records > 0) {
+    int64_t bytes_per_record = tot_bytes_read / num_records;
+    estimated_records = fqr.my_file_size() / bytes_per_record;
+    reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
+  }
   packed_reads.reserve(reserve_records);
   fqr.reset();
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
@@ -327,4 +345,35 @@ int64_t PackedReads::get_bases() { return upcxx::reduce_one(bases, upcxx::op_fas
 PackedRead &PackedReads::operator[](int index) {
   if (index >= packed_reads.size()) DIE("Array index out of bound ", index, " >= ", packed_reads.size());
   return packed_reads[index];
+}
+
+uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, vector<PackedReads *> &packed_reads_list) {
+  BarrierTimer timer(__FILEFUNC__);
+  int64_t num_kmers = 0;
+  int64_t num_reads = 0;
+  int64_t tot_num_reads = PackedReads::get_total_local_num_reads(packed_reads_list);
+  for (auto packed_reads : packed_reads_list) {
+    packed_reads->reset();
+    string id, seq, quals;
+    ProgressBar progbar(packed_reads->get_local_num_reads(), "Scanning reads to estimate number of kmers");
+
+    for (int i = 0; i < 100000; i++) {
+      if (!packed_reads->get_next_read(id, seq, quals)) break;
+      progbar.update();
+      // do not read the entire data set for just an estimate
+      if (seq.length() < kmer_len) continue;
+      num_kmers += seq.length() - kmer_len + 1;
+      num_reads++;
+    }
+    progbar.done();
+    barrier();
+  }
+  DBG("This rank processed ", num_reads, " reads, and found ", num_kmers, " kmers\n");
+  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
+  auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
+  auto all_num_kmers = reduce_all(num_kmers, op_fast_add).wait();
+
+  SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
+               (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
+  return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
 }

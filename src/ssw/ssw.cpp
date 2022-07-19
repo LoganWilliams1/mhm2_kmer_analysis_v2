@@ -415,16 +415,17 @@ namespace StripedSmithWaterman {
                               flag, filter.score_filter, filter.distance_filter, maskLen);
 
     alignment->Clear();
-    ConvertAlignment(*s_al, query_len, alignment);
-    alignment->mismatches = CalculateNumberMismatch(alignment, translated_reference_, translated_query, query_len);
-
+    if (s_al) {
+      ConvertAlignment(*s_al, query_len, alignment);
+      alignment->mismatches = CalculateNumberMismatch(alignment, translated_reference_, translated_query, query_len);
+    }
 
     // Free memory
     delete [] translated_query;
     align_destroy(s_al);
     init_destroy(profile);
 
-    return true;
+    return s_al != nullptr;
   }
 
   bool Aligner::Align(const char* query, const char* ref, const int& ref_len,
@@ -460,8 +461,10 @@ namespace StripedSmithWaterman {
                               flag, filter.score_filter, filter.distance_filter, maskLen);
 
     alignment->Clear();
-    ConvertAlignment(*s_al, query_len, alignment);
-    alignment->mismatches = CalculateNumberMismatch(alignment, translated_ref, translated_query, query_len);
+    if (s_al) {
+      ConvertAlignment(*s_al, query_len, alignment);
+      alignment->mismatches = CalculateNumberMismatch(alignment, translated_ref, translated_query, query_len);
+    }
 
     // Free memory
     delete [] translated_query;
@@ -469,7 +472,7 @@ namespace StripedSmithWaterman {
     align_destroy(s_al);
     init_destroy(profile);
 
-    return true;
+    return s_al != nullptr;
   }
 
   void Aligner::Clear(void) {

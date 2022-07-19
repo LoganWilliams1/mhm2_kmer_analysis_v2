@@ -92,7 +92,7 @@ struct gpu_alignments {
 void asynch_mem_copies_htd(gpu_alignments* gpu_data, unsigned* offsetA_h, unsigned* offsetB_h, char* strA, char* strA_d, char* strB,
                            char* strB_d, unsigned half_length_A, unsigned half_length_B, unsigned totalLengthA,
                            unsigned totalLengthB, int sequences_per_stream, int sequences_stream_leftover,
-                           cudaStream_t* streams_cuda) {
+                           cudaStream_t* streams_cuda, int max_rlen) {
   cudaErrchk(cudaMemcpyAsync(gpu_data->offset_ref_gpu, offsetA_h, (sequences_per_stream) * sizeof(int), cudaMemcpyHostToDevice,
                              streams_cuda[0]));
   cudaErrchk(cudaMemcpyAsync(gpu_data->offset_ref_gpu + sequences_per_stream, offsetA_h + sequences_per_stream,
@@ -109,6 +109,17 @@ void asynch_mem_copies_htd(gpu_alignments* gpu_data, unsigned* offsetA_h, unsign
   cudaErrchk(cudaMemcpyAsync(strA_d + half_length_A, strA + half_length_A, (totalLengthA - half_length_A) * sizeof(char),
                              cudaMemcpyHostToDevice, streams_cuda[1]));
 
+  size_t size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
+  if (size_strB < totalLengthB) {
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
+              << "totalLengthB " << totalLengthB << " max rlen " << max_rlen << "\n";
+    std::abort();
+  }
+  if (size_strB < half_length_B) {
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
+              << "half_length_B " << half_length_B << " max rlen " << max_rlen << "\n";
+    std::abort();
+  }
   cudaErrchk(cudaMemcpyAsync(strB_d, strB, half_length_B * sizeof(char), cudaMemcpyHostToDevice, streams_cuda[0]));
   cudaErrchk(cudaMemcpyAsync(strB_d + half_length_B, strB + half_length_B, (totalLengthB - half_length_B) * sizeof(char),
                              cudaMemcpyHostToDevice, streams_cuda[1]));
@@ -175,6 +186,7 @@ struct adept_sw::DriverState {
   gpu_alignments* gpu_data;
   unsigned half_length_A = 0;
   unsigned half_length_B = 0;
+  int max_rlen = 0;
 };
 
 adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score,
@@ -189,6 +201,7 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   driver_state->misMatchScore = mismatch_score;
   driver_state->startGap = gap_opening_score;
   driver_state->extendGap = gap_extending_score;
+  driver_state->max_rlen = max_rlen;
 
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " get_num_gpus=" << elapsed.count();
 
@@ -324,7 +337,7 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   asynch_mem_copies_htd(driver_state->gpu_data, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,
                         driver_state->half_length_B, totalLengthA, totalLengthB, sequences_per_stream, sequences_stream_leftover,
-                        driver_state->streams_cuda);
+                        driver_state->streams_cuda, driver_state->max_rlen);
   unsigned minSize = (maxReadSize < maxContigSize) ? maxReadSize : maxContigSize;
   unsigned totShmem = 3 * (minSize + 1) * sizeof(short);
   unsigned alignmentPad = 4 + (4 - totShmem % 4);

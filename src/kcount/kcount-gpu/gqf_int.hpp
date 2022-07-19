@@ -107,6 +107,8 @@ typedef struct quotient_filter_metadata {
   uint64_t nelts;
   uint64_t ndistinct_elts;
   uint64_t noccupied_slots;
+  uint64_t failed_inserts;
+  bool qf_full;
 } quotient_filter_metadata;
 
 typedef quotient_filter_metadata qfmetadata;

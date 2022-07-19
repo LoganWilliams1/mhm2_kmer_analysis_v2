@@ -50,10 +50,6 @@
 using upcxx::future;
 
 struct Aln {
-  Aln();
-  Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, int cstart, int cstop, int clen, char orient,
-      int score1 = 0, int score2 = 0, int identity = 0, int mismatches = 0, int read_group_id = -1);
-
   // optimal packing of data fields (does not match constructor exactly)
   string read_id;
   int64_t cid;
@@ -63,18 +59,26 @@ struct Aln {
   int mismatches;           // TODO can this be uint16_t (for short reads only)?
   string sam_string;
   int16_t read_group_id;
-  char orient;      // TODO can this be bool?
-  int8_t identity;  // this can be uint8_t - used as integer 0-100 %  // TODO can it even a member function int identity(int
-                    // match_score)
+  char orient;  // TODO can this be bool?
 
+  Aln();
+  Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, int cstart, int cstop, int clen, char orient,
+      int score1 = 0, int score2 = 0, int mismatches = 0, int read_group_id = -1);
+
+  void set(int ref_begin, int ref_end, int query_begin, int query_end, int top_score, int next_best_score, int aln_mismatches,
+           int aln_read_group_id);
+  void set_sam_string(std::string_view read_seq, string cigar);
   // writes out in the format meraligner uses
-  string to_string() const;
+  string to_paf_string() const;
+  string to_blast6_string() const;
   bool is_valid() const;
+  std::pair<int, int> get_unaligned_overlaps() const;
 };
 
 class Alns {
   vector<Aln> alns;
   int64_t num_dups;
+  int64_t num_bad;
 
  public:
   Alns();
@@ -99,6 +103,8 @@ class Alns {
 
   int64_t get_num_dups();
 
+  int64_t get_num_bad();
+
   inline auto begin() { return alns.begin(); }
   inline auto end() { return alns.end(); };
 
@@ -108,7 +114,7 @@ class Alns {
     for (const auto &aln : alns) {
       if (aln.clen < min_ctg_len) continue;
       if (!as_sam_format)
-        os << aln.to_string() << "\n";
+        os << aln.to_blast6_string() << "\n";
       else
         os << aln.sam_string << "\n";
     }
