@@ -181,7 +181,7 @@ struct adept_sw::DriverState {
   char *strA_d, *strB_d;
   char* strA;
   char* strB;
-  cudaEvent_t event;
+  cudaEvent_t event[NSTREAMS] ;
   short matchScore, misMatchScore, startGap, extendGap;
   gpu_alignments* gpu_data;
   unsigned half_length_A = 0;
@@ -261,15 +261,18 @@ adept_sw::GPUDriver::~GPUDriver() {
   delete driver_state;
 }
 
-bool adept_sw::GPUDriver::kernel_is_done() {
-  if (cudaEventQuery(driver_state->event) != cudaSuccess) return false;
-  cudaErrchk(cudaEventDestroy(driver_state->event));
-  return true;
-}
+// bool adept_sw::GPUDriver::kernel_is_done() {
+//   if (cudaEventQuery(driver_state->event) != cudaSuccess) return false;
+//   cudaErrchk(cudaEventDestroy(driver_state->event));
+//   return true;
+// }
 
 void adept_sw::GPUDriver::kernel_block() {
-  cudaErrchk(cudaEventSynchronize(driver_state->event));
-  cudaErrchk(cudaEventDestroy(driver_state->event));
+    for(int stm = 0; stm < NSTREAMS; stm++){
+      cudaErrchk(cudaEventSynchronize(driver_state->event[stm]));
+      cudaErrchk(cudaEventDestroy(driver_state->event[stm]));
+  }
+
 }
 
 void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, std::vector<std::string>& contigs,
@@ -332,7 +335,9 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
     offsetSumB += sequencesB[i].size();
   }
 
-  cudaErrchk(cudaEventCreateWithFlags(&driver_state->event, cudaEventDisableTiming | cudaEventBlockingSync));
+  for (int stm = 0; stm < NSTREAMS; stm++){
+    cudaErrchk(cudaEventCreateWithFlags(&driver_state->event[stm], cudaEventDisableTiming | cudaEventBlockingSync));
+    }
 
   asynch_mem_copies_htd(driver_state->gpu_data, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,
@@ -361,11 +366,16 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
           driver_state->gpu_data->query_end_gpu + sequences_per_stream, driver_state->gpu_data->scores_gpu + sequences_per_stream,
           driver_state->matchScore, driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap);
 
+//does not work without the below stream synchs on AMDGPUs
+  cudaStreamSynchronize(driver_state->streams_cuda[0]);
+  cudaStreamSynchronize(driver_state->streams_cuda[1]);
   // copyin back end index so that we can find new min
   asynch_mem_copies_dth_mid(driver_state->gpu_data, alAend, alBend, sequences_per_stream, sequences_stream_leftover,
                             driver_state->streams_cuda);
 
-  cudaErrchk(cudaEventRecord(driver_state->event));
+  for(int stm = 0; stm < NSTREAMS; stm++){
+    cudaErrchk(cudaEventRecord(driver_state->event[stm]));
+  }
 }
 
 void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, std::vector<std::string>& contigs,
@@ -405,7 +415,14 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
           driver_state->gpu_data->query_end_gpu + sequences_per_stream, driver_state->gpu_data->scores_gpu + sequences_per_stream,
           driver_state->matchScore, driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap);
 
+//does not work without the below stream synchs on AMDGPUs
+  cudaStreamSynchronize(driver_state->streams_cuda[0]);
+  cudaStreamSynchronize(driver_state->streams_cuda[1]);
+
   asynch_mem_copies_dth(driver_state->gpu_data, alAbeg, alBbeg, top_scores_cpu, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda);
-  cudaErrchk(cudaEventRecord(driver_state->event));
+
+  for(int stm = 0; stm < NSTREAMS; stm++){
+  cudaErrchk(cudaEventRecord(driver_state->event[stm]));
+}
 }
