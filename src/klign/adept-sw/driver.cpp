@@ -398,7 +398,9 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
 
   int newMin = get_new_min_length(alAend, alBend, blocksLaunched);  // find the new largest of smaller lengths
 
-  cudaErrchk(cudaEventCreateWithFlags(&driver_state->event, cudaEventDisableTiming | cudaEventBlockingSync));
+  for(int stm = 0; stm < NSTREAMS; stm++){
+    cudaErrchk(cudaEventCreateWithFlags(&driver_state->event[stm], cudaEventDisableTiming | cudaEventBlockingSync));
+  }
   gpu_bsw::sequence_dna_reverse<<<sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0]>>>(
       driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu, driver_state->gpu_data->offset_query_gpu,
       driver_state->gpu_data->ref_start_gpu, driver_state->gpu_data->ref_end_gpu, driver_state->gpu_data->query_start_gpu,
