@@ -3,7 +3,7 @@
 
 This is the ChangeLog for MetaHipMer with development at [bitbucket](https://bitbucket.org/berkeleylab/mhm2)
 
-### 2.1.0 2022-01-24
+### 2.1.0.1 2022-01-24
    * Major updates to GPU offloading in kcount - PR #48
       * Removed bloom filters from CPU & GPU kcount
    * Counting quotient filter in kcount (GPU only) - PR #54
