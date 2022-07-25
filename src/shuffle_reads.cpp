@@ -149,7 +149,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
   return fut;
 }
 
-static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedReads *> &packed_reads_list,
+static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList &packed_reads_list,
                                                                 dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   dist_object<cid_to_reads_map_t> cid_to_reads_map({});
@@ -207,7 +207,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedRea
   return cid_to_reads_map;
 }
 
-static dist_object<cid_to_reads_map_t> process_alns(vector<PackedReads *> &packed_reads_list, Alns &alns, int64_t num_ctgs) {
+static dist_object<cid_to_reads_map_t> process_alns(PackedReadsList &packed_reads_list, Alns &alns, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   using read_to_cid_map_t = HASH_TABLE<int64_t, pair<int64_t, int>>;
   dist_object<read_to_cid_map_t> read_to_cid_map({});
@@ -318,12 +318,12 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   return read_to_target_map;
 }
 
-static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads *> &packed_reads_list,
+static dist_object<deque<PackedRead>> move_reads_to_targets(PackedReadsList &packed_reads_list,
                                                              dist_object<read_to_target_map_t> &read_to_target_map,
                                                              int64_t all_num_reads) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_not_found = 0;
-  dist_object<vector<PackedRead>> new_packed_reads({});
+  dist_object<deque<PackedRead>> new_packed_reads({});
   ThreeTierAggrStore<pair<PackedRead, PackedRead>> read_seq_store;
   // FIXME read_seq_store.set_restricted_updates();
   read_seq_store.set_update_func([&new_packed_reads](pair<PackedRead, PackedRead> &&read_pair_info) {
@@ -370,8 +370,8 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
   return new_packed_reads;
 }
 
-// void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Alns &alns, Contigs &ctgs) {
-void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Contigs &ctgs) {
+
+void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs &ctgs) {
   BarrierTimer timer(__FILEFUNC__);
 
   int64_t num_reads = 0;

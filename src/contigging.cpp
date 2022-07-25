@@ -61,13 +61,13 @@ using std::vector;
 
 template <int MAX_K>
 void traverse_debruijn_graph(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer_dht, Contigs &my_uutigs);
-void localassm(int max_kmer_len, int kmer_len, vector<PackedReads *> &packed_reads_list, int insert_avg, int insert_stddev,
+void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_list, int insert_avg, int insert_stddev,
                int qual_offset, Contigs &ctgs, const Alns &alns);
-// void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Alns &alns, Contigs &ctgs);
-void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Contigs &ctgs);
+
+void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs &ctgs);
 
 template <int MAX_K>
-void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedReads *> &packed_reads_list, Contigs &ctgs,
+void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
                 int &max_expected_ins_size, int &ins_avg, int &ins_stddev, shared_ptr<Options> options) {
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");

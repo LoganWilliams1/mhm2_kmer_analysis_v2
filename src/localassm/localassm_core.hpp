@@ -194,7 +194,7 @@ void extend_ctg(CtgWithReads *ctg, WalkMetrics &wm, int insert_avg, int insert_s
                 upcxx_utils::IntermittentTimer &walk_mers_timer);
 
 void add_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs);
-void process_reads(unsigned kmer_len, vector<PackedReads *> &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
+void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
                    CtgsWithReadsDHT &ctgs_dht);
 void process_alns(const Alns &alns, ReadsToCtgsDHT &reads_to_ctgs, int insert_avg, int insert_stddev);
 

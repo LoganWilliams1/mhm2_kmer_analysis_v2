@@ -335,7 +335,7 @@ struct MerFreqs {
   }
 };
 
-void process_reads(unsigned kmer_len, vector<PackedReads *> &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
+void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
                    CtgsWithReadsDHT &ctgs_dht) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_reads = 0;

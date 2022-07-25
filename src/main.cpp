@@ -45,6 +45,7 @@
 #include "contigging.hpp"
 #include "klign.hpp"
 #include "fastq.hpp"
+#include "packed_reads.hpp"
 #include "post_assembly.hpp"
 #include "scaffolding.hpp"
 #include "stage_timers.hpp"
@@ -64,7 +65,7 @@ void init_devices();
 void done_init_devices();
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
-                 vector<PackedReads *> &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
+                 PackedReadsList &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
                  int subsample_pct);
 
 int main(int argc, char **argv) {
@@ -177,7 +178,7 @@ int main(int argc, char **argv) {
     MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
     memory_tracker.start();
     SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
-    PackedReads::PackedReadsList packed_reads_list;
+    PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }

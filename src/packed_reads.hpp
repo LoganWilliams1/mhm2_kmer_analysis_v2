@@ -43,6 +43,7 @@
 */
 
 #include <array>
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -50,6 +51,7 @@
 
 #include <upcxx/upcxx.hpp>
 
+using std::deque;
 using std::max;
 using std::string;
 using std::string_view;
@@ -116,11 +118,12 @@ class PackedRead {
     }
   };
 };
-
+class PackedReads;
+using PackedReadsList = deque<PackedReads *>;
 class PackedReads {
-  vector<PackedRead> packed_reads;
+  deque<PackedRead> packed_reads;
   // this is only used when we need to know the actual name of the original reads
-  vector<string> read_id_idx_to_str;
+  deque<string> read_id_idx_to_str;
   unsigned max_read_len = 0;
   uint64_t index = 0;
   uint64_t bases = 0;
@@ -130,9 +133,9 @@ class PackedReads {
   bool str_ids;
 
  public:
-  using PackedReadsList = vector<PackedReads *>;
+  
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
-  PackedReads(int qual_offset, vector<PackedRead> &packed_reads);
+  PackedReads(int qual_offset, deque<PackedRead> &packed_reads);
   ~PackedReads();
 
   bool get_next_read(string &id, string &seq, string &quals);
@@ -153,7 +156,7 @@ class PackedReads {
 
   int64_t get_local_num_reads() const;
 
-  static int64_t get_total_local_num_reads(const vector<PackedReads*> &packed_reads_list);
+  static int64_t get_total_local_num_reads(const PackedReadsList &packed_reads_list);
 
   void add_read(const string &read_id, const string &seq, const string &quals);
 
@@ -169,6 +172,6 @@ class PackedReads {
 
   int get_qual_offset();
 
-  static uint64_t estimate_num_kmers(unsigned kmer_len, vector<PackedReads *> &packed_reads_list);
+  static uint64_t estimate_num_kmers(unsigned kmer_len, PackedReadsList &packed_reads_list);
 };
 

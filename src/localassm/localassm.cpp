@@ -62,7 +62,7 @@ using namespace localassm_core;
 void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len,
                  int qual_offset);
 
-void localassm(int max_kmer_len, int kmer_len, vector<PackedReads *> &packed_reads_list, int insert_avg, int insert_stddev,
+void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_list, int insert_avg, int insert_stddev,
                int qual_offset, Contigs &ctgs, const Alns &alns) {
   BarrierTimer timer(__FILEFUNC__);
   CtgsWithReadsDHT ctgs_dht(ctgs.size());

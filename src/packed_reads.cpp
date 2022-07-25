@@ -182,7 +182,7 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
     , fname(fname)
     , str_ids(str_ids) {}
 
-PackedReads::PackedReads(int qual_offset, vector<PackedRead> &new_packed_reads)
+PackedReads::PackedReads(int qual_offset, deque<PackedRead> &new_packed_reads)
     : packed_reads(new_packed_reads)
     , index(0)
     , qual_offset(qual_offset)
@@ -221,8 +221,8 @@ void PackedReads::clear() {
   LOG_MEM("Clearing Packed Reads");
   index = 0;
   fname.clear();
-  vector<PackedRead>().swap(packed_reads);
-  if (str_ids) vector<string>().swap(read_id_idx_to_str);
+  deque<PackedRead>().swap(packed_reads);
+  if (str_ids) deque<string>().swap(read_id_idx_to_str);
   LOG_MEM("Cleared Packed Reads");
 }
 
@@ -239,7 +239,7 @@ void PackedReads::set_max_read_len() {
 
 int64_t PackedReads::get_local_num_reads() const { return packed_reads.size(); }
 
-int64_t PackedReads::get_total_local_num_reads(const vector<PackedReads *> &packed_reads_list) {
+int64_t PackedReads::get_total_local_num_reads(const PackedReadsList &packed_reads_list) {
   int64_t total_local_num_reads = 0;
   for (const PackedReads *pr : packed_reads_list) {
     total_local_num_reads += pr->get_local_num_reads();
@@ -294,7 +294,6 @@ upcxx::future<> PackedReads::load_reads_nb() {
     estimated_records = fqr.my_file_size() / bytes_per_record;
     reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
   }
-  packed_reads.reserve(reserve_records);
   fqr.reset();
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;
@@ -347,7 +346,7 @@ PackedRead &PackedReads::operator[](int index) {
   return packed_reads[index];
 }
 
-uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, vector<PackedReads *> &packed_reads_list) {
+uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &packed_reads_list) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_kmers = 0;
   int64_t num_reads = 0;
