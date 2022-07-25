@@ -214,6 +214,7 @@ int main(int argc, char **argv) {
       ctgs.load_contigs(options->ctgs_fname);
       stage_timers.load_ctgs->stop();
     }
+    
     std::chrono::duration<double> init_t_elapsed = std::chrono::high_resolution_clock::now() - init_start_t;
     SLOG("\n");
     SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
@@ -223,6 +224,10 @@ int main(int argc, char **argv) {
     int ins_stddev = 0;
 
     done_init_devices();
+
+    {
+      BarrierTimer("Start Contigging");
+    }
 
     // contigging loops
     if (options->kmer_lens.size()) {
@@ -257,6 +262,10 @@ int main(int argc, char **argv) {
 
         prev_kmer_len = kmer_len;
       }
+    }
+
+    {
+      BarrierTimer("Start Scaffolding)");
     }
 
     // scaffolding loops
