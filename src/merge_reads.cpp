@@ -838,6 +838,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     num_reads += num_pairs * 2;
     ri++;
     FastqReaders::close(reads_fname);
+    merge_file_timer.initiate_exit_reduction();
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);

@@ -64,9 +64,8 @@ using namespace upcxx_utils;
 void init_devices();
 void done_init_devices();
 
-void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
-                 PackedReadsList &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
-                 int subsample_pct);
+void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
+                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct);
 
 int main(int argc, char **argv) {
   BaseTimer init_timer("upcxx::init");
@@ -160,7 +159,8 @@ int main(int argc, char **argv) {
       }
     }
     SOUT("Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""), " is ",
-         get_size_str(tot_file_size), "\n");
+         get_size_str(tot_file_size), "; ", get_size_str(tot_file_size / rank_n()), " per rank; ",
+         get_size_str(local_team().rank_n() * tot_file_size / rank_n()), " per node\n");
     auto nodes = upcxx::rank_n() / upcxx::local_team().rank_n();
     auto total_free_mem = get_free_mem() * nodes;
     if (total_free_mem < 3 * tot_file_size)
@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
   int max_expected_ins_size = 0;
   if (!options->post_assm_only) {
     memory_tracker.start();
-    
+
     LOG_MEM("Preparing to load reads");
     SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
     barrier(local_team());
@@ -216,14 +216,14 @@ int main(int argc, char **argv) {
       rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
-    Timings::get_pending().wait(); // report all I/O stats here
+    Timings::get_pending().wait();  // report all I/O stats here
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
       ctgs.load_contigs(options->ctgs_fname);
       stage_timers.load_ctgs->stop();
     }
-    
+
     std::chrono::duration<double> init_t_elapsed = std::chrono::high_resolution_clock::now() - init_start_t;
     SLOG("\n");
     SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
@@ -234,9 +234,7 @@ int main(int argc, char **argv) {
 
     done_init_devices();
 
-    {
-      BarrierTimer("Start Contigging");
-    }
+    { BarrierTimer("Start Contigging"); }
 
     // contigging loops
     if (options->kmer_lens.size()) {
@@ -273,9 +271,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    {
-      BarrierTimer("Start Scaffolding)");
-    }
+    { BarrierTimer("Start Scaffolding)"); }
 
     // scaffolding loops
     if (options->dump_gfa) {
@@ -369,7 +365,6 @@ int main(int argc, char **argv) {
     std::chrono::duration<double> t_elapsed = std::chrono::high_resolution_clock::now() - start_t;
     SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
   }
-  
 
   // post processing
   if (options->post_assm_aln || options->post_assm_only || options->post_assm_abundances) {
