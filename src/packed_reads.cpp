@@ -218,12 +218,10 @@ void PackedReads::get_read(uint64_t index, string &id, string &seq, string &qual
 void PackedReads::reset() { index = 0; }
 
 void PackedReads::clear() {
-  LOG_MEM("Clearing Packed Reads");
   index = 0;
   fname.clear();
   deque<PackedRead>().swap(packed_reads);
   if (str_ids) deque<string>().swap(read_id_idx_to_str);
-  LOG_MEM("Cleared Packed Reads");
 }
 
 string PackedReads::get_fname() const { return fname; }

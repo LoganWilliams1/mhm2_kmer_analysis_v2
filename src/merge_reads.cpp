@@ -427,7 +427,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   uint64_t read_id = rank_me() * read_id_block;
   uint64_t start_read_id = read_id;
   DBG("starting read_id=", start_read_id, " max_num_reads=", max_num_reads, " read_id_block=", read_id_block, "\n");
-  IntermittentTimer dump_reads_t("dump_reads");
+  IntermittentTimer dump_reads_t("dump_reads"), read_files_t("read_files");
   future<> wrote_all_files_fut = make_future();
   promise<> summary_promise;
   future<> fut_summary = summary_promise.get_future();
@@ -443,7 +443,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     if (file_exists(out_fname)) SWARN("File ", out_fname, " already exists, will overwrite...");
 
     FastqReader &fqr = FastqReaders::get(reads_fname);
+    read_files_t.start();
     fqr.advise(true);
+    read_files_t.stop();
     auto my_file_size = fqr.my_file_size();
 
     shared_of sh_out_file;
@@ -489,7 +491,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       //DBG_VERBOSE("Merging num_pair=", num_pairs, " read_id=", read_id, "\n");
       if (!fqr.is_paired()) {
         // unpaired reads get dummy read2 just like merged reads
+        read_files_t.start();
         int64_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
+        read_files_t.stop();
         if (!bytes_read1) {
           DBG("Found end on ", fqr.get_fname(), " after read_id=", read_id, "\n");
           break;
@@ -507,7 +511,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
       if (skip_read1 && skip_read2) break;
       if (!skip_read1) {
+        read_files_t.start();
         int64_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
+        read_files_t.stop();
         if (!bytes_read1) break;  // end of file
         //DBG("Read1: ", id1, " ", seq1.length(), "\n");
 
@@ -544,7 +550,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
 
       if (!skip_read2) {
+        read_files_t.start();
         int64_t bytes_read2 = fqr.get_next_fq_record(id2, seq2, quals2);
+        read_files_t.stop();
         if (!bytes_read2) {
           // record missing read2
           id2.clear();
@@ -873,6 +881,10 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   //#endif
 
   // finish all file writing and report
+  upcxx_utils::min_sum_max_reduce_one(read_files_t.get_elapsed()).then([](upcxx_utils::MinSumMax<double> msm) {
+    SLOG_VERBOSE("Total time reading fastq files: ", msm.to_string(), "\n");
+  }).wait();
+  
   dump_reads_t.start();
   wrote_all_files_fut.wait();
   for (auto sh_of : all_outputs) {

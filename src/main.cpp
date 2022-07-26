@@ -178,18 +178,15 @@ int main(int argc, char **argv) {
   if (!options->post_assm_only) {
     memory_tracker.start();
     
-    barrier(local_team());
-    SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
     LOG_MEM("Preparing to load reads");
+    SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
     barrier(local_team());
 
     PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }
-    barrier(local_team());
     LOG_MEM("Opened read files");
-    barrier(local_team());
 
     double elapsed_write_io_t = 0;
     if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
@@ -212,9 +209,7 @@ int main(int argc, char **argv) {
       SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - get_free_mem()), " memory on node 0",
                    KNORM, "\n");
     }
-    barrier(local_team());
     LOG_MEM("Loaded Reads");
-    barrier(local_team());
 
     int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
@@ -330,18 +325,14 @@ int main(int argc, char **argv) {
     }
 
     // cleanup
-    barrier(local_team());
     LOG_MEM("Preparing to close all fastq");
-    barrier(local_team());
     FastqReaders::close_all();  // needed to cleanup any open files in this singleton
     auto fin_start_t = std::chrono::high_resolution_clock::now();
     for (auto packed_reads : packed_reads_list) {
       delete packed_reads;
     }
     packed_reads_list.clear();
-    barrier(local_team());
     LOG_MEM("Closed all fastq");
-    barrier(local_team());
 
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
