@@ -330,13 +330,19 @@ void PackedReads::load_reads() {
 }
 
 void PackedReads::report_size() {
-  auto all_num_records = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0).wait();
-  auto all_num_bases = upcxx::reduce_one(bases, upcxx::op_fast_add, 0).wait();
-  auto all_num_names = upcxx::reduce_one(name_bytes, upcxx::op_fast_add, 0).wait();
-  SLOG_VERBOSE("Loaded ", all_num_records, " tot_bases=", all_num_bases, " names=", get_size_str(all_num_names), "\n");
-  LOG_MEM("Loaded Packed Reads");
-  SLOG_VERBOSE("Estimated memory for PackedReads: ",
-               get_size_str(all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names), "\n");
+  auto all_num_records_fut = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
+  auto all_num_bases_fut = upcxx::reduce_one(bases, upcxx::op_fast_add, 0);
+  auto all_num_names_fut = upcxx::reduce_one(name_bytes, upcxx::op_fast_add, 0);
+  auto min_rank_fut = upcxx::reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
+  auto max_rank_fut = upcxx::reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
+  auto fut = when_all(Timings::get_pending(), all_num_records_fut,all_num_bases_fut,all_num_names_fut, min_rank_fut, max_rank_fut).then(
+    [&self=*this](size_t all_num_records, size_t all_num_bases, size_t all_num_names, int min_rank, int max_rank){
+    auto num_ranks = max_rank - min_rank + 1;
+    auto sz = all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names;
+    SLOG_VERBOSE("Loaded ", upcxx_utils::get_basename(self.fname), ": reads=", all_num_records, " tot_bases=", all_num_bases, " names=", get_size_str(all_num_names), " PackedReads: ",
+               get_size_str(sz), " active_ranks=", num_ranks, " (", min_rank, "-", max_rank, ") avg=", get_size_str(sz/num_ranks), "\n");
+  });
+  Timings::set_pending(fut); // include in reports
 }
 
 int64_t PackedReads::get_bases() { return upcxx::reduce_one(bases, upcxx::op_fast_add, 0).wait(); }
@@ -351,12 +357,11 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
   int64_t num_kmers = 0;
   int64_t num_reads = 0;
   int64_t tot_num_reads = PackedReads::get_total_local_num_reads(packed_reads_list);
+  ProgressBar progbar(tot_num_reads, "Scanning reads to estimate number of kmers");
   for (auto packed_reads : packed_reads_list) {
     packed_reads->reset();
     string id, seq, quals;
-    ProgressBar progbar(packed_reads->get_local_num_reads(), "Scanning reads to estimate number of kmers");
-
-    for (int i = 0; i < 100000; i++) {
+    for (int i = 0; i < 50000; i++) {
       if (!packed_reads->get_next_read(id, seq, quals)) break;
       progbar.update();
       // do not read the entire data set for just an estimate
@@ -364,13 +369,13 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
       num_kmers += seq.length() - kmer_len + 1;
       num_reads++;
     }
-    progbar.done();
-    barrier();
   }
+  auto fut = progbar.set_done();
   DBG("This rank processed ", num_reads, " reads, and found ", num_kmers, " kmers\n");
   auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
   auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
   auto all_num_kmers = reduce_all(num_kmers, op_fast_add).wait();
+  fut.wait();
 
   SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
                (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");

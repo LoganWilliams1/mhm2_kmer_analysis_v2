@@ -170,18 +170,27 @@ int main(int argc, char **argv) {
   }
 
   init_devices();
+  MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
   Contigs ctgs;
   int max_kmer_len = 0;
   int max_expected_ins_size = 0;
   if (!options->post_assm_only) {
-    MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
     memory_tracker.start();
+    
+    barrier(local_team());
     SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
+    LOG_MEM("Preparing to load reads");
+    barrier(local_team());
+
     PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }
+    barrier(local_team());
+    LOG_MEM("Opened read files");
+    barrier(local_team());
+
     double elapsed_write_io_t = 0;
     if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
       // merge the reads and insert into the packed reads memory cache
@@ -203,11 +212,16 @@ int main(int argc, char **argv) {
       SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - get_free_mem()), " memory on node 0",
                    KNORM, "\n");
     }
+    barrier(local_team());
+    LOG_MEM("Loaded Reads");
+    barrier(local_team());
+
     int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
       rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
+    Timings::get_pending().wait(); // report all I/O stats here
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
@@ -316,12 +330,18 @@ int main(int argc, char **argv) {
     }
 
     // cleanup
+    barrier(local_team());
+    LOG_MEM("Preparing to close all fastq");
+    barrier(local_team());
     FastqReaders::close_all();  // needed to cleanup any open files in this singleton
     auto fin_start_t = std::chrono::high_resolution_clock::now();
     for (auto packed_reads : packed_reads_list) {
       delete packed_reads;
     }
     packed_reads_list.clear();
+    barrier(local_team());
+    LOG_MEM("Closed all fastq");
+    barrier(local_team());
 
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
@@ -358,13 +378,15 @@ int main(int argc, char **argv) {
     std::chrono::duration<double> t_elapsed = std::chrono::high_resolution_clock::now() - start_t;
     SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
   }
-  FastqReaders::close_all();
+  
 
   // post processing
   if (options->post_assm_aln || options->post_assm_only || options->post_assm_abundances) {
+    memory_tracker.start();
     if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname);
     post_assembly(ctgs, options, max_expected_ins_size);
     FastqReaders::close_all();
+    memory_tracker.stop();
   }
 
   upcxx_utils::ThreadPool::join_single_pool();  // cleanup singleton thread pool

@@ -185,7 +185,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       possible_header = header;
       if (possible_header.compare(last_header) == 0) {
         // test and possibly fix identical read pair names without corresponding header field - Issue124
-        if (_is_paired) {
+        if (_is_paired && !_fix_paired_name) {
           _fix_paired_name = true;
           LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname, "\n");
           if (offset == 0) WARN(this->fname, " is paired but read names are indistinguisable.  example: ", possible_header, "\n");
@@ -310,6 +310,7 @@ FastqReader::FastqReader(const string &_fname, upcxx::future<> first_wait)
     , _is_paired(true)
     , _fix_paired_name(false)
     , _first_pair(true)
+    , _is_bgzf(false)
     , io_t("fastq IO for " + fname)
     , dist_prom(world())
     , open_fut(make_future()) {
@@ -740,6 +741,7 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
       quals.assign(buf);
     bytes_read += buf.size();
   }
+  io_t.stop();
   rtrim(id);
   rtrim(seq);
   rtrim(quals);
@@ -761,7 +763,6 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
     DIE("Invalid FASTQ in ", fname, ": sequence length ", seq.length(), " != ", quals.length(), " quals length\n", "id:   ", id,
         "\nseq:  ", seq, "\nquals: ", quals);
   if (seq.length() > max_read_len) max_read_len = seq.length();
-  io_t.stop();
   DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
   _first_pair = !_first_pair;
   return bytes_read;
