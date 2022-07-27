@@ -848,6 +848,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   assert(read_id < start_read_id + read_id_block);
   merge_time.initiate_exit_reduction();
 
+  { BarrierTimer all_merging_done("All merging done"); }
+  
   //#ifdef DEBUG
   // ensure there is no overlap in read_ids which will cause a crash later
   using SSPair = std::pair<uint64_t, uint64_t>;
