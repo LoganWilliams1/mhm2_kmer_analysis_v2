@@ -343,14 +343,14 @@ void pin_numa() {
   // pack onto numa nodes
   int hdw_threads_per_numa_node = num_cpus / numa_node_list.size();
   int cores_per_numa_node = hdw_threads_per_numa_node / hdw_threads_per_core;
-  int numa_nodes_to_use = upcxx::local_team().rank_n() / cores_per_numa_node;
+  int numa_nodes_to_use = (upcxx::local_team().rank_n() + cores_per_numa_node - 1) / cores_per_numa_node;
   if (numa_nodes_to_use > numa_node_list.size()) numa_nodes_to_use = numa_node_list.size();
   if (numa_nodes_to_use == 0) numa_nodes_to_use = 1;
-  int my_numa_node = upcxx::local_team().rank_me() % numa_nodes_to_use;
+  int my_numa_node = upcxx::local_team().rank_me() / cores_per_numa_node;
   vector<int> my_cpu_list = numa_node_list[my_numa_node].second;
   sort(my_cpu_list.begin(), my_cpu_list.end());
   pin_proc(my_cpu_list);
   SLOG("Pinning to ", numa_nodes_to_use, " NUMA domains each with ", cores_per_numa_node, " cores, ", hdw_threads_per_numa_node,
        " cpus: process 0 on node 0 is pinned to cpus ", get_proc_pin(), "\n");
-  DBG("Pinned to ", get_proc_pin(), "\n");
+  DBGLOG("Pinned to numa domain ", my_numa_node, ": ", get_proc_pin(), "\n");
 }
