@@ -811,15 +811,17 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         reduce_one(merged_len, op_fast_add, 0), reduce_one(overlap_len, op_fast_add, 0), reduce_one(max_read_len, op_fast_max, 0),
         reduce_one(bases_trimmed, op_fast_add, 0), reduce_one(reads_removed, op_fast_add, 0),
         reduce_one(bases_read, op_fast_add, 0), reduce_one(bytes_read, op_fast_add, 0), reduce_one(missing_read1, op_fast_add, 0),
-        reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings, fut_sh_trim_overhead);
+        reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings, fut_sh_trim_overhead,
+        reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0), reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
     fut_summary = when_all(fut_summary, fut_reductions)
                       .then([reads_fname, bytes_read, &adapters](
                                 int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
                                 int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
                                 int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1,
-                                int64_t all_missing_read2, ShTimings sh_ssw_timings, ShTimings sh_trim_overhead) {
-                        SLOG_VERBOSE("Merged reads in file ", reads_fname, ":\n");
+                                int64_t all_missing_read2, ShTimings sh_ssw_timings, ShTimings sh_trim_overhead,
+                                int min_rank, int max_rank) {
+                        SLOG_VERBOSE("Merged reads in file ", get_basename(reads_fname), " (ranks ", min_rank, "-", max_rank, "):\n");
                         SLOG_VERBOSE("  merged ", perc_str(all_num_merged, all_num_pairs), " of ", all_num_pairs, " pairs\n");
                         SLOG_VERBOSE("  ambiguous ", perc_str(all_num_ambiguous, all_num_pairs), " ambiguous pairs\n");
                         SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");

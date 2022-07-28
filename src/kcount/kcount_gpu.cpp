@@ -295,9 +295,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   IntermittentTimer insert_timer("gpu insert to cpu timer");
   insert_timer.start();
   if (state->ht_gpu_driver.pass_type == CTG_KMERS_PASS) {
+    LOG_MEM("Before done_ctg_kmer_inserts");
     int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0;
     state->ht_gpu_driver.done_ctg_kmer_inserts(attempted_inserts, dropped_inserts, new_inserts);
     barrier();
+    LOG_MEM("After done_ctg_kmer_inserts");
     auto num_dropped_elems = reduce_one((uint64_t)dropped_inserts, op_fast_add, 0).wait();
     auto num_attempted_inserts = reduce_one((uint64_t)attempted_inserts, op_fast_add, 0).wait();
     auto num_new_inserts = reduce_one((uint64_t)new_inserts, op_fast_add, 0).wait();
@@ -313,9 +315,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     }
   }
   barrier();
+  LOG_MEM("before done_all_inserts");
   int num_dropped = 0, num_entries = 0, num_purged = 0;
   state->ht_gpu_driver.done_all_inserts(num_dropped, num_entries, num_purged);
   barrier();
+  LOG_MEM("after done_all_inserts");
   if (num_dropped)
     WARN("GPU dropped ", num_dropped, " entries out of ", num_entries, " when compacting to output hash table" KNORM "\n");
 
@@ -331,6 +335,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
 
   // add some space for the ctg kmers
   local_kmers->reserve(num_entries * 1.5);
+  LOG_MEM("After insert_into_local_hashtable reserve");
   uint64_t invalid = 0;
   while (true) {
     auto [kmer_array, count_exts] = state->ht_gpu_driver.get_next_entry();
@@ -382,6 +387,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
            max_gpu_insert_time, " max, load balance ", load_balance, KNORM, "\n");
   SLOG_GPU("  kernel: ", fixed, setprecision(3), avg_gpu_kernel_time, " avg, ", max_gpu_kernel_time, " max\n");
   barrier();
+  LOG_MEM("After insert_into_local_hashtable inserts");
 }
 
 #define seq_block_inserter_K(KMER_LEN) template struct SeqBlockInserter<KMER_LEN>;
