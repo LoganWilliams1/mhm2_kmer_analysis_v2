@@ -84,6 +84,10 @@ bool FastqReader::get_fq_name(string &header) {
   // strip trailing spaces
   // header = std::regex_replace(header, std::regex("\\s+$"), std::string(""));
   rtrim(header);
+  if (_trim_comment) {
+    auto space_pos = header.find_first_of(' ');
+    if (space_pos != string::npos) header = header.substr(0, space_pos);
+  }
   // convert if new illumina 2 format  or HudsonAlpha format
   unsigned len = header.length();
   if (len >= 3 && header[len - 2] != '/') {
@@ -125,10 +129,7 @@ bool FastqReader::get_fq_name(string &header) {
   return true;
 }
 
-int64_t FastqReader::tellg() {
-  return in->tellg();
-
-}
+int64_t FastqReader::tellg() { return in->tellg(); }
 
 void FastqReader::seekg(int64_t pos) {
   in->seekg(pos);
@@ -146,7 +147,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
 
   in->seekg(offset);
   if (!in->good()) DIE("Could not fseek in ", fname, " to ", offset, ": ", strerror(errno));
-  
+
   if (offset != 0) {
     // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
     std::getline(*in, buf);
@@ -187,10 +188,12 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
         // test and possibly fix identical read pair names without corresponding header field - Issue124
         if (_is_paired && !_fix_paired_name) {
           _fix_paired_name = true;
-          LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname, "\n");
+          LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname,
+              "\n");
           if (offset == 0) WARN(this->fname, " is paired but read names are indistinguisable.  example: ", possible_header, "\n");
         } else {
-          DIE("Invalid unpaired fastq file that contains identical sequential read names: ", last_header, " in ", this->fname, "\n");
+          DIE("Invalid unpaired fastq file that contains identical sequential read names: ", last_header, " in ", this->fname,
+              "\n");
         }
       }
       rtrim(header);
@@ -203,7 +206,9 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       bool record_found = true;
       DBG_VERBOSE("Testing for header: ", header, "\n");
       for (int j = 0; j < 3; j++) {
-        if (i + 1 + j >= lines.size()) DIE("Missing record info at pos ", tells[i]);
+        if (i + 1 + j >= lines.size())
+          DIE("Missing record info at ", get_basename(fname), " around pos ", tells[i], " lines: ", lines[0], " header: ", header,
+              "\n");
         string &tmp2 = lines[i + 1 + j];
 
         if (j == 0) {
@@ -225,12 +230,12 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
               case ('G'):
               case ('T'):
               case ('N'): break;  // okay
-              case ('\n'):        
+              case ('\n'):
                 // newline is not expected here, but okay if last char
                 record_found = k == seqlen - 1;
                 if (record_found) break;
-              case ('@'):         // previous was quality line, this next line is the header line.
-              default:            // not okay
+              case ('@'):  // previous was quality line, this next line is the header line.
+              default:     // not okay
                 DBG_VERBOSE("Found non-seq '", tmp2[k], "' at ", k, " in: ", tmp2, "\n");
                 record_found = false;
             }
@@ -268,6 +273,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       // need this to be the second of the pair
       this_pair = header[header.length() - 1];
       DBG("Found possible pair ", (char)this_pair, ", header: ", header, "\n");
+      auto tpos1 = string::npos, tpos2 = string::npos;
       if (last_pair == this_pair) {
         if (_fix_paired_name) {
           if (last_header.compare(possible_header) == 0) {
@@ -283,7 +289,16 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
         // proper pair
         DBG("Found proper pair 1&2\n");
         break;
+      } else if ((tpos1 = possible_header.find_first_of(' ')) != string::npos && (tpos2 = last_header.find_first_of(' ')) != string::npos &&
+                 possible_header.substr(0, tpos1).compare(last_header.substr(0, tpos2)) == 0) {
+        if (offset == 0)
+          WARN("Ignoring confounding comments in header of ", get_basename(fname), " '", last_header, "' and '", possible_header, "' are proper pair\n");
+        _trim_comment = true;
+        _fix_paired_name = true;
+        DBG("Found proper pair - identical ignoring comment\n");
+        break;
       }
+      if (tpos1 != string::npos && tpos2 != string::npos) DBG("Comment trimmed: '", last_header.substr(0,tpos2), "' '", possible_header.substr(0,tpos1), "'\n");
 
       // did not find valid new start of (possibly paired) record
       last_tell = this_tell;
@@ -310,6 +325,7 @@ FastqReader::FastqReader(const string &_fname, upcxx::future<> first_wait)
     , _is_paired(true)
     , _fix_paired_name(false)
     , _first_pair(true)
+    , _trim_comment(false)
     , _is_bgzf(false)
     , io_t("fastq IO for " + fname)
     , dist_prom(world())
@@ -347,7 +363,7 @@ FastqReader::FastqReader(const string &_fname, upcxx::future<> first_wait)
 
   future<> file_size_fut = upcxx::broadcast(file_size, query_rank).then([&self = *this](int64_t sz) {
     self.file_size = sz;
-    assert(sz>=0);
+    assert(sz >= 0);
   });
   file_size_fut = file_size_fut.then([&self = *this]() { self.know_file_size.fulfill_anonymous(1); });
 
@@ -390,7 +406,6 @@ FastqReader::FastqReader(const string &_fname, upcxx::future<> first_wait)
 
 future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, dist_object<PromStartStop> &dist_start_stop1,
                                         dist_object<PromStartStop> &dist_start_stop2) {
-
   DBG("Starting matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
   assert(fqr1.in && "FQ 1 is open");
   assert(fqr2.in && "FQ 2 is open");
@@ -513,12 +528,13 @@ upcxx::future<> FastqReader::continue_open() {
   assert(block_start <= file_size);
   int64_t my_start = get_fptr_for_next_record(block_start);
   if (rank_me() > 0 && my_start != 0) {
-    rpc_ff(rank_me() - 1,
-           [](DPSS &dpss, int64_t end_pos) {
-             DBG("end_pos=", end_pos, "\n");
-             dpss->stop_prom.fulfill_result(end_pos);
-           },
-           dist_prom, my_start);
+    rpc_ff(
+        rank_me() - 1,
+        [](DPSS &dpss, int64_t end_pos) {
+          DBG("end_pos=", end_pos, "\n");
+          dpss->stop_prom.fulfill_result(end_pos);
+        },
+        dist_prom, my_start);
   }
   dist_prom->start_prom.fulfill_result(my_start);
 
@@ -588,9 +604,11 @@ upcxx::future<> FastqReader::continue_open_default_per_rank_boundaries() {
       wait_prom.get_future().then([rank, pos, &dist_prom = this->dist_prom]() {
         DBG_VERBOSE("Sending pos=", pos, " to stop ", rank - 1, " and start ", rank, "\n");
         // send end to prev rank
-        rpc_ff(rank - 1, [](DPSS &dpss, int64_t end_pos) { dpss->stop_prom.fulfill_result(end_pos); }, dist_prom, pos);
+        rpc_ff(
+            rank - 1, [](DPSS &dpss, int64_t end_pos) { dpss->stop_prom.fulfill_result(end_pos); }, dist_prom, pos);
         // send start to rank
-        rpc_ff(rank, [](DPSS &dpss, int64_t start_pos) { dpss->start_prom.fulfill_result(start_pos); }, dist_prom, pos);
+        rpc_ff(
+            rank, [](DPSS &dpss, int64_t start_pos) { dpss->start_prom.fulfill_result(start_pos); }, dist_prom, pos);
       });
     }
   }
@@ -719,7 +737,7 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
       assert(read_count > fqr2->read_count);
       auto bytes_read = fqr2->get_next_fq_record(id, seq, quals, wait_open);
       assert(read_count == fqr2->read_count);
-      if (_fix_paired_name) id[id.length()-1] = '2'; // this is read2
+      if (_fix_paired_name) id[id.length() - 1] = '2';  // this is read2
       return bytes_read;
     }
   }
@@ -755,8 +773,10 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
     if (fqr2) {
       id += "/1";
     } else {
-      if (_first_pair) id += "/1";
-      else id += "/2";
+      if (_first_pair)
+        id += "/1";
+      else
+        id += "/2";
     }
   }
   if (seq.length() != quals.length())

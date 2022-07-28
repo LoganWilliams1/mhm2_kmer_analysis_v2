@@ -81,6 +81,7 @@ class FastqReader {
   bool _is_paired;       // file was declared as paired by the user
   bool _fix_paired_name; // Issue124 - file contains identical names of paired reads, so fix each paired read name to be unique on-the-fly 
   bool _first_pair;      // alternate for pair1 (first_pair) and pair2 (!first_pair)
+  bool _trim_comment;
   bool _is_bgzf;
   IntermittentTimer io_t;
   struct PromStartStop {
