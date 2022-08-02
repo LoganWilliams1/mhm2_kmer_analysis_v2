@@ -44,7 +44,12 @@
 
 #include <stdio.h>
 #include <iostream>
-#include <cuda.h>
+
+//#include <cuda.h>
+//#define WARP_SIZE 32
+#include "hip/hip_runtime.h"
+#define WARP_SIZE 64
+
 #define EMPTY 0xFFFFFFFF
 #define FULL_MASK 0xffffffff
 
