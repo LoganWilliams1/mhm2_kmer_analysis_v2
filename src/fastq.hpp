@@ -75,12 +75,14 @@ class FastqReader {
   int subsample_pct = 100;
   string buf;
   int qual_offset;
-  int read_count = 0;    // used in subsample
+  int read_count = 0;  // used in subsample
   shared_ptr<FastqReader> fqr2;
   bool first_file;
-  bool _is_paired;       // file was declared as paired by the user
-  bool _fix_paired_name; // Issue124 - file contains identical names of paired reads, so fix each paired read name to be unique on-the-fly 
-  bool _first_pair;      // alternate for pair1 (first_pair) and pair2 (!first_pair)
+  bool _is_paired;        // file was declared as paired by the user
+  bool _is_interleaved;   // 1 file that also _is_paired
+  bool _fix_paired_name;  // Issue124 - file contains identical names of paired reads, so fix each paired read name to be unique
+                          // on-the-fly
+  bool _first_pair;       // alternate for pair1 (first_pair) and pair2 (!first_pair)
   bool _is_bgzf;
   IntermittentTimer io_t;
   struct PromStartStop {
@@ -112,7 +114,7 @@ class FastqReader {
 
  public:
   FastqReader() = delete;  // no default constructor
-  FastqReader(const string &_fname, upcxx::future<> first_wait = make_future());
+  FastqReader(const string &_fname, upcxx::future<> first_wait = make_future(), bool is_second_file = false);
 
   void set_subsample_pct(int pct) {
     assert(subsample_pct > 0 && subsample_pct <= 100);
@@ -146,6 +148,14 @@ class FastqReader {
   upcxx::future<> get_open_fut() const { return open_fut; }
 
   bool is_paired() const { return _is_paired; }
+
+  bool is_interleaved() const {
+    if (_is_interleaved) {
+      assert(!fqr2);
+      assert(_is_paired);
+    }
+    return _is_interleaved;
+  }
 
   bool is_bgzf() const { return _is_bgzf; }
 
@@ -211,7 +221,7 @@ class FastqReaders {
       }
     }
     if (!needs_blocking) return total_size;  // all are open
-    total_size = 0; // some are not open yet
+    total_size = 0;                          // some are not open yet
 
     std::vector<promise<>> know_blocks(fnames.size());
     std::vector<int64_t> file_sizes(fnames.size());
