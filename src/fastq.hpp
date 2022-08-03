@@ -91,12 +91,19 @@ class FastqReader {
       auto set_start = start_prom.get_future().then([&fqr](int64_t start) {
         DBG("Set start_read at ", start, " on ", fqr.fname, "\n");
         fqr.start_read = start;
+        return start;
       });
       auto set_end = stop_prom.get_future().then([&fqr](int64_t stop) {
         DBG("Set end_read at ", stop, " on ", fqr.fname, "\n");
         fqr.end_read = stop;
+        return stop;
       });
-      return when_all(set_start, set_end);
+      return when_all(set_start, set_end, fqr.get_file_size(false)).then([&fqr](int64_t start, int64_t stop, int64_t sz) {
+        LOG("Reading ", fqr.get_fname(), " from ", start, " to ", stop, "=", fqr.my_file_size(false), " of ", sz, "\n");
+      });
+    }
+    upcxx::future<> get_future() {
+      return when_all(start_prom.get_future(), stop_prom.get_future()).then([](int64_t start, int64_t stop) {});
     }
   };
   dist_object<PromStartStop> dist_prom;
@@ -130,7 +137,7 @@ class FastqReader {
 
   string get_fname();
 
-  size_t my_file_size();
+  size_t my_file_size(bool include_file_2 = true);
 
   upcxx::future<int64_t> get_file_size(bool include_file2 = false) const;
 
@@ -344,17 +351,20 @@ class FastqReaders {
           // adjust blocks within both files
           int64_t fs1 = file_sizes1[i];
           int64_t fs2 = file_sizes[i] - fs1;
-          double fs1_frac = 1. * fs1 / file_sizes[i];
-          double fs2_frac = 1. * fs2 / file_sizes[i];
-          int64_t file_start_1 = file_start * fs1_frac;
-          int64_t file_len_1 = ((int64_t) (file_read_len * fs1_frac)) + 1;
-          int64_t file_start_2 = file_start * fs2_frac;
-          int64_t file_len_2 = ((int64_t) (file_read_len * fs2_frac)) + 1;
+          int64_t file_start_1 = fs1, file_read_len_1 = 0, file_start_2 = fs2, file_read_len_2 = 0;
+          if (file_start < file_sizes[i]) {
+            double fs1_frac = 1. * fs1 / file_sizes[i];
+            double fs2_frac = 1. * fs2 / file_sizes[i];
+            file_start_1 = file_start * fs1_frac;
+            file_read_len_1 = ((int64_t)(file_read_len * fs1_frac)) + 1;
+            file_start_2 = file_start * fs2_frac;
+            file_read_len_2 = ((int64_t)(file_read_len * fs2_frac)) + 1;
+          }
           DBG("file_name=", fnames[i], " file_start=", file_start, " read_len=", file_read_len, " tot_file_size=", file_sizes[i],
-              " fs1=", fs1, " fs2=", fs2, " start1=", file_start_1, " len1=", file_len_1, " start2=", file_start_2,
-              " len2=", file_len_2, "\n");
-          it->second->set_block(file_start_1, file_len_1);
-          it->second->get_fqr2().set_block(file_start_2, file_len_2);
+              " fs1=", fs1, " fs2=", fs2, " start1=", file_start_1, " len1=", file_read_len_1, " start2=", file_start_2,
+              " len2=", file_read_len_2, "\n");
+          it->second->set_block(file_start_1, file_read_len_1);
+          it->second->get_fqr2().set_block(file_start_2, file_read_len_2);
         } else {
           it->second->set_block(file_start, file_read_len);
           DBG("block for i=", i, " file=", fnames[i], " file_start=", file_start, " file_stop=", file_stop, " len=", file_read_len,
