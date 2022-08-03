@@ -370,7 +370,7 @@ FastqReader::FastqReader(const string &_fname, upcxx::future<> first_wait, bool 
     auto sh_promstartstop1 = make_shared<dist_object<PromStartStop>>(world());
     auto sh_promstartstop2 = make_shared<dist_object<PromStartStop>>(world());
     auto sh_prombarrier = make_shared<upcxx_utils::PromiseBarrier>(world());
-    open_fut = when_all(open_fut, fqr2->open_fut)
+    open_fut = open_fut
                    .then([this, sh_promstartstop1, sh_promstartstop2, sh_prombarrier]() {
                      FastqReader &fqr1 = *this;
                      FastqReader &fqr2 = *(this->fqr2);
@@ -430,7 +430,8 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
     id = id.substr(0, id.size() - 2);
     if (read2.compare(id) == 0) {
       offset2 = 0;
-      DBG("Found pair read1 ", id, " at ", pos1 + offset1, " matches read2 ", read2, " at ", pos2, " offset1=", offset1, " offset2=", offset2, "\n");
+      DBG("Found pair read1 ", id, " at ", pos1 + offset1, " matches read2 ", read2, " at ", pos2, " offset1=", offset1,
+          " offset2=", offset2, "\n");
       read1 = id;
       break;
     }
@@ -450,7 +451,8 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
     id = id.substr(0, id.size() - 2);
     if (read1.compare(id) == 0) {
       offset1 = 0;
-      DBG("Found pair read1 ", read1, " at ", pos1, " matches read2 ", id, " at ", pos2 + offset2, " offset2=", offset2, " offset1=", offset1, "\n");
+      DBG("Found pair read1 ", read1, " at ", pos1, " matches read2 ", id, " at ", pos2 + offset2, " offset2=", offset2,
+          " offset1=", offset1, "\n");
       read2 = id;
       break;
     }
@@ -493,7 +495,7 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
 // Find my boundary start and communicate to prev rank for their boundary end (if my start>0)...
 upcxx::future<> FastqReader::continue_open() {
   if (block_size == -1) return continue_open_default_per_rank_boundaries();  // the old algorithm
-  // use custome block start and block_size
+  // use custom block start and block_size
   if (block_size == 0) {
     // this rank does not read this file
     DBG("This rank will not read ", fname, "\n");
@@ -550,6 +552,7 @@ upcxx::future<> FastqReader::continue_open_default_per_rank_boundaries() {
   assert(upcxx::master_persona().active_with_caller());
   assert(know_file_size.get_future().ready());
   assert(block_size == -1);
+  SWARN("Opening ", fname, " over all ranks, not by global blocks - IO performance may suffer\n");
   auto sz = INT_CEIL(file_size, rank_n());
   set_block(sz * rank_me(), sz);
   io_t.start();
@@ -683,8 +686,9 @@ size_t FastqReader::my_file_size() {
   return size;
 }
 
-future<int64_t> FastqReader::get_file_size() const {
-  return know_file_size.get_future().then([this]() { return this->file_size; });
+future<int64_t> FastqReader::get_file_size(bool include_file_2) const {
+  future<int64_t> fut_f2_size = (include_file_2 && fqr2) ? fqr2->get_file_size() : make_future<int64_t>(0);
+  return when_all(fut_f2_size, know_file_size.get_future()).then([this](int64_t f2_size) { return this->file_size + f2_size; });
 }
 
 size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, bool wait_open) {
@@ -825,12 +829,12 @@ bool FastqReaders::is_open(const string fname) {
   return it != me.readers.end() && it->second->is_open();
 }
 
-size_t FastqReaders::get_open_file_size(const string fname) {
+size_t FastqReaders::get_open_file_size(const string fname, bool include_file_2) {
   assert(is_open(fname));
   FastqReaders &me = getInstance();
   auto it = me.readers.find(fname);
   assert(it != me.readers.end());
-  auto fut_sz = it->second->get_file_size();
+  auto fut_sz = it->second->get_file_size(include_file_2);
   assert(fut_sz.ready());
   return fut_sz.wait();
 }

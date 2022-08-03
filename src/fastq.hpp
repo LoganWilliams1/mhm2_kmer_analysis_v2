@@ -132,7 +132,7 @@ class FastqReader {
 
   size_t my_file_size();
 
-  upcxx::future<int64_t> get_file_size() const;
+  upcxx::future<int64_t> get_file_size(bool include_file2 = false) const;
 
   void advise(bool will_need);
 
@@ -149,6 +149,11 @@ class FastqReader {
 
   bool is_paired() const { return _is_paired; }
 
+  bool is_two_files() const {
+    if (fqr2) assert(is_paired() && !is_interleaved());
+    return (is_paired() && !is_interleaved());
+  }
+
   bool is_interleaved() const {
     if (_is_interleaved) {
       assert(!fqr2);
@@ -164,6 +169,10 @@ class FastqReader {
   void seek_start();
   int64_t tellg();
   bool is_open() { return open_fut.ready(); }
+  FastqReader &get_fqr2() {
+    assert(fqr2);
+    return *fqr2;
+  }
 };
 
 class FastqReaders {
@@ -179,7 +188,7 @@ class FastqReaders {
 
   static bool is_open(const string fname);
 
-  static size_t get_open_file_size(const string fname);
+  static size_t get_open_file_size(const string fname, bool include_file_2 = false);
 
   static FastqReader &open(const string fname, int subsample_pct = 100, upcxx::future<> first_wait = make_future());
 
@@ -199,7 +208,7 @@ class FastqReaders {
     size_t total_size = 0;
     for (string &fname : fnames) {
       FastqReader &fqr = open(fname, subsample_pct);
-      fut_chain = when_all(fut_chain, fqr.get_file_size().then([&total_size](int64_t sz) { total_size += sz; }));
+      fut_chain = when_all(fut_chain, fqr.get_file_size(true).then([&total_size](int64_t sz) { total_size += sz; }));
     }
     fut_chain.wait();
     return total_size;
@@ -217,7 +226,7 @@ class FastqReaders {
       if (!is_open(fname)) {
         needs_blocking = true;
       } else {
-        total_size += get_open_file_size(fname);
+        total_size += get_open_file_size(fname, true);
       }
     }
     if (!needs_blocking) return total_size;  // all are open
@@ -225,6 +234,7 @@ class FastqReaders {
 
     std::vector<promise<>> know_blocks(fnames.size());
     std::vector<int64_t> file_sizes(fnames.size());
+    std::vector<int64_t> file_sizes1(fnames.size());
     assert(subsample_pct > 0 && subsample_pct <= 100);
     int filenum = 0;
     upcxx::future<> chain_fut = make_future();
@@ -236,16 +246,19 @@ class FastqReaders {
       auto &fqr = open(fname, subsample_pct, know_blocks[filenum].get_future());
       if (!fqr.is_open()) {
         needs_blocking = true;
-        upcxx::future<> fut = fqr.get_file_size().then([&total_size, &file_size = file_sizes[filenum]](int64_t sz) {
-          file_size = sz;
-          total_size += sz;
-        });
+        upcxx::future<> fut =
+            when_all(fqr.get_file_size(true), fqr.get_file_size(false))
+                .then([&total_size, &file_size = file_sizes[filenum], &file_size1 = file_sizes1[filenum]](int64_t sz, int64_t sz1) {
+                  file_size = sz;
+                  file_size1 = sz1;
+                  total_size += sz;
+                });
         chain_fut = when_all(chain_fut, fut);
       }
       filenum++;
     }
 
-    chain_fut = chain_fut.then([&fnames, &file_sizes, &total_size, &know_blocks]() {
+    chain_fut = chain_fut.then([&fnames, &file_sizes, &file_sizes1, &total_size, &know_blocks]() {
       assert(fnames.size() == file_sizes.size());
       assert(file_sizes.size() == know_blocks.size());
       auto global_block = INT_CEIL(total_size, rank_n());
@@ -319,7 +332,7 @@ class FastqReaders {
         assert(file_start <= file_stop);
         assert(file_start <= file_sizes[i]);
         assert(file_stop <= file_sizes[i]);
-        auto file_read_len = file_stop - file_start;
+        int64_t file_read_len = file_stop - file_start;
         assert(file_read_len <= my_read_remaining);
         my_read_remaining -= file_read_len;
         assert(my_read_remaining >= 0);
@@ -327,10 +340,26 @@ class FastqReaders {
         // set the partially open FQR block for this file
         auto it = getInstance().readers.find(fnames[i]);
         assert(it != getInstance().readers.end());
-        it->second->set_block(file_start, file_read_len);
-
-        DBG("block for i=", i, " file=", fnames[i], " file_start=", file_start, " file_stop=", file_stop, " len=", file_read_len,
-            " size=", file_sizes[i], "\n");
+        if (it->second->is_two_files()) {
+          // adjust blocks within both files
+          int64_t fs1 = file_sizes1[i];
+          int64_t fs2 = file_sizes[i] - fs1;
+          double fs1_frac = 1. * fs1 / file_sizes[i];
+          double fs2_frac = 1. * fs2 / file_sizes[i];
+          int64_t file_start_1 = file_start * fs1_frac;
+          int64_t file_len_1 = ((int64_t) (file_read_len * fs1_frac)) + 1;
+          int64_t file_start_2 = file_start * fs2_frac;
+          int64_t file_len_2 = ((int64_t) (file_read_len * fs2_frac)) + 1;
+          DBG("file_name=", fnames[i], " file_start=", file_start, " read_len=", file_read_len, " tot_file_size=", file_sizes[i],
+              " fs1=", fs1, " fs2=", fs2, " start1=", file_start_1, " len1=", file_len_1, " start2=", file_start_2,
+              " len2=", file_len_2, "\n");
+          it->second->set_block(file_start_1, file_len_1);
+          it->second->get_fqr2().set_block(file_start_2, file_len_2);
+        } else {
+          it->second->set_block(file_start, file_read_len);
+          DBG("block for i=", i, " file=", fnames[i], " file_start=", file_start, " file_stop=", file_stop, " len=", file_read_len,
+              " size=", file_sizes[i], "\n");
+        }
 
         // notify FQR::continue_open to continue to open
         know_blocks[i].fulfill_anonymous(1);
