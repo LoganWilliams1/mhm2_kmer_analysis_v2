@@ -82,10 +82,10 @@ set_dir_striping()
      then
          echo "LUSTRE is not on ${dir}"
      else
-       if [ "$stripe" == "72" ]
+       if [ "$stripe" == "-1" ]
        then
           stripe=$(( $(echo "${lfsdf}" | grep -c _UUID) * 8 / 10))
-          echo "using stripe ${stripe} instead of 72"
+          echo "using stripe ${stripe} instead of -1"
        fi
 
        if [ ${stripe} -le 1 ]
