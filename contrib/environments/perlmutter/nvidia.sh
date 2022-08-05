@@ -3,7 +3,8 @@ module load cpe-cuda
 module load cmake
 
 module use /global/common/software/m2878/perlmutter/modulefiles
-module load upcxx
+# module load upcxx
+module load upcxx/bleeding-edge ; export GASNET_OFI_RECEIVE_BUFF_SIZE=single
 
 module list
 which cc

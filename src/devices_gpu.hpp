@@ -45,7 +45,7 @@
 #include "upcxx_utils/thread_pool.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 
-size_t get_avail_gpu_mem_per_rank();
+size_t get_gpu_avail_mem_per_rank();
 
 void init_devices();
 void done_init_devices();
