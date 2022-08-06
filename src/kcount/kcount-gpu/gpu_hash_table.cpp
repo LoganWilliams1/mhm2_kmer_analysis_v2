@@ -653,11 +653,13 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries)
   cudaErrchk(cudaMemcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(unsigned int), cudaMemcpyDeviceToHost));
   num_purged = counts_host[0];
   num_entries = counts_host[1];
+#ifdef DEBUG
   auto expected_num_entries = read_kmers_stats.new_inserts - num_purged;
   if (num_entries != (int)expected_num_entries)
     cerr << KLRED << "[" << upcxx_rank_me << "] WARNING mismatch " << num_entries << " != " << expected_num_entries << " diff "
          << (num_entries - (int)expected_num_entries) << " new inserts " << read_kmers_stats.new_inserts << " num purged "
          << num_purged << KNORM << endl;
+#endif
   read_kmers_dev.num = num_entries;
 }
 
@@ -705,9 +707,11 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   cudaFree(counts_gpu);
   num_dropped = counts_host[0];
   num_unique = counts_host[1];
+#ifdef DEBUG
   if (num_unique != read_kmers_dev.num)
     cerr << KLRED << "[" << upcxx_rank_me << "] <gpu_hash_table.cpp:" << __LINE__ << "> WARNING: " << KNORM
          << "mismatch in expected entries " << num_unique << " != " << read_kmers_dev.num << "\n";
+#endif
   // now copy the gpu hash table values across to the host
   // We only do this once, which requires enough memory on the host to store the full GPU hash table, but since the GPU memory
   // is generally a lot less than the host memory, it should be fine.
