@@ -340,12 +340,12 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
 // hack to avoid agg store update() within progress context
 // avoid agg store update() within progress
-struct MoveReadsToTargetUpdatesBuffer { int32_t target; PackedRead read1, read2;};
+struct MoveReadsToTargetUpdatesBuffer { int32_t target; std::pair<PackedRead, PackedRead> read_pair; };
 static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store, vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
   if (!updates_buffer.empty()) {
     vector<MoveReadsToTargetUpdatesBuffer> tmp_ub; tmp_ub.swap(updates_buffer);
     for(auto &ub : tmp_ub) {
-      read_seq_store.update(ub.target, {ub.read1, ub.read2});
+      read_seq_store.update(ub.target, std::move(ub.read_pair));
     }
   }
 }
@@ -358,8 +358,8 @@ static dist_object<deque<PackedRead>> move_reads_to_targets(PackedReadsList &pac
   ThreeTierAggrStore<pair<PackedRead, PackedRead>> read_seq_store;
   // FIXME read_seq_store.set_restricted_updates();
   read_seq_store.set_update_func([&new_packed_reads](pair<PackedRead, PackedRead> &&read_pair_info) {
-    new_packed_reads->push_back(read_pair_info.first);
-    new_packed_reads->push_back(read_pair_info.second);
+    new_packed_reads->emplace_back(std::move(read_pair_info.first));
+    new_packed_reads->emplace_back(std::move(read_pair_info.second));
   });
   int est_update_size = 600;
   int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
@@ -383,15 +383,15 @@ static dist_object<deque<PackedRead>> move_reads_to_targets(PackedReadsList &pac
                        return it->second;
                      },
                      read_to_target_map, read_id)
-                     .then([&updates_buffer, &num_not_found, &read_seq_store, packed_read1, packed_read2](int target) {
+                     .then([&updates_buffer, &num_not_found, &read_seq_store, &packed_read1, &packed_read2](int target) {
                        if (target == -1) {
                          num_not_found++;
                          target = std::experimental::randint(0, rank_n() - 1);
                        }
                        if (target < 0 || target >= rank_n()) DIE("target out of range ", target);
                        assert(target >= 0 && target < rank_n());
-                       MoveReadsToTargetUpdatesBuffer ub{.target = target, .read1 = std::move(packed_read1), .read2 = std::move(packed_read2)};
-                       updates_buffer.push_back(ub);
+                       MoveReadsToTargetUpdatesBuffer ub{.target = target, {std::move(packed_read1), std::move(packed_read2)}};
+                       updates_buffer.emplace_back(std::move(ub));
                      });
       limit_outstanding_futures(fut).wait();
       move_reads_to_target_update(read_seq_store, updates_buffer);
@@ -412,12 +412,20 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
 
   int64_t num_reads = 0;
   for (auto packed_reads : packed_reads_list) num_reads += packed_reads->get_local_num_reads();
-  auto all_num_reads = reduce_all(num_reads, op_fast_add).wait();
+  auto msm_num_reads = min_sum_max_reduce_one(num_reads).wait();
+  auto all_num_reads = broadcast(msm_num_reads.sum,0).wait();
 
   auto kmer_to_cid_map = compute_kmer_to_cid_map(ctgs);
   auto cid_to_reads_map = compute_cid_to_reads_map(packed_reads_list, kmer_to_cid_map, ctgs.size());
   auto read_to_target_map = compute_read_locations(cid_to_reads_map, all_num_reads);
   auto new_packed_reads = move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads);
+
+  LOG("Had ", num_reads, " shuffled to ", new_packed_reads->size(), "\n");
+  min_sum_max_reduce_one(new_packed_reads->size()).then([msm_num_reads, num_reads, &new_packed_reads](MinSumMax<size_t> shuffled_msm) {
+    SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
+    SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm.to_string(), "\n");
+  }).wait();
+  Timings::wait_pending();
 
   // now copy the new packed reads to the old
   for (auto packed_reads : packed_reads_list) delete packed_reads;
