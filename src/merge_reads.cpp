@@ -376,7 +376,8 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
   time_overhead.stop();
   if (best_identity >= 0.5) {
     if (best_trim_pos < 12) best_trim_pos = 0;
-    //DBG("Read ", rname, " is trimmed at ", best_trim_pos, " best identity ", best_identity, "\n", best_adapter_seq, "\n", seq, "\n");
+    // DBG("Read ", rname, " is trimmed at ", best_trim_pos, " best identity ", best_identity, "\n", best_adapter_seq, "\n", seq,
+    // "\n");
     if (!best_trim_pos) reads_removed++;
     bases_trimmed += seq.length() - best_trim_pos;
     seq.resize(best_trim_pos);
@@ -388,6 +389,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
                  PackedReadsList &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
                  int subsample_pct) {
+  assert(!upcxx::in_progress());
   assert(subsample_pct > 0 && subsample_pct <= 100);
   BarrierTimer timer(__FILEFUNC__);
   Timer merge_time(__FILEFUNC__ + " merging all");
@@ -455,9 +457,27 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       all_outputs.push_back(sh_out_file);
       merged_reads_fname_list.push_back(merged_name);
     }
+
+    int64_t num_pairs = 0;
+    int64_t bytes_read = 0;
+    int64_t num_ambiguous = 0;
+    int64_t num_merged = 0;
+    int64_t num_reads = 0;
+
+    int64_t bases_trimmed = 0;
+    int64_t reads_removed = 0;
+    int64_t bases_read = 0;
+    int64_t missing_read1 = 0;
+    int64_t missing_read2 = 0;
+
     int max_read_len = 0;
     int64_t overlap_len = 0;
     int64_t merged_len = 0;
+
+    auto &packed_reads_i = packed_reads_list[ri];
+
+    fqr.advise(true);
+    auto my_file_size = fqr.my_file_size();
 
     const int16_t MIN_OVERLAP = 12;
     const int16_t EXTRA_TEST_OVERLAP = 2;
@@ -472,23 +492,12 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     const uint8_t MAX_MATCH_QUAL = 41 + qual_offset;
 
     string id1, seq1, quals1, id2, seq2, quals2, tmp_id, tmp_seq, tmp_quals;
-    int64_t num_pairs = 0;
-    int64_t bytes_read = 0;
-    int64_t num_ambiguous = 0;
-    int64_t num_merged = 0;
-    int64_t num_reads = 0;
+
     DBG("Starting merge on ", fqr.get_fname(), " read_id=", read_id, " tell=", (int64_t)(fqr.my_file_size() > 0 ? fqr.tellg() : -1),
         " sz=", fqr.my_file_size(), "\n");
-    int64_t bases_trimmed = 0;
-    int64_t reads_removed = 0;
-    int64_t bases_read = 0;
-    int64_t missing_read1 = 0;
-    int64_t missing_read2 = 0;
-
     bool skip_read1 = false, skip_read2 = false;
     for (;; num_pairs++) {
-      discharge();
-      //DBG_VERBOSE("Merging num_pair=", num_pairs, " read_id=", read_id, "\n");
+      // DBG_VERBOSE("Merging num_pair=", num_pairs, " read_id=", read_id, "\n");
       if (!fqr.is_paired()) {
         // unpaired reads get dummy read2 just like merged reads
         read_files_t.start();
@@ -500,8 +509,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         };
         bytes_read += bytes_read1;
         progbar.update(bytes_read);
-        packed_reads_list[ri]->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
-        packed_reads_list[ri]->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
+        packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
+        packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         read_id += 2;
         if (checkpoint) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
@@ -515,14 +524,14 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         int64_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
         read_files_t.stop();
         if (!bytes_read1) break;  // end of file
-        //DBG("Read1: ", id1, " ", seq1.length(), "\n");
+        // DBG("Read1: ", id1, " ", seq1.length(), "\n");
 
         bytes_read += bytes_read1;
         bases_read += seq1.length();
       } else {
         // use the last read as read1
         assert(!tmp_id.empty());
-        //DBG("Using deferred Read1: ", tmp_id, " ", tmp_seq.length(), "\n");
+        // DBG("Using deferred Read1: ", tmp_id, " ", tmp_seq.length(), "\n");
         id1 = tmp_id;
         seq1 = tmp_seq;
         quals1 = tmp_quals;
@@ -535,7 +544,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         skip_read2 = false;
       } else {
         assert(id1.empty() || id1[id1.length() - 1] == '2');
-        //DBG("Missing read1, faking it\n");
+        // DBG("Missing read1, faking it\n");
         // got read 2: missing read 1 of expected pair! (Issue 117 to be robust to this missing read)
         missing_read1++;
         // set read2
@@ -558,7 +567,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
           id2.clear();
           skip_read1 = skip_read2 = true;
         }
-        //DBG("Read2: ", id2, " ", seq2.length(), "\n");
+        // DBG("Read2: ", id2, " ", seq2.length(), "\n");
         bytes_read += bytes_read2;
         bases_read += seq2.length();
       } else {
@@ -571,7 +580,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         if (skip_read1 && (skip_read2 || id2.empty())) break;  // end of file
         assert(id2.empty() || id2[id2.length() - 1] == '1' ||
                id2[id2.length() - 1] == '2');  // can miss both this read2 and the next read1, getting the next read2
-        //DBG("Missing read2, faking it\n");
+        // DBG("Missing read2, faking it\n");
         // got read1 : missing read2 of expected pair! (Issue 117 to be robust to this missing read)
         missing_read2++;
         // preserve this as the *next* read1 (may actually be a read2)
@@ -767,8 +776,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         merged_len += read_len;
         overlap_len += overlap;
 
-        packed_reads_list[ri]->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
-        packed_reads_list[ri]->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
+        packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
+        packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         if (checkpoint) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
@@ -776,8 +785,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
       if (!is_merged) {
         // write without the revcomp
-        packed_reads_list[ri]->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
-        packed_reads_list[ri]->add_read("r" + to_string(read_id) + "/2", seq2, quals2);
+        packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
+        packed_reads_i->add_read("r" + to_string(read_id) + "/2", seq2, quals2);
         if (checkpoint) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\n" << seq2 << "\n+\n" << quals2 << "\n";
@@ -846,7 +855,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);
 
   DBG("last read_id=", read_id, " last should not be > ", start_read_id + read_id_block, "\n");
-  if (read_id >= start_read_id + read_id_block) WARN("Invalid read_id=", read_id, " start_read_id=", start_read_id, " read_id_block=", read_id_block, "\n");
+  if (read_id >= start_read_id + read_id_block)
+    WARN("Invalid read_id=", read_id, " start_read_id=", start_read_id, " read_id_block=", read_id_block, "\n");
   assert(read_id < start_read_id + read_id_block);
   merge_time.initiate_exit_reduction();
 
