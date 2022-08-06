@@ -476,9 +476,6 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
     auto &packed_reads_i = packed_reads_list[ri];
 
-    fqr.advise(true);
-    auto my_file_size = fqr.my_file_size();
-
     const int16_t MIN_OVERLAP = 12;
     const int16_t EXTRA_TEST_OVERLAP = 2;
     const int16_t MAX_MISMATCHES = 3;  // allow up to 3 mismatches, with MAX_PERROR
@@ -796,7 +793,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       read_id += 2;
     }
     DBG("Merged my set of reads. num_merged=", num_merged, " num_ambig=", num_ambiguous, " bytes_read=", bytes_read, "\n");
+    read_files_t.start();
     fqr.advise(false);  // free kernel memory
+    read_files_t.stop();
 
     if (checkpoint) {
       // close this file, but do not wait for it yet
