@@ -147,3 +147,5 @@ add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
 # seed length used for post assembly alignment
 add_definitions(-DPOST_ASM_ALN_K=21)
+add_definitions(-DUSE_ALLOCATOR=1)
+add_definitions(-DREAD_IN_SSTREAM=0)

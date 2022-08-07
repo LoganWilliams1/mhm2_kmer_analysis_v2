@@ -66,15 +66,20 @@ using namespace upcxx_utils;
 
 using std::max;
 
+#ifndef USE_ALLOCATOR
+#define USE_ALLOCATOR 1
+#endif
+
 PackedRead::PackedRead()
     : is_allocated(0)
     , read_id(0)
     , read_len(0)
     , bytes(nullptr) {
-  //DBG("Constructed empty ", (void *)this, "\n");
+  // DBG("Constructed empty ", (void *)this, "\n");
 }
 
-PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset, PackedReads *packed_reads) {
+PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset, PackedReads *packed_reads)
+    : is_allocated(USE_ALLOCATOR && packed_reads) {
   read_id = strtol(id_str.c_str() + 1, nullptr, 10) + 1;
   assert(labs(read_id) < MAX_READ_ID);
   if (id_str[id_str.length() - 1] == '1') read_id *= -1;
@@ -87,12 +92,10 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
   // packed is same length as sequence. Set first 3 bits to represent A,C,G,T,N
   // set next five bits to represent quality (from 0 to 32). This doesn't cover the full quality range (only up to 32)
   // but it's all we need since once quality is greater than the qual_thres (20), we treat the base as high quality
-  if (packed_reads) {
+  if (is_allocated) {
     bytes = packed_reads->allocate_read(seq.length());
-    is_allocated = 1;
   } else {
     bytes = new unsigned char[seq.length()];
-    is_allocated = 0;
   }
 
   for (unsigned i = 0; i < seq.length(); i++) {
@@ -118,20 +121,21 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
     bytes[i] |= ((unsigned char)std::min(quals[i] - qual_offset, 31) << 3);
   }
   read_len = (uint16_t)seq.length();
-  //DBG("Constructed ", (void *)this, " is_allocated=", is_allocated, " len=", read_len, " id=", read_id, "\n");
+  // DBG("Constructed ", (void *)this, " is_allocated=", is_allocated, " len=", read_len, " id=", read_id, "\n");
 }
 
 PackedRead::PackedRead(const PackedRead &copy, PackedReads *packed_reads)
-    : is_allocated(packed_reads ? 1 : 0)
+    : is_allocated((USE_ALLOCATOR && packed_reads) ? 1 : 0)
     , read_id(copy.read_id)
     , read_len(copy.read_len)
     , bytes(nullptr) {
-  if (packed_reads) {
+  if (is_allocated) {
     bytes = packed_reads->allocate_read(read_len);
   } else {
     bytes = new unsigned char[read_len];
   }
-  //DBG("Constructed copy ", (void *)this, " from ", (void *)&copy, " allocate=", is_allocated, " was_allocated=", copy.is_allocated,  " len=", read_len, " id=", read_id, "\n");
+  // DBG("Constructed copy ", (void *)this, " from ", (void *)&copy, " allocate=", is_allocated, " was_allocated=",
+  // copy.is_allocated,  " len=", read_len, " id=", read_id, "\n");
   memcpy(bytes, copy.bytes, read_len);
 }
 
@@ -140,11 +144,12 @@ PackedRead::PackedRead(const PackedRead &copy, bool no_new_allocation_ignored)
     , read_id(copy.read_id)
     , read_len(copy.read_len)
     , bytes(copy.bytes) {
-  //DBG("Constructed non-allocated ", (void *)this, " from ", (void *)&copy, " allocate=", is_allocated,   " was_allocated=", copy.is_allocated, " len=", read_len, " id=", read_id, "\n");
+  // DBG("Constructed non-allocated ", (void *)this, " from ", (void *)&copy, " allocate=", is_allocated,   " was_allocated=",
+  // copy.is_allocated, " len=", read_len, " id=", read_id, "\n");
 }
 
 PackedRead::PackedRead(PackedRead &&move, PackedReads *packed_reads)
-    : is_allocated(packed_reads ? 1 : 0)
+    : is_allocated((USE_ALLOCATOR && packed_reads) ? 1 : 0)
     , read_id(move.read_id)
     , read_len(move.read_len)
     , bytes(nullptr) {
@@ -155,20 +160,21 @@ PackedRead::PackedRead(PackedRead &&move, PackedReads *packed_reads)
   } else {
     bytes = move.bytes;
   }
-  //DBG("Constructed move ", (void *)this, " from ", (void *)&move, " allocate=", is_allocated, " was_allocated=", move.is_allocated,   " len=", read_len, " id=", read_id, "\n");
+  // DBG("Constructed move ", (void *)this, " from ", (void *)&move, " allocate=", is_allocated, " was_allocated=",
+  // move.is_allocated,   " len=", read_len, " id=", read_id, "\n");
   move.bytes = nullptr;
   move.clear();
 }
 
 PackedRead &PackedRead::operator=(const PackedRead &copy) {
-  //DBG("copy assigned ", (void *)this, " from ", (void *)&copy, "\n");
+  // DBG("copy assigned ", (void *)this, " from ", (void *)&copy, "\n");
   PackedRead pr(copy);
   std::swap(*this, pr);
   return *this;
 }
 
 PackedRead &PackedRead::operator=(PackedRead &&move) {
-  //DBG("move assigned ", (void *)this, " from ", (void *)&move, "\n");
+  // DBG("move assigned ", (void *)this, " from ", (void *)&move, "\n");
   PackedRead pr(std::move(move));
   std::swap(*this, pr);
   return *this;
