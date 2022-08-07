@@ -138,6 +138,8 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // first record is the first record, include it.  Every other partition will be at least 1 full record after offset.
   // but read the first few lines anyway
 
+  if (!in || !in->is_open()) DIE("Fastq ", fname, " is not open to find the next record after offset=", offset, "\n");
+  INFO("Finding next ptr for ", fname, " after ", offset, "\n");
   // eof - do not read anything
   if (offset >= file_size) return file_size;
 
@@ -433,105 +435,95 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
     int64_t pos1, offset1, pos2, offset2;
   };
 
-  // non-communicative, mostly I/O code can run in another thread
-  auto lambda_find_match_pair = [&fqr1, &fqr2]() -> PairPositions {
-    int64_t pos1 = fqr1.start_read, pos2 = fqr2.start_read;
-    string id, seq, qual;
-    int64_t offset1 = 0, offset2 = 0;
-    string read1, read2;
-    int64_t bytes1 = 0, bytes2 = 0;
-    while (true) {
-      offset1 += bytes1;
-      bytes1 = fqr1.get_next_fq_record(id, seq, qual, false);
-      if (bytes1 == 0) {
-        // no match found in entire block. so no reads will be returned
-        // this should only happen in the last ranks of a small file in a large job
-        offset1 = fqr1.end_read - fqr1.start_read;
-        offset2 = fqr2.end_read - fqr2.start_read;
-        break;
-      }
-      rtrim(id);
-      DBG("id read1 '", id, "' offset1=", offset1, " '", id[id.size() - 2], "' '", id[id.size() - 1], "'\n");
-      assert(id.size() >= 3 && id[id.size() - 2] == '/' && id[id.size() - 1] == '1' && "read1 has the expected format");
-      id = id.substr(0, id.size() - 2);
-      if (read2.compare(id) == 0) {
-        offset2 = 0;
-        DBG("Found pair read1 ", id, " at ", pos1 + offset1, " matches read2 ", read2, " at ", pos2, " offset1=", offset1,
-            " offset2=", offset2, "\n");
-        read1 = id;
-        break;
-      }
-      if (read1.empty()) read1 = id;
-      offset2 += bytes2;
-      bytes2 = fqr1.get_next_fq_record(id, seq, qual, false);  // use fqr1 as it calls fqr2 to mimic interleaving!!!
-      if (bytes2 == 0) {
-        // no match found in entire block. so no reads will be returned
-        // this should only happen in the last ranks of a small file in a large job
-        offset1 = fqr1.end_read - fqr1.start_read;
-        offset2 = fqr2.end_read - fqr2.start_read;
-        break;
-      }
-      rtrim(id);
-      DBG("id read2 ", id, " offset2=", offset2, "\n");
-      assert(id.size() >= 3 && id[id.size() - 2] == '/' && id[id.size() - 1] == '2' && "read2 has the expected format");
-      id = id.substr(0, id.size() - 2);
-      if (read1.compare(id) == 0) {
-        offset1 = 0;
-        DBG("Found pair read1 ", read1, " at ", pos1, " matches read2 ", id, " at ", pos2 + offset2, " offset2=", offset2,
-            " offset1=", offset1, "\n");
-        read2 = id;
-        break;
-      }
-      if (read2.empty()) read2 = id;
+  int64_t pos1 = fqr1.start_read, pos2 = fqr2.start_read;
+  string id, seq, qual;
+  int64_t offset1 = 0, offset2 = 0;
+  string read1, read2;
+  int64_t bytes1 = 0, bytes2 = 0;
+  while (true) {
+    offset1 += bytes1;
+    bytes1 = fqr1.get_next_fq_record(id, seq, qual, false);
+    if (bytes1 == 0) {
+      // no match found in entire block. so no reads will be returned
+      // this should only happen in the last ranks of a small file in a large job
+      offset1 = fqr1.end_read - fqr1.start_read;
+      offset2 = fqr2.end_read - fqr2.start_read;
+      break;
     }
-    if (rank_me() == 0) {
-      assert(pos1 + offset1 == 0 && pos2 + offset2 == 0 && "Rank0 starts at pos 0");
+    rtrim(id);
+    DBG("id read1 '", id, "' offset1=", offset1, " '", id[id.size() - 2], "' '", id[id.size() - 1], "'\n");
+    assert(id.size() >= 3 && id[id.size() - 2] == '/' && id[id.size() - 1] == '1' && "read1 has the expected format");
+    id = id.substr(0, id.size() - 2);
+    if (read2.compare(id) == 0) {
+      offset2 = 0;
+      DBG("Found pair read1 ", id, " at ", pos1 + offset1, " matches read2 ", read2, " at ", pos2, " offset1=", offset1,
+          " offset2=", offset2, "\n");
+      read1 = id;
+      break;
     }
-    LOG("Found matching pair for ", fqr1.fname, " at ", pos1 + offset1, " and ", fqr2.fname, " at ", pos2 + offset2, " - ", read1,
-        "\n");
-    return {pos1, offset1, pos2, offset2};
-  };
-  auto fut_found_matching_pair = upcxx_utils::execute_in_thread_pool(lambda_find_match_pair);
+    if (read1.empty()) read1 = id;
+    offset2 += bytes2;
+    bytes2 = fqr1.get_next_fq_record(id, seq, qual, false);  // use fqr1 as it calls fqr2 to mimic interleaving!!!
+    if (bytes2 == 0) {
+      // no match found in entire block. so no reads will be returned
+      // this should only happen in the last ranks of a small file in a large job
+      offset1 = fqr1.end_read - fqr1.start_read;
+      offset2 = fqr2.end_read - fqr2.start_read;
+      break;
+    }
+    rtrim(id);
+    DBG("id read2 ", id, " offset2=", offset2, "\n");
+    assert(id.size() >= 3 && id[id.size() - 2] == '/' && id[id.size() - 1] == '2' && "read2 has the expected format");
+    id = id.substr(0, id.size() - 2);
+    if (read1.compare(id) == 0) {
+      offset1 = 0;
+      DBG("Found pair read1 ", read1, " at ", pos1, " matches read2 ", id, " at ", pos2 + offset2, " offset2=", offset2,
+          " offset1=", offset1, "\n");
+      read2 = id;
+      break;
+    }
+    if (read2.empty()) read2 = id;
+  }
+  if (rank_me() == 0) {
+    assert(pos1 + offset1 == 0 && pos2 + offset2 == 0 && "Rank0 starts at pos 0");
+  }
+  LOG("Found matching pair for ", fqr1.fname, " at ", pos1 + offset1, " and ", fqr2.fname, " at ", pos2 + offset2, " - ", read1,
+      "\n");
 
-  auto fut_fulfill_positions = fut_found_matching_pair.then(
-      [&fqr1, &fqr2, &dist_start_stop1, &dist_start_stop2, target_read_size, old_subsample](PairPositions pp) {
-        int64_t pos1 = pp.pos1, offset1 = pp.offset1, pos2 = pp.pos2, offset2 = pp.offset2;
-        DBG("Fulfilling matching self starts fname=", fqr1.fname, " and ", fqr2.fname, "\n");
-        dist_start_stop1->start_prom.fulfill_result(pos1 + offset1);
-        dist_start_stop2->start_prom.fulfill_result(pos2 + offset2);
-        if (pos1 > 0) {
-          assert(pos2 > 0);
-          assert(rank_me() > 0);
-          // tell the previous rank where I am starting
-          rpc_ff(
-              rank_me() - 1,
-              [](dist_object<PromStartStop> &dist_start_stop1, dist_object<PromStartStop> &dist_start_stop2, int64_t end1,
-                 int64_t end2, string fname) {
-                DBG("Fulfilling both matching end from next rank fname=", fname, " and 2, end1=", end1, " end2=", end2, "\n");
-                dist_start_stop1->stop_prom.fulfill_result(end1);
-                dist_start_stop2->stop_prom.fulfill_result(end2);
-              },
-              dist_start_stop1, dist_start_stop2, pos1 + offset1, pos2 + offset2, fqr1.fname);
-        }
-        if (pos1 + offset1 + target_read_size >= fqr1.file_size) {
-          // special case of eof -- use file_size
-          DBG("Fulfilling matching end of file fname=", fqr1.fname, " and ", fqr2.fname, "\n");
-          dist_start_stop1->stop_prom.fulfill_result(fqr1.file_size);
-          dist_start_stop2->stop_prom.fulfill_result(fqr2.file_size);
-        }
-        auto fut1 = dist_start_stop1->set(fqr1).then([&fqr1]() {
-          fqr1.seek_start();
-          fqr1.first_file = true;
-        });
-        auto fut2 = dist_start_stop2->set(fqr2).then([&fqr2]() { fqr2.seek_start(); });
-        return when_all(fut1, fut2).then([&fqr1, &fqr2, old_subsample]() {
-          // restore subsampling
-          fqr1.subsample_pct = old_subsample;
-          fqr2.subsample_pct = old_subsample;
-          DBG("Found matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
-        });
-      });
-  return fut_fulfill_positions;
+  DBG("Fulfilling matching self starts fname=", fqr1.fname, " and ", fqr2.fname, "\n");
+  dist_start_stop1->start_prom.fulfill_result(pos1 + offset1);
+  dist_start_stop2->start_prom.fulfill_result(pos2 + offset2);
+  if (pos1 > 0) {
+    assert(pos2 > 0);
+    assert(rank_me() > 0);
+    // tell the previous rank where I am starting
+    rpc_ff(
+        rank_me() - 1,
+        [](dist_object<PromStartStop> &dist_start_stop1, dist_object<PromStartStop> &dist_start_stop2, int64_t end1, int64_t end2,
+           string fname) {
+          DBG("Fulfilling both matching end from next rank fname=", fname, " and 2, end1=", end1, " end2=", end2, "\n");
+          dist_start_stop1->stop_prom.fulfill_result(end1);
+          dist_start_stop2->stop_prom.fulfill_result(end2);
+        },
+        dist_start_stop1, dist_start_stop2, pos1 + offset1, pos2 + offset2, fqr1.fname);
+  }
+  if (pos1 + offset1 + target_read_size >= fqr1.file_size) {
+    // special case of eof -- use file_size
+    DBG("Fulfilling matching end of file fname=", fqr1.fname, " and ", fqr2.fname, "\n");
+    dist_start_stop1->stop_prom.fulfill_result(fqr1.file_size);
+    dist_start_stop2->stop_prom.fulfill_result(fqr2.file_size);
+  }
+  auto fut1 = dist_start_stop1->set(fqr1).then([&fqr1]() {
+    fqr1.seek_start();
+    fqr1.first_file = true;
+  });
+  auto fut2 = dist_start_stop2->set(fqr2).then([&fqr2]() { fqr2.seek_start(); });
+  return when_all(fut1, fut2).then([&fqr1, &fqr2, old_subsample]() {
+    // restore subsampling
+    fqr1.subsample_pct = old_subsample;
+    fqr2.subsample_pct = old_subsample;
+    DBG("Found matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
+  });
 }
 
 // Find my boundary start and communicate to prev rank for their boundary end (if my start>0)...
@@ -546,64 +538,49 @@ future<> FastqReader::continue_open() {
     return dist_prom->set(*this);
   }
 
-  // non-communicative, mostly I/O code can run in another thread
-  auto lambda_open_and_find_next_record = [&self = *this]() -> int64_t {
-    auto &io_t = self.io_t;
-    auto &in = self.in;
-    auto &fname = self.fname;
-    auto &block_start = self.block_start;
-    auto &file_size = self.file_size;
-    io_t.start();
-    if (!in) {
-      in.reset(new ifstream(fname));
-      LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
-    }
-    if (!in) {
-      SDIE("Could not open file ", fname, ": ", strerror(errno));
-    }
-    DBG("in.tell=", in->tellg(), "\n");
+  io_t.start();
+  if (!in) {
+    in.reset(new ifstream(fname));
+    LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
+  }
+  if (!in) {
+    SDIE("Could not open file ", fname, ": ", strerror(errno));
+  }
+  DBG("in.tell=", in->tellg(), "\n");
 
-    io_t.stop();
+  io_t.stop();
 
-    assert(block_start <= file_size);
-    int64_t my_start = self.get_fptr_for_next_record(block_start);
-    return my_start;
-  };
-  auto fut_opened_and_found_next_record = upcxx_utils::execute_in_thread_pool(lambda_open_and_find_next_record);
+  assert(block_start <= file_size);
 
-  auto fut_communicate_and_seek = fut_opened_and_found_next_record.then([&self = *this](int64_t my_start) {
-    auto &dist_prom = self.dist_prom;
-    auto &fname = self.fname;
+  int64_t my_start = get_fptr_for_next_record(block_start);
 
-    using DPSS = dist_object<PromStartStop>;
-    if (rank_me() > 0 && my_start != 0) {
-      rpc_ff(
-          rank_me() - 1,
-          [](DPSS &dpss, int64_t end_pos, string fname) {
-            DBG("Fulfilling my end from next end_pos=", end_pos, " fname=", fname, "\n");
-            dpss->stop_prom.fulfill_result(end_pos);
-          },
-          dist_prom, my_start, fname);
-    }
-    DBG("Fulfilling my start=", my_start, " fname=", fname, "\n");
-    dist_prom->start_prom.fulfill_result(my_start);
+  using DPSS = dist_object<PromStartStop>;
+  if (rank_me() > 0 && my_start != 0) {
+    rpc_ff(
+        rank_me() - 1,
+        [](DPSS &dpss, int64_t end_pos, string fname) {
+          DBG("Fulfilling my end from next end_pos=", end_pos, " fname=", fname, "\n");
+          dpss->stop_prom.fulfill_result(end_pos);
+        },
+        dist_prom, my_start, fname);
+  }
+  DBG("Fulfilling my start=", my_start, " fname=", fname, "\n");
+  dist_prom->start_prom.fulfill_result(my_start);
 
-    if (self.block_start + self.block_size >= self.file_size) {
-      // next rank will never send their end as it will not even try to open this file
-      DBG("Fulfilling my_end is eof fname=", fname, "\n");
-      dist_prom->stop_prom.fulfill_result(self.file_size);
-    } else {
-      // expecting an rpc from rank_me + 1
-    }
-    auto fut_set = dist_prom->set(self);
-    auto fut_seek = fut_set.then([&self]() {
-      DBG("start_read=", self.start_read, " end_read=", self.end_read, "\n");
-      if (self.start_read != self.end_read) self.seek_start();
-    });
-    progress();
-    return fut_seek;
+  if (block_start + block_size >= file_size) {
+    // next rank will never send their end as it will not even try to open this file
+    DBG("Fulfilling my_end is eof fname=", fname, "\n");
+    dist_prom->stop_prom.fulfill_result(file_size);
+  } else {
+    // expecting an rpc from rank_me + 1
+  }
+  auto fut_set = dist_prom->set(*this);
+  auto fut_seek = fut_set.then([&self = *this]() {
+    DBG("start_read=", self.start_read, " end_read=", self.end_read, "\n");
+    if (self.start_read != self.end_read) self.seek_start();
   });
-  return fut_communicate_and_seek;
+  progress();
+  return fut_seek;
 }
 
 // all ranks open, 1 rank per node finds block boundaries
