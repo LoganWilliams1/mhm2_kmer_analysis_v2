@@ -139,7 +139,6 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // but read the first few lines anyway
 
   if (!in || !in->is_open()) DIE("Fastq ", fname, " is not open to find the next record after offset=", offset, "\n");
-  INFO("Finding next ptr for ", fname, " after ", offset, "\n");
   // eof - do not read anything
   if (offset >= file_size) return file_size;
 
