@@ -36,10 +36,13 @@ using upcxx_utils::get_size_str;
 
 LinearAllocatorPool::LinearAllocatorPool(const std::size_t block_size, const std::size_t total_size)
     : m_block_size(block_size)
-    , m_totalSize{total_size}
+    , m_totalSize{0}
     , m_used{0}
     , m_peak{0}
-    , m_num_allocations{0} {}
+    , m_num_allocations{0} {
+  Reserve(total_size);
+  assert(m_totalSize >= total_size);
+}
 
 LinearAllocatorPool::~LinearAllocatorPool() { FreeBlocks(); }
 
@@ -67,28 +70,17 @@ void *LinearAllocatorPool::Allocate(const std::size_t size, const std::size_t al
   }
 
   if (m_blocks.empty() || m_blocks.back().second + size > m_block_size) {
-    if (m_blocks.size() > 1) {
-      // sort the list with most free block at the back
-      auto it = m_blocks.rbegin();
-      auto test = it++;
-      while (it != m_blocks.rend()) {
-        if (it->second + size > m_block_size) break;
-        if (it->second < test->second) {
-          // a previous block has enough room
-          std::swap(*it, *test);
-          assert(it->second > test->second);
-          assert(test->second + size <= m_block_size);
-          DBG("Swapped blocks offset=", test->second, " < ", it->second, "\n");
-          break;
-        }
-      }
-    }
-    if (m_blocks.empty() || m_blocks.back().second + size > m_block_size) {
+    // if the previous one is unused, move this filled block in the back up to the front
+    if (m_blocks.size() > 1 && m_blocks[m_blocks.size() - 2].second == 0) {
+      m_blocks.push_front(m_blocks.back());
+      m_blocks.pop_back();
+    } else {
       AddBlock();
-      assert(!m_blocks.empty());
-      assert(m_blocks.back().second == 0);
     }
+    assert(!m_blocks.empty());
+    assert(m_blocks.back().second == 0);
   }
+
   auto m_start_ptr = m_blocks.back().first;
   auto m_offset = m_blocks.back().second;
 
@@ -97,7 +89,7 @@ void *LinearAllocatorPool::Allocate(const std::size_t size, const std::size_t al
   if (alignment != 0 && m_offset % alignment != 0) {
     // Alignment is required. Find the next aligned memory address and update offset
     padding = CalculatePadding(currentAddress, alignment);
-    if (m_offset + padding + size > m_totalSize) {
+    if (m_offset + padding + size > m_block_size) {
       AddBlock();
       m_start_ptr = m_blocks.back().first;
       m_offset = m_blocks.back().second;
@@ -123,7 +115,7 @@ void LinearAllocatorPool::Free(void *ptr) { assert(false && "Use Reset() method,
 
 void LinearAllocatorPool::Init() {
   FreeBlocks();
-  auto sz = 0;
+  auto sz = m_blocks.size() * m_block_size;
   while (sz < m_totalSize) {
     AddBlock();
     sz += m_block_size;
@@ -131,7 +123,7 @@ void LinearAllocatorPool::Init() {
 }
 
 void LinearAllocatorPool::AddBlock() {
-  auto m_start_ptr = malloc(m_block_size);
+  auto m_start_ptr = calloc(1,m_block_size); // allocate and touch
   if (m_start_ptr == nullptr) throw std::bad_alloc();
   m_blocks.push_back({m_start_ptr, 0});
   LOG("Added new ", get_size_str(m_block_size), " block. size=", m_blocks.size(), " num_allocations=", m_num_allocations,
@@ -156,5 +148,13 @@ void LinearAllocatorPool::FreeBlocks() {
         " m_peak=", get_size_str(m_peak), " allocator=", (size_t)this, "\n");
     Blocks().swap(m_blocks);
     assert(m_blocks.empty());
+  }
+}
+
+void LinearAllocatorPool::Reserve(const std::size_t size) {
+  if (size > m_totalSize) {
+    const std::size_t n_blocks = (size + m_block_size - 1) / m_block_size;
+    m_totalSize = n_blocks * m_block_size;
+    Init();
   }
 }

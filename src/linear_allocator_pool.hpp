@@ -64,6 +64,8 @@ class LinearAllocatorPool {
 
   void Reset();
 
+  void Reserve(const std::size_t size);
+
  private:
   LinearAllocatorPool(LinearAllocatorPool &linearAllocator) = delete;
   void FreeBlocks();
