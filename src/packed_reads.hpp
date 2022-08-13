@@ -126,9 +126,10 @@ class PackedRead {
 };
 
 using PackedReadsList = deque<PackedReads *>;
+using PackedReadsContainer = vector<PackedRead>;
 class PackedReads {
   const static size_t ALLOCATION_BLOCK_SIZE = 4 * 1024 * 1024;
-  deque<PackedRead> packed_reads;
+  PackedReadsContainer packed_reads;
   LinearAllocatorPool allocator;
   // this is only used when we need to know the actual name of the original reads
   deque<string> read_id_idx_to_str;
@@ -143,7 +144,7 @@ class PackedReads {
  public:
   
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
-  PackedReads(int qual_offset, deque<PackedRead> &packed_reads);
+  PackedReads(int qual_offset, PackedReadsContainer &packed_reads);
   ~PackedReads();
 
   bool get_next_read(string &id, string &seq, string &quals);
@@ -155,6 +156,8 @@ class PackedReads {
   void reset();
 
   void clear();
+
+  void reserve(uint64_t num_reads, uint64_t num_bases);
 
   string get_fname() const;
 

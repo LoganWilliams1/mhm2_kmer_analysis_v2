@@ -229,7 +229,7 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
     , fname(fname)
     , str_ids(str_ids) {}
 
-PackedReads::PackedReads(int qual_offset, deque<PackedRead> &new_packed_reads)
+PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , packed_reads{}
     , index(0)
@@ -271,9 +271,18 @@ void PackedReads::reset() { index = 0; }
 void PackedReads::clear() {
   index = 0;
   fname.clear();
-  deque<PackedRead>().swap(packed_reads);
+  PackedReadsContainer().swap(packed_reads);
   allocator.Reset();
   if (str_ids) deque<string>().swap(read_id_idx_to_str);
+}
+
+void PackedReads::reserve(uint64_t num_reads, uint64_t num_bases) {
+  LOG("Reserving ", num_reads, " reads and ", num_bases, " bases: ", get_size_str(sizeof(PackedRead) * num_reads + num_bases),
+      " for ", get_basename(fname), "\n");
+  packed_reads.reserve(num_reads);
+  packed_reads.resize(1); // touch
+  packed_reads.clear();
+  allocator.Reserve(num_bases);
 }
 
 string PackedReads::get_fname() const { return fname; }
@@ -380,6 +389,9 @@ void PackedReads::load_reads() {
 }
 
 void PackedReads::report_size() {
+  LOG("PackedReads num_reads=", get_local_num_reads(), " num_bases=", bases, " name_bytes=", name_bytes, ": ",
+      get_size_str(sizeof(PackedRead) * get_local_num_reads() + bases + name_bytes), " for ", upcxx_utils::get_basename(fname),
+      "\n");
   auto all_num_records_fut = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
   auto all_num_bases_fut = upcxx::reduce_one(bases, upcxx::op_fast_add, 0);
   auto all_num_names_fut = upcxx::reduce_one(name_bytes, upcxx::op_fast_add, 0);

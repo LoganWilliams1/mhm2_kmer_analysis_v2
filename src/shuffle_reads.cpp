@@ -349,12 +349,12 @@ static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, Pack
     }
   }
 }
-static dist_object<deque<PackedRead>> move_reads_to_targets(PackedReadsList &packed_reads_list,
+static dist_object<PackedReadsContainer> move_reads_to_targets(PackedReadsList &packed_reads_list,
                                                              dist_object<read_to_target_map_t> &read_to_target_map,
                                                              int64_t all_num_reads) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_not_found = 0;
-  dist_object<deque<PackedRead>> new_packed_reads({});
+  dist_object<PackedReadsContainer> new_packed_reads({});
   ThreeTierAggrStore<pair<PackedRead, PackedRead>> read_seq_store;
   // FIXME read_seq_store.set_restricted_updates();
   read_seq_store.set_update_func([&new_packed_reads](pair<PackedRead, PackedRead> &&read_pair_info) {

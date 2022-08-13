@@ -86,7 +86,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
   future<> progress_fut = make_future();
 
   BarrierTimer timer(__FILEFUNC__);
-  size_t total_size = FastqReaders::open_all(reads_fname_list);
+  uint64_t total_size = FastqReaders::open_all(reads_fname_list);
 
   // Issue #61 - reduce the # of reading ranks to fix excessively long estimates on poor filesystems
   // only a handful of ranks per file are needed to perform the estimate (i.e. 7)
@@ -102,19 +102,20 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
   int64_t my_estimated_total_records = 0;
   int64_t estimated_total_records = 0;
   std::vector<int> file_bytes_per_record(reads_fname_list.size(), 0);
+  LOG_MEM("Before estimate_num_reads");
 
   ProgressBar progbar(total_size / rank_n(), "Scanning reads file to estimate number of reads");
   for (auto const &reads_fname : reads_fname_list) {
     discharge();
     // assume this rank will not read this file
-    size_t my_file_size = 0;
+    uint64_t my_file_size = 0;
     bool will_read = false;
     FastqReader &fqr = FastqReaders::get(reads_fname);
     if (FastqReaders::is_open(reads_fname) && fqr.my_file_size() > 0) {
       // test if my block crosses one of the evenly spaced boundaries on this file
-      auto division_blocks = fqr.get_file_size().wait() / (ranks_per_file + 1);
+      auto division_blocks = fqr.get_file_size(true).wait() / (ranks_per_file + 1);
       auto my_start = fqr.tellg();
-      my_file_size = fqr.my_file_size();
+      my_file_size = fqr.my_file_size(true);
       auto my_end = my_start + my_file_size;
       for (int i = 0; i < ranks_per_file; i++) {
         auto block_boundary = division_blocks * (i + 1);
@@ -127,13 +128,13 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
       }
     }
 
-    size_t tot_bytes_read = 0, file_bytes_read = 0;
+    uint64_t tot_bytes_read = 0, file_bytes_read = 0;
     int64_t records_processed = 0, total_records = 0;
     my_total_file_size += my_file_size;
     if (will_read) {
       auto pos = fqr.tellg();
       while (true) {
-        size_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
+        uint64_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
         if (!bytes_read) break;
         num_lines += 4;
         num_reads++;
@@ -156,14 +157,18 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
     int bytes_per = (int)(records_processed > 0 ? (file_bytes_read / records_processed) : std::numeric_limits<int>::max());
     auto fut_reduce =
         reduce_all(bytes_per, op_fast_min)
-            .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records](int min_bytes_per) {
+            .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records, &fqr](int min_bytes_per) {
               DBG("Found min_bytes_per=", min_bytes_per, " for file ", fname, " my_size=", my_file_size, "\n");
               assert(min_bytes_per < std::numeric_limits<int>::max());
               assert(min_bytes_per > 0);
               my_estimated_total_records += my_file_size / min_bytes_per;
               estimated_total_records += file_size / min_bytes_per;
+              fqr.set_avg_bytes_per_read(min_bytes_per);
             });
-    progress_fut = when_all(progress_fut, fut_reduce);
+    auto fut_set_max = reduce_all(fqr.get_max_read_len(), op_fast_max).then([&fqr](int max_read_len) {
+      fqr.set_max_read_len(max_read_len);
+    });
+    progress_fut = when_all(progress_fut, fut_reduce, fut_set_max);
     max_read_len = max(fqr.get_max_read_len(), max_read_len);
     read_file_idx++;
   }
@@ -175,6 +180,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
   max_read_len = fut_max_read_len.wait();
 
   timer.initate_exit_barrier();  // barrier ensures all have completed for next reduction
+  LOG_MEM("After estimate_num_reads");
   SLOG_VERBOSE("Found maximum read length of ", max_read_len, " and (rank 0's) max estimated total ", estimated_total_records,
                " per rank\n");
   return {my_estimated_total_records, max_read_len};
@@ -248,7 +254,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
 
   // avoid every rank reading this small file
   adapter_sequences_t new_seqs;
-  vector<size_t> sizes;
+  vector<uint64_t> sizes;
   if (!rank_me()) {
     ifstream f(fname);
     if (!f.is_open()) DIE("Could not open adapters file '", fname, "': ", strerror(errno));
@@ -285,7 +291,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
 
   // broadcast the concatenated new sequences
   string concat_seqs;
-  size_t total_seq_size = 0;
+  uint64_t total_seq_size = 0;
   for (int i = 0; i < num_seqs; i++) {
     concat_seqs += new_seqs[i];
     total_seq_size += sizes[i];
@@ -295,7 +301,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
   upcxx::broadcast(concat_seqs.data(), total_seq_size, 0).wait();
 
   // partition back into separate sequences
-  size_t cursor = 0;
+  uint64_t cursor = 0;
   for (int i = 0; i < num_seqs; i++) {
     if (rank_me() == 0) assert(new_seqs[i].size() == sizes[i]);
     new_seqs[i].resize(sizes[i]);
@@ -408,8 +414,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     load_adapter_seqs(adapter_fname, adapter_seqs, adapters, min_kmer_len);
   }
 
-  size_t total_size = FastqReaders::open_all(reads_fname_list, subsample_pct);
+  uint64_t total_size = FastqReaders::open_all(reads_fname_list, subsample_pct);
   vector<string> merged_reads_fname_list;
+  LOG_MEM("After opening all fastq files");
 
   using shared_of = shared_ptr<upcxx_utils::dist_ofstream>;
   std::vector<shared_of> all_outputs;
@@ -424,6 +431,24 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   auto max_num_reads = reduce_all(my_num_reads_estimate, op_fast_max).wait();
   auto tot_num_reads = reduce_all(my_num_reads_estimate, op_fast_add).wait();
   SLOG_VERBOSE("Estimated total number of reads as ", tot_num_reads, ", and max for any rank ", max_num_reads, "\n");
+
+  // reserve space for PackedReads now
+  assert(reads_fname_list.size() == packed_reads_list.size());
+  for (int i = 0; i < reads_fname_list.size(); i++) {
+    const string &reads_fname = reads_fname_list[i];
+    PackedReads &packed_reads = *packed_reads_list[i];
+    FastqReader &fqr = FastqReaders::get(reads_fname);
+    auto max_read_len = fqr.get_max_read_len();
+    auto bytes_per_read = fqr.get_avg_bytes_per_read();
+    auto my_size = fqr.my_file_size(true);
+    if (my_size > 0) {
+      uint64_t est_num_reads = my_size / bytes_per_read * 1.05;
+      uint64_t est_num_bases = est_num_reads * max_read_len;
+      packed_reads.reserve(est_num_reads, est_num_bases);
+    }
+  }
+  LOG_MEM("After reserving space for storing reads");
+  
   // 2 reads per pair, 5x the block size estimate to be sure that we have no overlap. The read ids do not have to be contiguous
   auto read_id_block = (max_num_reads + 10000) * 2 * 5;
   uint64_t read_id = rank_me() * read_id_block;
@@ -861,7 +886,6 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
   { BarrierTimer all_merging_done("All merging done"); }
   
-  //#ifdef DEBUG
   // ensure there is no overlap in read_ids which will cause a crash later
   using SSPair = std::pair<uint64_t, uint64_t>;
   SSPair start_stop(start_read_id, read_id);
@@ -892,7 +916,6 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     rpc_tests = when_all(rpc_tests, fut);
   }
   rpc_tests.wait();
-  //#endif
 
   // finish all file writing and report
   upcxx_utils::min_sum_max_reduce_one(read_files_t.get_elapsed()).then([](upcxx_utils::MinSumMax<double> msm) {
