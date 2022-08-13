@@ -317,7 +317,6 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     , _is_interleaved(false)
     , _fix_paired_name(false)
     , _first_pair(true)
-    , _is_bgzf(false)
     , io_t("fastq IO for " + fname)
     , dist_prom(world())
     , open_fut(make_future()) {

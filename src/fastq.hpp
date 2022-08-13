@@ -83,7 +83,6 @@ class FastqReader {
   bool _fix_paired_name;  // Issue124 - file contains identical names of paired reads, so fix each paired read name to be unique
                           // on-the-fly
   bool _first_pair;       // alternate for pair1 (first_pair) and pair2 (!first_pair)
-  bool _is_bgzf;
   IntermittentTimer io_t;
   struct PromStartStop {
     promise<int64_t> start_prom, stop_prom;
@@ -168,8 +167,6 @@ class FastqReader {
     }
     return _is_interleaved;
   }
-
-  bool is_bgzf() const { return _is_bgzf; }
 
   static upcxx::future<> set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, dist_object<PromStartStop> &dist_start_stop1,
                                            dist_object<PromStartStop> &dist_start_stop2);
