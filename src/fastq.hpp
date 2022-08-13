@@ -72,6 +72,7 @@ class FastqReader {
   int64_t start_read;                        // may be bgzf_virtual_file_pointer int
   int64_t end_read;                          // may be bgzf_virtual_file_pointer int
   unsigned max_read_len;
+  unsigned avg_bytes_per_read;
   int subsample_pct = 100;
   string buf;
   int qual_offset;
@@ -146,6 +147,8 @@ class FastqReader {
   void set_block(int64_t start, int64_t size);
 
   size_t get_next_fq_record(string &id, string &seq, string &quals, bool wait_open = true);
+
+  void set_max_read_len(int len);
   int get_max_read_len();
 
   double static get_io_time();
@@ -180,6 +183,8 @@ class FastqReader {
     assert(fqr2);
     return *fqr2;
   }
+  void set_avg_bytes_per_read(unsigned bytes);
+  unsigned get_avg_bytes_per_read() const;
 };
 
 class FastqReaders {

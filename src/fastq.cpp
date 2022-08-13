@@ -821,12 +821,13 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   if (seq.length() != quals.length())
     DIE("Invalid FASTQ in ", fname, ": sequence length ", seq.length(), " != ", quals.length(), " quals length\n", "id:   ", id,
         "\nseq:  ", seq, "\nquals: ", quals);
-  if (seq.length() > max_read_len) max_read_len = seq.length();
+  set_max_read_len(seq.length());
   DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
   _first_pair = !_first_pair;
   return bytes_read;
 }
 
+void FastqReader::set_max_read_len(int len) { if (len > max_read_len) max_read_len = len; }
 int FastqReader::get_max_read_len() { return std::max(max_read_len, fqr2 ? fqr2->get_max_read_len() : 0u); }
 
 double FastqReader::get_io_time() { return overall_io_t; }
@@ -851,6 +852,9 @@ void FastqReader::reset() {
   }
   if (fqr2) fqr2->reset();
 }
+
+void FastqReader::set_avg_bytes_per_read(unsigned bytes) { avg_bytes_per_read = bytes; }
+unsigned FastqReader::get_avg_bytes_per_read() const { return avg_bytes_per_read; }
 
 //
 // FastqReaders
