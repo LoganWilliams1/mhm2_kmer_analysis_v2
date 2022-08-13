@@ -502,8 +502,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     if ((kmer_ext_counts->count < 2) || (kmer_ext_counts->left_exts.is_zero() && kmer_ext_counts->right_exts.is_zero()))
       num_good_kmers--;
   }
+  LOG_MEM("Before inserting into local hashtable");
+  DBGLOG("Reserving ", num_good_kmers, " size is ", local_kmers->size(), "\n");
   local_kmers->reserve(num_good_kmers);
-  int64_t num_purged = 0;
+  LOG_MEM("After reserving for local hashtable");
+  int64_t num_purged = 0, num_inserted = 0;
   state->kmers->begin_iterate();
   while (true) {
     auto [kmer, kmer_ext_counts] = state->kmers->get_next();
@@ -525,9 +528,12 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
       WARN("Found a duplicate kmer ", kmer->to_string(), " - shouldn't happen: existing count ", it->second.count, " new count ",
            kmer_counts.count);
     local_kmers->insert({*kmer, kmer_counts});
+    num_inserted++;
   }
   state->insert_timer.stop();
+  if (num_inserted > num_good_kmers) WARN("Inserted ", num_inserted, " but was expecting only ", num_good_kmers, "\n");
   barrier();
+  LOG_MEM("After inserting into local hashtable");
   auto tot_num_purged = reduce_one(num_purged, op_fast_add, 0).wait();
   auto tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
   SLOG_CPU_HT("Purged ", tot_num_purged, " kmers ( ", perc_str(tot_num_purged, tot_num_kmers), ")\n");

@@ -49,6 +49,7 @@
 #include "alignments.hpp"
 #include "packed_reads.hpp"
 #include "upcxx_utils/log.hpp"
+#include "upcxx_utils/limit_outstanding.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/three_tier_aggr_store.hpp"
 #include "upcxx_utils/mem_profile.hpp"
@@ -125,8 +126,19 @@ struct KmerReqBuf {
   }
 };
 
+// hack to avoid agg store update() within progress context
+struct UpdateCidReadsBuffer { int32_t target; int64_t cid, rid;};
+static void update_cid_reads_buffer(ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store, vector<UpdateCidReadsBuffer> &update_buffer) {
+  if (update_buffer.empty()) return;
+  vector<UpdateCidReadsBuffer> tmp;
+  tmp.swap(update_buffer);
+  for(auto &ub : tmp) {
+    assert(ub.cid >= 0);
+    cid_reads_store.update(ub.target, {ub.cid, ub.rid});
+  }
+}
 static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dist_object<kmer_to_cid_map_t> &kmer_to_cid_map,
-                                 ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store) {
+                                 ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store, vector<UpdateCidReadsBuffer> &update_buffer) {
   auto fut = rpc(
                  target,
                  [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, vector<uint64_t> kmers) -> vector<int64_t> {
@@ -139,10 +151,12 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                    return cids;
                  },
                  kmer_to_cid_map, kmer_req_buf.kmers)
-                 .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store](vector<int64_t> cids) {
+                 .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](vector<int64_t> cids) {
                    if (cids.size() != read_ids.size()) WARN("buff size is wrong, ", cids.size(), " != ", read_ids.size());
                    for (int i = 0; i < cids.size(); i++) {
-                     if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
+                     //if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
+                     UpdateCidReadsBuffer ub{.target = get_target_rank(cids[i]), .cid = cids[i], .rid = read_ids[i]};
+                     if (cids[i] != -1) update_buffer.push_back(ub);
                    }
                  });
   kmer_req_buf.clear();
@@ -171,7 +185,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedRea
   const int MAX_REQ_BUFF = 1000;
   vector<KmerReqBuf> kmer_req_bufs;
   kmer_req_bufs.resize(rank_n());
-  future<> fut_chain = make_future();
+  vector<UpdateCidReadsBuffer> cid_update_buffer;
   for (auto packed_reads : packed_reads_list) {
     packed_reads->reset();
     for (int i = 0; i < packed_reads->get_local_num_reads(); i += 2) {
@@ -191,17 +205,23 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedRea
           auto target = get_kmer_target_rank(kmer);
           kmer_req_bufs[target].add(kmer.get_longs()[0], read_id);
           if (kmer_req_bufs[target].kmers.size() == MAX_REQ_BUFF) {
-            fut_chain = when_all(fut_chain, update_cid_reads(target, kmer_req_bufs[target], kmer_to_cid_map, cid_reads_store));
+            auto fut = update_cid_reads(target, kmer_req_bufs[target], kmer_to_cid_map, cid_reads_store, cid_update_buffer);
+            limit_outstanding_futures(fut).wait();
+            update_cid_reads_buffer(cid_reads_store, cid_update_buffer);
           }
         }
       }
     }
   }
   for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
-    if (!kmer_req_bufs[target].kmers.empty())
-      fut_chain = when_all(fut_chain, update_cid_reads(target, kmer_req_bufs[target], kmer_to_cid_map, cid_reads_store));
+    if (!kmer_req_bufs[target].kmers.empty()) {
+      auto fut = update_cid_reads(target, kmer_req_bufs[target], kmer_to_cid_map, cid_reads_store, cid_update_buffer);
+      limit_outstanding_futures(fut).wait();
+      update_cid_reads_buffer(cid_reads_store, cid_update_buffer);
+    }
   }
-  fut_chain.wait();
+  flush_outstanding_futures();
+  update_cid_reads_buffer(cid_reads_store, cid_update_buffer);
   cid_reads_store.flush_updates();
   barrier();
   return cid_to_reads_map;
@@ -318,6 +338,17 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   return read_to_target_map;
 }
 
+// hack to avoid agg store update() within progress context
+// avoid agg store update() within progress
+struct MoveReadsToTargetUpdatesBuffer { int32_t target; PackedRead read1, read2;};
+static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store, vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
+  if (!updates_buffer.empty()) {
+    vector<MoveReadsToTargetUpdatesBuffer> tmp_ub; tmp_ub.swap(updates_buffer);
+    for(auto &ub : tmp_ub) {
+      read_seq_store.update(ub.target, {ub.read1, ub.read2});
+    }
+  }
+}
 static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads *> &packed_reads_list,
                                                              dist_object<read_to_target_map_t> &read_to_target_map,
                                                              int64_t all_num_reads) {
@@ -334,7 +365,9 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
   int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   read_seq_store.set_size("Read seq store", max_store_bytes);
-  future<> fut_chain = make_future();
+  // hack to avoid agg store update() within progress context
+  // avoid agg store update() within progress
+  vector<MoveReadsToTargetUpdatesBuffer> updates_buffer;
   for (auto packed_reads : packed_reads_list) {
     packed_reads->reset();
     for (int i = 0; i < packed_reads->get_local_num_reads(); i += 2) {
@@ -350,19 +383,22 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
                        return it->second;
                      },
                      read_to_target_map, read_id)
-                     .then([&num_not_found, &read_seq_store, packed_read1, packed_read2](int target) {
+                     .then([&updates_buffer, &num_not_found, &read_seq_store, packed_read1, packed_read2](int target) {
                        if (target == -1) {
                          num_not_found++;
                          target = std::experimental::randint(0, rank_n() - 1);
                        }
                        if (target < 0 || target >= rank_n()) DIE("target out of range ", target);
                        assert(target >= 0 && target < rank_n());
-                       read_seq_store.update(target, {packed_read1, packed_read2});
+                       MoveReadsToTargetUpdatesBuffer ub{.target = target, .read1 = std::move(packed_read1), .read2 = std::move(packed_read2)};
+                       updates_buffer.push_back(ub);
                      });
-      fut_chain = when_all(fut_chain, fut);
+      limit_outstanding_futures(fut).wait();
+      move_reads_to_target_update(read_seq_store, updates_buffer);
     }
   }
-  fut_chain.wait();
+  flush_outstanding_futures();
+  move_reads_to_target_update(read_seq_store, updates_buffer);
   read_seq_store.flush_updates();
   barrier();
   auto all_num_not_found = reduce_one(num_not_found, op_fast_add, 0).wait();
