@@ -96,7 +96,7 @@ class PackedRead {
   string get_str_id();
   static int64_t to_packed_id(const string &id_str);
 
-  uint16_t get_read_len();
+  uint16_t get_read_len() const;
   unsigned char *get_raw_bytes();
 
   struct upcxx_serialization {
@@ -178,6 +178,8 @@ class PackedReads {
   static void load_reads(PackedReadsList &);
 
   void report_size();
+
+  int64_t get_local_bases() const;
 
   int64_t get_bases();
 

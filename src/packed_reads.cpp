@@ -219,7 +219,7 @@ int64_t PackedRead::to_packed_id(const string &id_str) {
   return read_id;
 }
 
-uint16_t PackedRead::get_read_len() { return read_len; }
+uint16_t PackedRead::get_read_len() const { return read_len; }
 
 unsigned char *PackedRead::get_raw_bytes() { return bytes; }
 
@@ -239,8 +239,11 @@ PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads
   max_read_len = 0;
   // assert(!packed_reads.size());
   LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage\n");
-  for (auto &packed_read : new_packed_reads) {
-    packed_reads.emplace_back(std::move(packed_read), this);  // move to this PackedReads allocator
+  uint64_t num_bases = 0;
+  for (auto &packed_read : new_packed_reads) num_bases += packed_read.get_read_len();
+  reserve(new_packed_reads.size(), num_bases);
+  for (const auto &packed_read : new_packed_reads) {
+    packed_reads.emplace_back(packed_read, this);  // copy to this PackedReads using the allocator
     max_read_len = max((unsigned)packed_read.get_read_len(), max_read_len);
   }
 }
@@ -411,6 +414,7 @@ void PackedReads::report_size() {
   Timings::set_pending(fut);  // include in reports
 }
 
+int64_t PackedReads::get_local_bases() const { return bases; }
 int64_t PackedReads::get_bases() { return upcxx::reduce_one(bases, upcxx::op_fast_add, 0).wait(); }
 
 PackedRead &PackedReads::operator[](int index) {

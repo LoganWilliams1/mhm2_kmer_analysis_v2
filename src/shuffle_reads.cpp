@@ -127,18 +127,23 @@ struct KmerReqBuf {
 };
 
 // hack to avoid agg store update() within progress context
-struct UpdateCidReadsBuffer { int32_t target; int64_t cid, rid;};
-static void update_cid_reads_buffer(ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store, vector<UpdateCidReadsBuffer> &update_buffer) {
+struct UpdateCidReadsBuffer {
+  int32_t target;
+  int64_t cid, rid;
+};
+static void update_cid_reads_buffer(ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store,
+                                    vector<UpdateCidReadsBuffer> &update_buffer) {
   if (update_buffer.empty()) return;
   vector<UpdateCidReadsBuffer> tmp;
   tmp.swap(update_buffer);
-  for(auto &ub : tmp) {
+  for (auto &ub : tmp) {
     assert(ub.cid >= 0);
     cid_reads_store.update(ub.target, {ub.cid, ub.rid});
   }
 }
 static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dist_object<kmer_to_cid_map_t> &kmer_to_cid_map,
-                                 ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store, vector<UpdateCidReadsBuffer> &update_buffer) {
+                                 ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store,
+                                 vector<UpdateCidReadsBuffer> &update_buffer) {
   auto fut = rpc(
                  target,
                  [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, vector<uint64_t> kmers) -> vector<int64_t> {
@@ -154,7 +159,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                  .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](vector<int64_t> cids) {
                    if (cids.size() != read_ids.size()) WARN("buff size is wrong, ", cids.size(), " != ", read_ids.size());
                    for (int i = 0; i < cids.size(); i++) {
-                     //if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
+                     // if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
                      UpdateCidReadsBuffer ub{.target = get_target_rank(cids[i]), .cid = cids[i], .rid = read_ids[i]};
                      if (cids[i] != -1) update_buffer.push_back(ub);
                    }
@@ -297,7 +302,8 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   auto max_num_mapped_reads = reduce_one(num_mapped_reads, op_fast_max, 0).wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
-  LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads, " all_num_mapped_reads=", all_num_mapped_reads, "\n");
+  LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
+      " all_num_mapped_reads=", all_num_mapped_reads, "\n");
   barrier();
   auto avg_num_mapped_reads = all_num_mapped_reads / rank_n();
   SLOG_VERBOSE("Avg mapped reads per rank ", avg_num_mapped_reads, " max ", max_num_mapped_reads, " balance ",
@@ -325,7 +331,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
       // each entry is a pair
       read_slot += 2;
     }
-    progbar.update(read_ids.size()*2);
+    progbar.update(read_ids.size() * 2);
   }
   assert(read_slot == fut_read_slot.wait() && "updated all Read-Targets");
   auto fut_progbar = progbar.set_done();
@@ -340,21 +346,24 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
 // hack to avoid agg store update() within progress context
 // avoid agg store update() within progress
-struct MoveReadsToTargetUpdatesBuffer { int32_t target; std::pair<PackedRead, PackedRead> read_pair; };
-static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store, vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
+struct MoveReadsToTargetUpdatesBuffer {
+  int32_t target;
+  std::pair<PackedRead, PackedRead> read_pair;
+};
+static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store,
+                                        vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
   if (!updates_buffer.empty()) {
-    vector<MoveReadsToTargetUpdatesBuffer> tmp_ub; tmp_ub.swap(updates_buffer);
-    for(auto &ub : tmp_ub) {
+    vector<MoveReadsToTargetUpdatesBuffer> tmp_ub;
+    tmp_ub.swap(updates_buffer);
+    for (auto &ub : tmp_ub) {
       read_seq_store.update(ub.target, std::move(ub.read_pair));
     }
   }
 }
-static dist_object<PackedReadsContainer> move_reads_to_targets(PackedReadsList &packed_reads_list,
-                                                             dist_object<read_to_target_map_t> &read_to_target_map,
-                                                             int64_t all_num_reads) {
+static void move_reads_to_targets(PackedReadsList &packed_reads_list, dist_object<read_to_target_map_t> &read_to_target_map,
+                                  int64_t all_num_reads, dist_object<PackedReadsContainer> &new_packed_reads) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_not_found = 0;
-  dist_object<PackedReadsContainer> new_packed_reads({});
   ThreeTierAggrStore<pair<PackedRead, PackedRead>> read_seq_store;
   // FIXME read_seq_store.set_restricted_updates();
   read_seq_store.set_update_func([&new_packed_reads](pair<PackedRead, PackedRead> &&read_pair_info) {
@@ -403,9 +412,8 @@ static dist_object<PackedReadsContainer> move_reads_to_targets(PackedReadsList &
   barrier();
   auto all_num_not_found = reduce_one(num_not_found, op_fast_add, 0).wait();
   SLOG_VERBOSE("Didn't find contig targets for ", perc_str(all_num_not_found, all_num_reads / 2), " pairs\n");
-  return new_packed_reads;
+  return;
 }
-
 
 void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs &ctgs) {
   BarrierTimer timer(__FILEFUNC__);
@@ -413,19 +421,16 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   int64_t num_reads = 0;
   for (auto packed_reads : packed_reads_list) num_reads += packed_reads->get_local_num_reads();
   auto msm_num_reads = min_sum_max_reduce_one(num_reads).wait();
-  auto all_num_reads = broadcast(msm_num_reads.sum,0).wait();
+  auto all_num_reads = broadcast(msm_num_reads.sum, 0).wait();
 
   auto kmer_to_cid_map = compute_kmer_to_cid_map(ctgs);
   auto cid_to_reads_map = compute_cid_to_reads_map(packed_reads_list, kmer_to_cid_map, ctgs.size());
   auto read_to_target_map = compute_read_locations(cid_to_reads_map, all_num_reads);
-  auto new_packed_reads = move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads);
+  dist_object<PackedReadsContainer> new_packed_reads({});
+  new_packed_reads->reserve(num_reads * 1.3);
+  move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads, new_packed_reads);
 
   LOG("Had ", num_reads, " shuffled to ", new_packed_reads->size(), "\n");
-  min_sum_max_reduce_one(new_packed_reads->size()).then([msm_num_reads, num_reads, &new_packed_reads](MinSumMax<size_t> shuffled_msm) {
-    SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
-    SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm.to_string(), "\n");
-  }).wait();
-  Timings::wait_pending();
 
   // now copy the new packed reads to the old
   for (auto packed_reads : packed_reads_list) delete packed_reads;
@@ -433,12 +438,23 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   packed_reads_list.push_back(new PackedReads(qual_offset, *new_packed_reads));
   packed_reads_list[0]->set_max_read_len();
   assert(packed_reads_list.size() == 1);
-  auto num_reads_received = new_packed_reads->size();
-  double avg_num_received = (double)reduce_one(num_reads_received, op_fast_add, 0).wait() / rank_n();
-  auto max_reads_received = reduce_one(num_reads_received, op_fast_max, 0).wait();
-  SLOG_VERBOSE("Balance in reads ", fixed, setprecision(3), avg_num_received / max_reads_received, "\n");
-  auto all_num_new_reads = reduce_one(new_packed_reads->size(), op_fast_add, 0).wait();
-  if (all_num_new_reads != all_num_reads)
-    SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
+  uint64_t num_reads_received = packed_reads_list[0]->get_local_num_reads();
+  assert(num_reads_received == new_packed_reads->size());
+  new_packed_reads->clear();
+  auto fut_msm_num_reads_received = min_sum_max_reduce_one(num_reads_received);
+  uint64_t num_bases_received = packed_reads_list[0]->get_local_bases();
+  auto fut_msm_bases_received = upcxx_utils::min_sum_max_reduce_one(num_bases_received);
+
+  auto fut =
+      when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
+          .then([msm_num_reads, all_num_reads](MinSumMax<uint64_t> shuffled_msm_num_reads, MinSumMax<uint64_t> shuffled_msm_num_bases) {
+            SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
+            SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
+            SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");
+            auto all_num_new_reads = shuffled_msm_num_reads.sum;
+            if (all_num_new_reads != all_num_reads)
+              SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
+          });
+  fut.wait();
   barrier();
 }
