@@ -187,6 +187,7 @@ int main(int argc, char **argv) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }
     LOG_MEM("Opened read files");
+    auto before_merge_mem = get_free_mem(true);
 
     double elapsed_write_io_t = 0;
     if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
@@ -202,14 +203,14 @@ int main(int argc, char **argv) {
       // load the merged reads instead of merge the original ones again
       SLOG_VERBOSE("Restarting and expecting merged reads to be checkpointed on disk\n");
       stage_timers.cache_reads->start();
-      double free_mem = (!rank_me() ? get_free_mem() : 0);
-      upcxx::barrier();
+      barrier(local_team());
       PackedReads::load_reads(packed_reads_list);
       stage_timers.cache_reads->stop();
-      SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - get_free_mem()), " memory on node 0",
-                   KNORM, "\n");
     }
     LOG_MEM("Loaded Reads");
+    auto after_merge_mem = get_free_mem(true);
+    SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(after_merge_mem - before_merge_mem),
+                 " memory on node 0 for reads", KNORM, "\n");
 
     int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
