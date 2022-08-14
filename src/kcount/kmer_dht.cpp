@@ -123,7 +123,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   auto my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
   double required_space = estimate_hashtable_memory(my_adjusted_num_kmers, sizeof(Kmer<MAX_K>) + sizeof(KmerCounts)) * node0_cores;
   auto max_reqd_space = upcxx::reduce_all(required_space, upcxx::op_fast_max).wait();
-  auto free_mem = get_free_mem();
+  auto free_mem = get_free_mem(true);
   auto lowest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_min).wait();
   auto highest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_max).wait();
   SLOG_VERBOSE("With adjustment factor of ", adjustment_factor, " require ", get_size_str(max_reqd_space), " per node (",
@@ -144,7 +144,6 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   double kmers_space_reserved = my_adjusted_num_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts));
   SLOG_VERBOSE("Reserving at least ", get_size_str(node0_cores * kmers_space_reserved), " for kmer hash tables with ",
                node0_cores * my_adjusted_num_kmers, " entries on node 0\n");
-  double init_free_mem = get_free_mem();
   if (my_adjusted_num_kmers <= 0) DIE("no kmers to reserve space for");
   kmer_store.set_update_func(
       [&ht_inserter = this->ht_inserter, &num_supermer_inserts = this->num_supermer_inserts](Supermer supermer) {

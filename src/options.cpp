@@ -533,7 +533,7 @@ bool Options::load(int argc, char **argv) {
 
   if (max_kmer_store_mb == 0) {
     // use 1% of the minimum available memory
-    max_kmer_store_mb = get_free_mem() / 1024 / 1024 / 100;
+    max_kmer_store_mb = get_free_mem(true) / 1024 / 1024 / 100;
     max_kmer_store_mb = upcxx::reduce_all(max_kmer_store_mb / upcxx::local_team().rank_n(), upcxx::op_fast_min).wait();
   }
 

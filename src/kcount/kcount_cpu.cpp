@@ -427,7 +427,7 @@ template <int MAX_K>
 void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
   state = new HashTableInserterState();
   state->using_ctg_kmers = false;
-  double free_mem = get_free_mem();
+  double free_mem = get_free_mem(true);
   SLOG_CPU_HT("There is ", get_size_str(free_mem), " free memory\n");
   // set aside a fraction of free mem for everything else, including the final hash table we copy across to
   double avail_mem = KCOUNT_CPU_HT_MEM_FRACTION * free_mem / local_team().rank_n();
@@ -439,8 +439,8 @@ void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
   if (max_elems > 3 * num_elems) max_elems = 3 * num_elems;
   SLOG_CPU_HT("Allocating ", max_elems, " elements\n");
   state->kmers->reserve(max_elems);
-  double used_mem = free_mem - get_free_mem();
-  SLOG_CPU_HT("Memory available: ", get_size_str(get_free_mem()), ", used ", get_size_str(used_mem), "\n");
+  double used_mem = free_mem - get_free_mem(true);
+  SLOG_CPU_HT("Memory available: ", get_size_str(free_mem - used_mem), ", used ", get_size_str(used_mem), "\n");
 }
 
 template <int MAX_K>

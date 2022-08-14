@@ -66,8 +66,9 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   for (auto const &reads_fname : options->reads_fnames) {
     packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
   }
+
+  LOG_MEM("Before loading post-assembly reads");
   stage_timers.cache_reads->start();
-  double free_mem = (!rank_me() ? get_free_mem() : 0);
   {
     BarrierTimer bt("Load post-assembly reads");
     future<> fut_chain = make_future();
@@ -79,6 +80,8 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     fut_chain.wait();
   }
   stage_timers.cache_reads->stop();
+  LOG_MEM("After loading post-assembly reads");
+  
   unsigned rlen_limit = 0;
   for (auto packed_reads : packed_reads_list) {
     rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
