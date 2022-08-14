@@ -535,6 +535,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         read_id += 2;
+        if (read_id % 1000 == 0) progress();
         if (checkpoint) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
@@ -555,9 +556,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         // use the last read as read1
         assert(!tmp_id.empty());
         // DBG("Using deferred Read1: ", tmp_id, " ", tmp_seq.length(), "\n");
-        id1 = tmp_id;
-        seq1 = tmp_seq;
-        quals1 = tmp_quals;
+        id1.swap(tmp_id);
+        seq1.swap(tmp_seq);
+        quals1.swap(tmp_quals);
         tmp_id.clear();
         skip_read1 = false;
       }
@@ -572,8 +573,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         missing_read1++;
         // set read2
         id2 = id1;
-        seq2 = seq1;
-        quals2 = quals1;
+        seq2.swap(seq1);
+        quals2.swap(quals1);
         // generate a fake read1
         id1[id1.length() - 1] = '1';
         seq1 = "N";
@@ -608,9 +609,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         missing_read2++;
         // preserve this as the *next* read1 (may actually be a read2)
         assert(tmp_id.empty());
-        tmp_id = id2;
-        tmp_seq = seq2;
-        tmp_quals = quals2;
+        tmp_id.swap(id2);
+        tmp_seq.swap(seq2);
+        tmp_quals.swap(quals2);
         // generate a fake read2
         if (id2.empty()) skip_read2 = true;  // end of file
         id2 = id1;
@@ -817,6 +818,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
       // inc by 2 so that we can use a later optimization of treating the even as /1 and the odd as /2
       read_id += 2;
+      if (read_id % 1000 == 0) progress();
     }
     DBG("Merged my set of reads. num_merged=", num_merged, " num_ambig=", num_ambiguous, " bytes_read=", bytes_read, "\n");
     read_files_t.start();
@@ -875,6 +877,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     ri++;
     FastqReaders::close(reads_fname);
     merge_file_timer.initiate_exit_reduction();
+    discharge();
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);

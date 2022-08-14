@@ -283,8 +283,6 @@ void PackedReads::reserve(uint64_t num_reads, uint64_t num_bases) {
   LOG("Reserving ", num_reads, " reads and ", num_bases, " bases: ", get_size_str(sizeof(PackedRead) * num_reads + num_bases),
       " for ", get_basename(fname), "\n");
   packed_reads.reserve(num_reads);
-  packed_reads.resize(1); // touch
-  packed_reads.clear();
   allocator.Reserve(num_bases);
 }
 
