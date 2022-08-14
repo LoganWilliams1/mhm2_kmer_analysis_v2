@@ -82,6 +82,7 @@ static const double Q2Perror[] = {
     1.995e-08, 1.585e-08, 1.259e-08, 1e-08};
 
 static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, int ranks_per_file = 7) {
+  assert(!upcxx::in_progress());
   // estimate reads in this rank's section of all the files
   future<> progress_fut = make_future();
 
@@ -151,7 +152,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
       if (tot_bytes_read < file_bytes_read) file_bytes_read = tot_bytes_read;  // use the minimum of the two measures
       fqr.reset();  // rewind this file for the next reading as this was only an estimation
     }
-    auto file_size = fqr.get_file_size().wait();
+    auto file_size = fqr.get_file_size(true).wait();
     auto fname = fqr.get_fname();
     total_records_processed += records_processed;
     int bytes_per = (int)(records_processed > 0 ? (file_bytes_read / records_processed) : std::numeric_limits<int>::max());
@@ -448,7 +449,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     }
   }
   LOG_MEM("After reserving space for storing reads");
-  
+
   // 2 reads per pair, 5x the block size estimate to be sure that we have no overlap. The read ids do not have to be contiguous
   auto read_id_block = (max_num_reads + 10000) * 2 * 5;
   uint64_t read_id = rank_me() * read_id_block;
