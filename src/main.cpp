@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
     }
     LOG_MEM("Loaded Reads");
     auto after_merge_mem = get_free_mem(true);
-    SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(after_merge_mem - before_merge_mem),
+    SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(before_merge_mem - after_merge_mem),
                  " memory on node 0 for reads", KNORM, "\n");
 
     int rlen_limit = 0;
