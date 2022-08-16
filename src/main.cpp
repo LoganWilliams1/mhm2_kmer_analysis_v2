@@ -241,6 +241,7 @@ int main(int argc, char **argv) {
     if (options->kmer_lens.size()) {
       max_kmer_len = options->kmer_lens.back();
       for (auto kmer_len : options->kmer_lens) {
+        if (kmer_len <= 1) continue; // short circuit to just load reads
         auto max_k = (kmer_len / 32 + 1) * 32;
         LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
