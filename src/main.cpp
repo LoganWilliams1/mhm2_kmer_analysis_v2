@@ -139,6 +139,8 @@ int main(int argc, char **argv) {
   // FIXME if (!options->max_worker_threads) upcxx_utils::FASRPCCounts::use_worker_thread() = false;
   SLOG_VERBOSE("Allowing up to ", num_threads, " extra threads in the thread pool\n");
 
+  auto nodes = upcxx::rank_n() / upcxx::local_team().rank_n();
+  auto total_free_mem = get_free_mem(true) * nodes;
   if (!upcxx::rank_me()) {
     // get total file size across all libraries
     double tot_file_size = 0;
@@ -160,8 +162,7 @@ int main(int argc, char **argv) {
     }
     SOUT("Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""), " is ",
          get_size_str(tot_file_size), "\n");
-    auto nodes = upcxx::rank_n() / upcxx::local_team().rank_n();
-    auto total_free_mem = get_free_mem() * nodes;
+
     if (total_free_mem < 3 * tot_file_size)
       SWARN("There may not be enough memory in this job of ", nodes,
             " nodes for this amount of data.\n\tTotal free memory is approx ", get_size_str(total_free_mem),
@@ -176,7 +177,8 @@ int main(int argc, char **argv) {
   if (!options->post_assm_only) {
     MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
     memory_tracker.start();
-    SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
+    auto start_free_mem = get_free_mem(true);
+    SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem)), " free on node 0", KNORM, "\n");
     PackedReads::PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
@@ -195,11 +197,12 @@ int main(int argc, char **argv) {
       // load the merged reads instead of merge the original ones again
       SLOG_VERBOSE("Restarting and expecting merged reads to be checkpointed on disk\n");
       stage_timers.cache_reads->start();
-      double free_mem = (!rank_me() ? get_free_mem() : 0);
+      double free_mem = get_free_mem(true);
       upcxx::barrier();
       PackedReads::load_reads(packed_reads_list);
       stage_timers.cache_reads->stop();
-      SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - get_free_mem()), " memory on node 0",
+      double post_free_mem = get_free_mem(true);
+      SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - post_free_mem), " memory on node 0",
                    KNORM, "\n");
     }
     int rlen_limit = 0;
@@ -215,8 +218,9 @@ int main(int argc, char **argv) {
     }
     std::chrono::duration<double> init_t_elapsed = std::chrono::high_resolution_clock::now() - init_start_t;
     SLOG("\n");
+    auto post_init_free_mem = get_free_mem(true);
     SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
-         get_size_str(get_free_mem()), " free memory on node 0)", KNORM, "\n");
+         get_size_str(post_init_free_mem), " free memory on node 0)", KNORM, "\n");
     int prev_kmer_len = options->prev_kmer_len;
     int ins_avg = 0;
     int ins_stddev = 0;
@@ -323,8 +327,9 @@ int main(int argc, char **argv) {
     ctgs.print_stats(options->min_ctg_print_len);
     std::chrono::duration<double> fin_t_elapsed = std::chrono::high_resolution_clock::now() - fin_start_t;
     SLOG("\n");
+    auto post_finalize_free_mem = get_free_mem(true);
     SLOG(KBLUE, "Completed finalization in ", setprecision(2), fixed, fin_t_elapsed.count(), " s at ", get_current_time(), " (",
-         get_size_str(get_free_mem()), " free memory on node 0)", KNORM, "\n");
+         get_size_str(post_finalize_free_mem), " free memory on node 0)", KNORM, "\n");
 
     SLOG(KBLUE "_________________________", KNORM, "\n");
     SLOG("Stage timing:\n");

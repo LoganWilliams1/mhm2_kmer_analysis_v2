@@ -94,7 +94,7 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
     //  WARN("Found duplicate kmer in cids - this shouldn't happen!");
   });
   int est_update_size = sizeof(pair<uint64_t, int64_t>);
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   kmer_cid_store.set_size("kmer cid store", max_store_bytes);
   for (auto &ctg : ctgs) {
@@ -178,7 +178,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedRea
       it->second.push_back(read_id);
   });
   int est_update_size = sizeof(pair<int64_t, int64_t>);
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   cid_reads_store.set_size("Read cid store", max_store_bytes);
   string read_id_str, read_seq, read_quals;
@@ -243,7 +243,7 @@ static dist_object<cid_to_reads_map_t> process_alns(vector<PackedReads *> &packe
     }
   });
   int est_update_size = sizeof(tuple<int64_t, int64_t, int>);
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   read_cid_store.set_size("Read cid store", max_store_bytes);
 
@@ -268,7 +268,7 @@ static dist_object<cid_to_reads_map_t> process_alns(vector<PackedReads *> &packe
       it->second.push_back(read_id);
   });
   est_update_size = sizeof(pair<int64_t, int64_t>);
-  mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
   max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   cid_reads_store.set_size("Read cid store", max_store_bytes);
   for (auto &[read_id, cid_elem] : *read_to_cid_map) {
@@ -305,7 +305,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
   dist_object<read_to_target_map_t> read_to_target_map({});
   upcxx_utils::ThreeTierAggrStore<ReadTarget> read_target_store;
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
   auto max_store_bytes = max(mem_to_use, (int64_t)sizeof(ReadTarget) * 100);
   read_target_store.set_size("Read-Targets", max_store_bytes);
   read_target_store.set_update_func([&read_to_target_map](ReadTarget rt) { read_to_target_map->insert({rt.read_id, rt.target}); });
@@ -362,7 +362,7 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
     new_packed_reads->push_back(read_pair_info.second);
   });
   int est_update_size = 600;
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   read_seq_store.set_size("Read seq store", max_store_bytes);
   // hack to avoid agg store update() within progress context

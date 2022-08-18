@@ -67,7 +67,6 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
   }
   stage_timers.cache_reads->start();
-  double free_mem = (!rank_me() ? get_free_mem() : 0);
   {
     BarrierTimer bt("Load post-assembly reads");
     future<> fut_chain = make_future();
