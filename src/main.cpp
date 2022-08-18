@@ -68,9 +68,20 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                  int subsample_pct);
 
 int main(int argc, char **argv) {
+  // capture the free memory and timers before upcxx::init is called
+  auto starting_free_mem = get_free_mem();
+  char *proc_id = getenv("SLURM_PROCID");
+  int my_rank = -1;
+  if (proc_id) {
+    my_rank = atol(proc_id);
+  }
   BaseTimer init_timer("upcxx::init");
   BaseTimer first_barrier("FirstBarrier");
   init_timer.start();
+  if (!my_rank)
+    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on pid=" << getpid() << " at " << get_current_time()
+              << std::endl;
+
   upcxx::init();
   auto init_entry_msm_fut = init_timer.reduce_start();
   init_timer.stop();
@@ -88,12 +99,21 @@ int main(int argc, char **argv) {
   first_barrier.start();
   barrier();
   first_barrier.stop();
-  when_all(report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings())
+  auto post_init_free_mem = get_free_mem();
+  barrier(local_team());
+  auto msm_starting_free_mem_fut = min_sum_max_reduce_one((float)starting_free_mem / ONE_GB, 0);
+  auto msm_post_init_free_mem_fut = min_sum_max_reduce_one((float)post_init_free_mem / ONE_GB, 0);
+
+  when_all(report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings(),
+           msm_starting_free_mem_fut, msm_post_init_free_mem_fut)
       .then([](upcxx_utils::MinSumMax<double> entry_msm, upcxx_utils::ShTimings sh_timings,
-               upcxx_utils::ShTimings sh_first_barrier_timings) {
+               upcxx_utils::ShTimings sh_first_barrier_timings, upcxx_utils::MinSumMax<float> starting_mem_msm,
+               upcxx_utils::MinSumMax<float> post_init_mem_msm) {
         SLOG_VERBOSE("upcxx::init Before=", entry_msm.to_string(), "\n");
         SLOG_VERBOSE("upcxx::init After=", sh_timings->to_string(), "\n");
         SLOG_VERBOSE("upcxx::init FirstBarrier=", sh_first_barrier_timings->to_string(), "\n");
+        SLOG_VERBOSE("upcxx::init Starting RAM=", starting_mem_msm.to_string(), " GB\n");
+        SLOG_VERBOSE("upcxx::init Post RAM=", post_init_mem_msm.to_string(), " GB\n");
       });
   auto start_t = std::chrono::high_resolution_clock::now();
   auto init_start_t = start_t;
@@ -161,7 +181,8 @@ int main(int argc, char **argv) {
       }
     }
     SOUT("Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""), " is ",
-         get_size_str(tot_file_size), "\n");
+         get_size_str(tot_file_size), "; ", get_size_str(tot_file_size / rank_n()), " per rank; ",
+         get_size_str(local_team().rank_n() * tot_file_size / rank_n()), " per node\n");
 
     if (total_free_mem < 3 * tot_file_size)
       SWARN("There may not be enough memory in this job of ", nodes,
@@ -170,19 +191,21 @@ int main(int argc, char **argv) {
   }
 
   init_devices();
-
+  MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
   Contigs ctgs;
   int max_kmer_len = 0;
   int max_expected_ins_size = 0;
   if (!options->post_assm_only) {
-    MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
     memory_tracker.start();
+    LOG_MEM("Preparing to load reads");
     auto start_free_mem = get_free_mem(true);
-    SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem)), " free on node 0", KNORM, "\n");
+    SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
     PackedReads::PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }
+    LOG_MEM("Opened read files");
+
     double elapsed_write_io_t = 0;
     if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
       // merge the reads and insert into the packed reads memory cache
@@ -202,14 +225,17 @@ int main(int argc, char **argv) {
       PackedReads::load_reads(packed_reads_list);
       stage_timers.cache_reads->stop();
       double post_free_mem = get_free_mem(true);
-      SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - post_free_mem), " memory on node 0",
-                   KNORM, "\n");
+      SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - post_free_mem), " memory on node 0", KNORM,
+                   "\n");
     }
+    LOG_MEM("Loaded Reads");
+
     int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
       rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
+    Timings::get_pending().wait();  // report all I/O stats here
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
@@ -226,6 +252,10 @@ int main(int argc, char **argv) {
     int ins_stddev = 0;
 
     done_init_devices();
+    auto post_init_dev_free_mem = get_free_mem(true);
+    SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
+         " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
+    { BarrierTimer("Start Contigging"); }
 
     // contigging loops
     if (options->kmer_lens.size()) {
@@ -310,12 +340,14 @@ int main(int argc, char **argv) {
     }
 
     // cleanup
+    LOG_MEM("Preparing to close all fastq");
     FastqReaders::close_all();  // needed to cleanup any open files in this singleton
     auto fin_start_t = std::chrono::high_resolution_clock::now();
     for (auto packed_reads : packed_reads_list) {
       delete packed_reads;
     }
     packed_reads_list.clear();
+    LOG_MEM("Closed all fastq");
 
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
@@ -357,20 +389,33 @@ int main(int argc, char **argv) {
 
   // post processing
   if (options->post_assm_aln || options->post_assm_only || options->post_assm_abundances) {
+    memory_tracker.start();
+    LOG_MEM("Before Post-Processing");
     if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname);
     post_assembly(ctgs, options, max_expected_ins_size);
     FastqReaders::close_all();
+    memory_tracker.stop();
   }
+  LOG("Cleaning up and completing remaining tasks\n");
 
   upcxx_utils::ThreadPool::join_single_pool();  // cleanup singleton thread pool
   upcxx_utils::Timings::wait_pending();         // ensure all outstanding timing summaries have printed
+  LOG("Done waiting for all pending.\n");
   barrier();
+  LOG("All ranks done.\n");
+  auto am_root = !rank_n();
 
 #ifdef DEBUG
   _dbgstream.flush();
   while (close_dbg())
     ;
 #endif
+  LOG("All ranks closed DBG.\n");
+  upcxx_utils::flush_logger();
+  barrier();
+  SLOG_VERBOSE("All ranks flushed log.\n");
+
   upcxx::finalize();
+  if (am_root) cout << "Finalized and Finished" << endl;
   return 0;
 }
