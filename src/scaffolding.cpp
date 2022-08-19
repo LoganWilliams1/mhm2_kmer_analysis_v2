@@ -102,7 +102,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
 #endif
     begin_gasnet_stats("alignment_depths sk = " + to_string(scaff_kmer_len));
     vector<string> read_group_names;
-    for(auto pr : packed_reads_list) {
+    for (auto pr : packed_reads_list) {
       read_group_names.push_back(pr->get_fname());
     }
     compute_aln_depths("", ctgs, alns, max_kmer_len, 0, read_group_names, true);
@@ -137,4 +137,6 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
        fixed, loop_t_elapsed.count(), " s at ", get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)",
        KNORM, "\n");
   LOG_MEM("Scaffolding completed");
+  Timings::wait_pending();
+  barrier();
 }

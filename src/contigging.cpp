@@ -73,7 +73,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Contig generation k = ", kmer_len, KNORM, "\n");
   SLOG("\n");
-  LOG_MEM("Starting contigging");
+  LOG_MEM("Starting contigging k=" + to_string(kmer_len));
   bool is_debug = false;
 #ifdef DEBUG
   is_debug = true;
@@ -96,6 +96,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     begin_gasnet_stats("kmer_analysis k = " + to_string(kmer_len));
     analyze_kmers(kmer_len, prev_kmer_len, options->qual_offset, packed_reads_list, options->dmin_thres, ctgs, kmer_dht,
                   options->dump_kmers);
+    LOG_MEM("Analyzed kmers");
     end_gasnet_stats();
     stage_timers.analyze_kmers->stop();
     barrier();
@@ -112,7 +113,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
       stage_timers.dump_ctgs->stop();
     }
   }
-  LOG_MEM("Generated contigs");
+  LOG_MEM("Generated contigs k=" + to_string(kmer_len));
 
   if (kmer_len < options->kmer_lens.back()) {
     if (kmer_len == options->kmer_lens.front()) {
@@ -195,6 +196,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     stage_timers.localassm->stop();
     LOG_MEM("Local assembly completed");
   }
+  Timings::wait_pending();
   barrier();
   if (is_debug || options->checkpoint) {
     stage_timers.dump_ctgs->start();
@@ -209,5 +211,6 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
   SLOG(KBLUE, "Completed contig round k = ", kmer_len, " in ", setprecision(2), fixed, loop_t_elapsed.count(), " s at ",
        get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)", KNORM, "\n");
   LOG_MEM("Completed contigging");
+  Timings::wait_pending();
   barrier();
 }
