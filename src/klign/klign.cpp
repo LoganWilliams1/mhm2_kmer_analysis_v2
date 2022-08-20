@@ -149,13 +149,13 @@ class KmerCtgDHT {
   size_t unique_kmer_seed_lookups = 0;
   unsigned kmer_len;
 
-  KmerCtgDHT(int max_store_size, int max_rpcs_in_flight, bool allow_multi_kmers)
+  KmerCtgDHT(int max_store_size, int max_rpcs_in_flight, bool allow_multi_kmers, uint64_t num_contig_kmers = 0)
       : kmer_map({})
       , global_ctg_seqs({})
       , kmer_store()
       , num_dropped_seed_to_ctgs(0) {
     kmer_len = Kmer<MAX_K>::get_k();
-    kmer_store.set_size("insert ctg seeds", max_store_size, max_rpcs_in_flight);
+    kmer_store.set_size("insert ctg seeds", max_store_size, max_rpcs_in_flight, num_contig_kmers);
     kmer_store.set_update_func([&kmer_map = this->kmer_map, &num_dropped_seed_to_ctgs = this->num_dropped_seed_to_ctgs,
                                 allow_multi_kmers](KmerAndCtgLoc<MAX_K> kmer_and_ctg_loc) {
       CtgLoc ctg_loc = kmer_and_ctg_loc.ctg_loc;
@@ -924,7 +924,9 @@ double find_alignments(unsigned kmer_len, vector<PackedReads *> &packed_reads_li
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, "\n");
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
   bool allow_multi_kmers = compute_cigar;
-  KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers);
+  uint64_t num_ctg_kmers = 0;
+  for(auto & ctg: ctgs) if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+  KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   barrier();
   build_alignment_index(kmer_ctg_dht, ctgs, min_ctg_len);
 #ifdef DEBUG
