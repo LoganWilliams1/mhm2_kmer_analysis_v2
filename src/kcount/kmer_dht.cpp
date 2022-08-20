@@ -133,7 +133,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
     SWARN("Insufficient memory available: this could crash with OOM (lowest=", get_size_str(lowest_free_mem),
           " vs reqd=", get_size_str(max_reqd_space), ")");
 
-  kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight);
+  kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, my_num_kmers);
 
   barrier();
   // in this case we have to roughly estimate the hash table size because the space is reserved now
