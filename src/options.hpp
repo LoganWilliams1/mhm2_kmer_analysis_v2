@@ -93,7 +93,6 @@ class Options {
   bool verbose = false;
   int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
   int max_rpcs_in_flight = 100;
-  bool use_heavy_hitters = false;  // only enable when files are localized
   int dmin_thres = 2.0;
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
   bool checkpoint = true;
