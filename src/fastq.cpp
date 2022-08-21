@@ -415,6 +415,8 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
     dist_start_stop2->stop_prom.fulfill_result(fqr2.file_size);
     return make_future();
   }
+  AsyncTimer t_set_matching_pair("set_matching_pair: " + get_basename(fqr2.fname));
+  t_set_matching_pair.start();
   DBG("Starting matching pair on ", fqr1.fname, " ,", fqr1.start_read, " and ", fqr2.start_read, "\n");
   assert(fqr1.in && "FQ 1 is open");
   assert(fqr2.in && "FQ 2 is open");
@@ -517,24 +519,27 @@ future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, di
     fqr1.first_file = true;
   });
   auto fut2 = dist_start_stop2->set(fqr2).then([&fqr2]() { fqr2.seek_start(); });
-  return when_all(fut1, fut2).then([&fqr1, &fqr2, old_subsample]() {
+  return when_all(fut1, fut2).then([&fqr1, &fqr2, old_subsample, t_set_matching_pair]() {
     // restore subsampling
     fqr1.subsample_pct = old_subsample;
     fqr2.subsample_pct = old_subsample;
     DBG("Found matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
+    t_set_matching_pair.stop();
   });
 }
 
 // Find my boundary start and communicate to prev rank for their boundary end (if my start>0)...
 future<> FastqReader::continue_open() {
   if (block_size == -1) return continue_open_default_per_rank_boundaries();  // the old algorithm
+  AsyncTimer t_continue_open("continue_open: " + get_basename(fname));
+  t_continue_open.start();
   // use custom block start and block_size
   if (block_size == 0) {
     // this rank does not read this file
     DBG("Fulfilling rank will not read fname=", fname, "\n");
     dist_prom->start_prom.fulfill_result(file_size);
     dist_prom->stop_prom.fulfill_result(file_size);
-    return dist_prom->set(*this);
+    return dist_prom->set(*this).then([t_continue_open]() { t_continue_open.stop(); });
   }
 
   io_t.start();
@@ -574,9 +579,10 @@ future<> FastqReader::continue_open() {
     // expecting an rpc from rank_me + 1
   }
   auto fut_set = dist_prom->set(*this);
-  auto fut_seek = fut_set.then([&self = *this]() {
+  auto fut_seek = fut_set.then([&self = *this, t_continue_open]() {
     DBG("start_read=", self.start_read, " end_read=", self.end_read, "\n");
     if (self.start_read != self.end_read) self.seek_start();
+    t_continue_open.stop();
   });
   progress();
   return fut_seek;
@@ -584,6 +590,8 @@ future<> FastqReader::continue_open() {
 
 // all ranks open, 1 rank per node finds block boundaries
 future<> FastqReader::continue_open_default_per_rank_boundaries() {
+  AsyncTimer t_continue_open_default_per_rank_boundaries("continue_open_default_per_rank_boundaries: " + get_basename(fname));
+  t_continue_open_default_per_rank_boundaries.start();
   assert(upcxx::master_persona().active_with_caller());
   assert(know_file_size.get_future().ready());
   assert(block_size == -1);
@@ -654,7 +662,10 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
   // all the seeks are done, send results to local team
   wait_prom.fulfill_anonymous(1);
   auto fut_set = dist_prom->set(*this);
-  auto fut_seek = fut_set.then([this]() { this->seek_start(); });
+  auto fut_seek = fut_set.then([this, t_continue_open_default_per_rank_boundaries]() {
+    this->seek_start();
+    t_continue_open_default_per_rank_boundaries.stop();
+  });
   progress();
   return fut_seek;
 }
@@ -827,7 +838,9 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   return bytes_read;
 }
 
-void FastqReader::set_max_read_len(int len) { if (len > max_read_len) max_read_len = len; }
+void FastqReader::set_max_read_len(int len) {
+  if (len > max_read_len) max_read_len = len;
+}
 int FastqReader::get_max_read_len() { return std::max(max_read_len, fqr2 ? fqr2->get_max_read_len() : 0u); }
 
 double FastqReader::get_io_time() { return overall_io_t; }

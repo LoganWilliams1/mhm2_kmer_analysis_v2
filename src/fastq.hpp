@@ -213,7 +213,11 @@ class FastqReaders {
   template <typename Container>
   static size_t open_all(Container &fnames, int subsample_pct = 100) {
     DBG("Open all ", fnames.size(), " files\n");
+#ifdef NO_GLOBAL_FILE_BLOCKING
+    return open_all_file_blocking(fnames, subsample_pct);
+#else
     return open_all_global_blocking(fnames, subsample_pct);
+#endif
   }
 
   // returns the total global size
@@ -223,10 +227,16 @@ class FastqReaders {
     assert(subsample_pct > 0 && subsample_pct <= 100);
     auto fut_chain = make_future();
     size_t total_size = 0;
+    AsyncTimer t_all("open_all_file_blocking all files");
+    t_all.start();
     for (string &fname : fnames) {
+      AsyncTimer t_finish_seek("open_all_file_blocking seeks on file:" + get_basename(fname));
+      t_finish_seek.start();
       FastqReader &fqr = open(fname, subsample_pct);
-      fut_chain = when_all(fut_chain, fqr.get_file_size(true).then([&total_size](int64_t sz) { total_size += sz; }));
+      auto fut = fqr.get_open_fut().then([t_finish_seek]() { t_finish_seek.stop(); });
+      fut_chain = when_all(fut_chain, fut, fqr.get_file_size(true).then([&total_size](int64_t sz) { total_size += sz; }));
     }
+    fut_chain = fut_chain.then([t_all]() { t_all.stop(); });
     fut_chain.wait();
     return total_size;
   }
