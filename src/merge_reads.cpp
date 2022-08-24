@@ -180,7 +180,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
   progress_fut.wait();
   max_read_len = fut_max_read_len.wait();
 
-  timer.initate_exit_barrier();  // barrier ensures all have completed for next reduction
+  timer.initiate_exit_barrier();  // barrier ensures all have completed for next reduction
   LOG_MEM("After estimate_num_reads");
   SLOG_VERBOSE("Found maximum read length of ", max_read_len, " and (rank 0's) max estimated total ", estimated_total_records,
                " per rank\n");
@@ -940,5 +940,5 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   summary_promise.fulfill_anonymous(1);
   fut_summary.wait();
 
-  timer.initate_exit_barrier();
+  timer.initiate_exit_barrier();
 }

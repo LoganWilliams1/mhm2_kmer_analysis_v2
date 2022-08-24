@@ -865,7 +865,8 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReadsList &pa
   auto fut = align_file_timer.reduce_timings().then([](ShTimings sh_align_file_timings) {
     SLOG_VERBOSE("Alignment timings: ", sh_align_file_timings->to_string(true, true), "\n");
   });
-  all_done = when_all(all_done, fut, progbar.set_done());
+  Timings::set_pending(fut);
+  all_done = when_all(all_done, progbar.set_done());
   // free some memory
   HASH_TABLE<Kmer<MAX_K>, vector<KmerToRead>>().swap(kmer_read_map);
 
@@ -878,7 +879,9 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReadsList &pa
 
   aligner.sort_alns();
   auto num_overlaps = aligner.get_num_overlaps();
+  
   all_done.wait();
+  Timings::wait_pending(true);
   barrier();
 
   auto tot_num_reads = tot_num_reads_fut.wait();

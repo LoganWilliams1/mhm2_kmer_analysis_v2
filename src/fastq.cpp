@@ -322,6 +322,7 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     , io_t("fastq IO for " + fname)
     , dist_prom(world())
     , open_fut(make_future()) {
+  assert(!upcxx::in_progress());
   Timer construction_timer("FastqReader construct " + get_basename(fname));
   construction_timer.initiate_entrance_reduction();
   bool need_wait = first_wait.ready();
@@ -902,6 +903,7 @@ size_t FastqReaders::get_open_file_size(const string fname, bool include_file_2)
 }
 
 FastqReader &FastqReaders::open(const string fname, int subsample_pct, future<> first_wait) {
+  assert(!upcxx::in_progress());
   FastqReaders &me = getInstance();
   auto it = me.readers.find(fname);
   if (it == me.readers.end()) {
