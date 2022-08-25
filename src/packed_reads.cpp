@@ -373,10 +373,12 @@ upcxx::future<> PackedReads::load_reads_nb() {
   int64_t underestimate = estimated_records - packed_reads.size();
   if (underestimate < 0 && reserve_records < packed_reads.size())
     LOG("NOTICE Underestimated by ", -underestimate, " estimated ", estimated_records, " found ", packed_reads.size(), "\n");
-  auto all_under_estimated_fut = upcxx::reduce_one(underestimate < 0 ? 1 : 0, upcxx::op_fast_add, 0);
-  auto all_estimated_records_fut = upcxx::reduce_one(estimated_records, upcxx::op_fast_add, 0);
-  auto all_num_records_fut = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
-  auto all_num_bases_fut = upcxx::reduce_one(bases, upcxx::op_fast_add, 0);
+  auto &pr = Timings::get_promise_reduce();
+  auto all_under_estimated_fut = pr.reduce_one(underestimate < 0 ? 1 : 0, upcxx::op_fast_add, 0);
+  auto all_estimated_records_fut = pr.reduce_one(estimated_records, upcxx::op_fast_add, 0);
+  auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
+  auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
+  Timings::wait_pending(true);
   return when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
       .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records, int64_t all_num_records,
                                                 int64_t all_num_bases) {
@@ -395,13 +397,15 @@ void PackedReads::report_size() {
   LOG("PackedReads num_reads=", get_local_num_reads(), " num_bases=", bases, " name_bytes=", name_bytes, ": ",
       get_size_str(sizeof(PackedRead) * get_local_num_reads() + bases + name_bytes), " for ", upcxx_utils::get_basename(fname),
       "\n");
-  auto all_num_records_fut = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
-  auto all_num_bases_fut = upcxx::reduce_one(bases, upcxx::op_fast_add, 0);
-  auto all_num_names_fut = upcxx::reduce_one(name_bytes, upcxx::op_fast_add, 0);
-  auto min_rank_fut = upcxx::reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
-  auto max_rank_fut = upcxx::reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
+  auto &pr = Timings::get_promise_reduce();
+  auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
+  auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
+  auto all_num_names_fut = pr.reduce_one(name_bytes, upcxx::op_fast_add, 0);
+  auto min_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
+  auto max_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
+  auto fut_pr = pr.fulfill().then([](PromiseReduce::Vals ignore){});
   auto fut =
-      when_all(Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut, max_rank_fut)
+      when_all(fut_pr, Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut, max_rank_fut)
           .then([&self = *this](size_t all_num_records, size_t all_num_bases, size_t all_num_names, int min_rank, int max_rank) {
             auto num_ranks = max_rank - min_rank + 1;
             auto sz = all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names;
@@ -440,12 +444,18 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
   }
   auto fut = progbar.set_done();
   DBG("This rank processed ", num_reads, " reads, and found ", num_kmers, " kmers\n");
-  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
-  auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
-  auto all_num_kmers = reduce_all(num_kmers, op_fast_add).wait();
-  fut.wait();
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_all_num_reads = pr.reduce_one(num_reads, op_fast_add, 0);
+  auto fut_all_tot_num_reads = pr.reduce_one(tot_num_reads, op_fast_add, 0);
+  auto fut_all_num_kmers = pr.reduce_all(num_kmers, op_fast_add);
 
-  SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
-               (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
+  auto fut_log = when_all(Timings::get_pending(), fut_all_num_reads, fut_all_tot_num_reads, fut_all_num_kmers)
+                     .then([](int64_t all_num_reads, int64_t all_tot_num_reads, int64_t all_num_kmers) {
+                       SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
+                                    (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
+                     });
+  Timings::set_pending(fut_log);
+  Timings::wait_pending(true);
+  fut.wait();
   return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
 }
