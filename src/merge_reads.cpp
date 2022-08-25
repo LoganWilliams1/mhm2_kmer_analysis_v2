@@ -104,7 +104,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
   int64_t estimated_total_records = 0;
   std::vector<int> file_bytes_per_record(reads_fname_list.size(), 0);
   LOG_MEM("Before estimate_num_reads");
-
+  auto &pr = Timings::get_promise_reduce();
   ProgressBar progbar(total_size / rank_n(), "Scanning reads file to estimate number of reads");
   for (auto const &reads_fname : reads_fname_list) {
     discharge();
@@ -157,7 +157,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
     total_records_processed += records_processed;
     int bytes_per = (int)(records_processed > 0 ? (file_bytes_read / records_processed) : std::numeric_limits<int>::max());
     auto fut_reduce =
-        reduce_all(bytes_per, op_fast_min)
+        pr.reduce_all(bytes_per, op_fast_min)
             .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records, &fqr](int min_bytes_per) {
               DBG("Found min_bytes_per=", min_bytes_per, " for file ", fname, " my_size=", my_file_size, "\n");
               assert(min_bytes_per < std::numeric_limits<int>::max());
@@ -166,7 +166,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
               estimated_total_records += file_size / min_bytes_per;
               fqr.set_avg_bytes_per_read(min_bytes_per);
             });
-    auto fut_set_max = reduce_all(fqr.get_max_read_len(), op_fast_max).then([&fqr](int max_read_len) {
+    auto fut_set_max = pr.reduce_all(fqr.get_max_read_len(), op_fast_max).then([&fqr](int max_read_len) {
       fqr.set_max_read_len(max_read_len);
     });
     progress_fut = when_all(progress_fut, fut_reduce, fut_set_max);
@@ -174,9 +174,12 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
     read_file_idx++;
   }
   progress_fut = when_all(progress_fut, progbar.set_done());
-  auto fut_max_read_len = reduce_all(max_read_len, op_fast_max);
+  auto fut_max_read_len = pr.reduce_all(max_read_len, op_fast_max);
   DBG("This rank processed ", num_lines, " lines (", num_reads, " reads) with max_read_len=", max_read_len,
       " my_est=", my_estimated_total_records, "\n");
+
+  // complete all pending reductions
+  pr.fulfill().wait();
   progress_fut.wait();
   max_read_len = fut_max_read_len.wait();
 
@@ -429,9 +432,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   int64_t tot_bases = 0;
   // for unique read id need to estimate number of reads in our sections of all files
   auto [my_num_reads_estimate, read_len] = estimate_num_reads(reads_fname_list);
-  auto max_num_reads = reduce_all(my_num_reads_estimate, op_fast_max).wait();
-  auto tot_num_reads = reduce_all(my_num_reads_estimate, op_fast_add).wait();
-  SLOG_VERBOSE("Estimated total number of reads as ", tot_num_reads, ", and max for any rank ", max_num_reads, "\n");
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_max_num_reads = pr.reduce_all(my_num_reads_estimate, op_fast_max);
+  auto fut_tot_num_reads = pr.reduce_all(my_num_reads_estimate, op_fast_add);
 
   // reserve space for PackedReads now
   assert(reads_fname_list.size() == packed_reads_list.size());
@@ -449,6 +452,13 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     }
   }
   LOG_MEM("After reserving space for storing reads");
+
+  // Finish reductions
+  pr.fulfill().wait();
+  auto max_num_reads = fut_max_num_reads.wait();
+  auto tot_num_reads = fut_tot_num_reads.wait();
+  SLOG_VERBOSE("Estimated total number of reads as ", tot_num_reads, ", and max for any rank ", max_num_reads, "\n");
+
 
   // 2 reads per pair, 5x the block size estimate to be sure that we have no overlap. The read ids do not have to be contiguous
   auto read_id_block = (max_num_reads + 10000) * 2 * 5;
@@ -843,12 +853,12 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     auto fut_sh_ssw_timings = trim_timer_ssw.reduce_timings();
     auto fut_sh_trim_overhead = trim_timer.reduce_timings();
     auto fut_reductions = when_all(
-        reduce_one(num_pairs, op_fast_add, 0), reduce_one(num_merged, op_fast_add, 0), reduce_one(num_ambiguous, op_fast_add, 0),
-        reduce_one(merged_len, op_fast_add, 0), reduce_one(overlap_len, op_fast_add, 0), reduce_one(max_read_len, op_fast_max, 0),
-        reduce_one(bases_trimmed, op_fast_add, 0), reduce_one(reads_removed, op_fast_add, 0),
-        reduce_one(bases_read, op_fast_add, 0), reduce_one(bytes_read, op_fast_add, 0), reduce_one(missing_read1, op_fast_add, 0),
-        reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings, fut_sh_trim_overhead,
-        reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0), reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
+        pr.reduce_one(num_pairs, op_fast_add, 0), pr.reduce_one(num_merged, op_fast_add, 0), pr.reduce_one(num_ambiguous, op_fast_add, 0),
+        pr.reduce_one(merged_len, op_fast_add, 0), pr.reduce_one(overlap_len, op_fast_add, 0), pr.reduce_one(max_read_len, op_fast_max, 0),
+        pr.reduce_one(bases_trimmed, op_fast_add, 0), pr.reduce_one(reads_removed, op_fast_add, 0),
+        pr.reduce_one(bases_read, op_fast_add, 0), pr.reduce_one(bytes_read, op_fast_add, 0), pr.reduce_one(missing_read1, op_fast_add, 0),
+        pr.reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings, fut_sh_trim_overhead,
+        pr.reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0), pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
     fut_summary = when_all(fut_summary, fut_reductions)
                       .then([reads_fname, bytes_read, &adapters](
@@ -922,10 +932,11 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   rpc_tests.wait();
 
   // finish all file writing and report
-  upcxx_utils::min_sum_max_reduce_one(read_files_t.get_elapsed()).then([](upcxx_utils::MinSumMax<double> msm) {
+  auto fut_msm = pr.msm_reduce_one(read_files_t.get_elapsed());
+  fut_summary = when_all(fut_summary, fut_msm).then([](upcxx_utils::MinSumMax<double> msm) {
     SLOG_VERBOSE("Total time reading fastq files: ", msm.to_string(), "\n");
-  }).wait();
-  
+  });
+
   dump_reads_t.start();
   wrote_all_files_fut.wait();
   for (auto sh_of : all_outputs) {
@@ -937,6 +948,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   elapsed_write_io_t = dump_reads_t.get_elapsed();
   dump_reads_t.done();
 
+  // Finish all reductions
+  pr.fulfill().wait();
   summary_promise.fulfill_anonymous(1);
   fut_summary.wait();
 

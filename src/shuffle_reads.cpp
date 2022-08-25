@@ -309,9 +309,14 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   for (auto &[cid, read_ids] : *cid_to_reads_map) num_mapped_reads += read_ids.size();
   // counted read pairs
   num_mapped_reads *= 2;
+  auto &pr = Timings::get_promise_reduce();
   auto fut_read_slot = upcxx_utils::reduce_prefix(num_mapped_reads, upcxx::op_fast_add);
-  auto fut_all_num_mapped_reads = reduce_all(num_mapped_reads, op_fast_add);
-  auto max_num_mapped_reads = reduce_one(num_mapped_reads, op_fast_max, 0).wait();
+  auto fut_all_num_mapped_reads = pr.reduce_all(num_mapped_reads, op_fast_add);
+  auto fut_max_num_mapped_reads = pr.reduce_one(num_mapped_reads, op_fast_max, 0);
+
+  // complete pending reductions
+  pr.fulfill().wait();
+  auto max_num_mapped_reads =fut_max_num_mapped_reads.wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
   LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
@@ -468,9 +473,10 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   uint64_t num_reads_received = packed_reads_list[0]->get_local_num_reads();
   assert(num_reads_received == new_packed_reads->size());
   new_packed_reads->clear();
-  auto fut_msm_num_reads_received = min_sum_max_reduce_one(num_reads_received);
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_msm_num_reads_received = pr.msm_reduce_one(num_reads_received);
   uint64_t num_bases_received = packed_reads_list[0]->get_local_bases();
-  auto fut_msm_bases_received = upcxx_utils::min_sum_max_reduce_one(num_bases_received);
+  auto fut_msm_bases_received = pr.msm_reduce_one(num_bases_received);
 
   auto fut =
       when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
@@ -482,6 +488,9 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
             if (all_num_new_reads != all_num_reads)
               SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
           });
+  // finish pending reductions
+  pr.fulfill().wait();
+  Timings::wait_pending();
   fut.wait();
   barrier();
 }
