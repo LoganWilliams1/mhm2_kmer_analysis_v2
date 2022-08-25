@@ -378,7 +378,7 @@ upcxx::future<> PackedReads::load_reads_nb() {
   auto all_estimated_records_fut = pr.reduce_one(estimated_records, upcxx::op_fast_add, 0);
   auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
   auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
-  Timings::wait_pending(true);
+  Timings::wait_pending();
   return when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
       .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records, int64_t all_num_records,
                                                 int64_t all_num_bases) {
@@ -455,7 +455,7 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
                                     (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
                      });
   Timings::set_pending(fut_log);
-  Timings::wait_pending(true);
+  Timings::wait_pending();
   fut.wait();
   return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
 }

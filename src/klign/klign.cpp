@@ -881,7 +881,7 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReadsList &pa
   auto num_overlaps = aligner.get_num_overlaps();
   
   all_done.wait();
-  Timings::wait_pending(true);
+  Timings::wait_pending();
   barrier();
 
   auto tot_num_reads = tot_num_reads_fut.wait();
