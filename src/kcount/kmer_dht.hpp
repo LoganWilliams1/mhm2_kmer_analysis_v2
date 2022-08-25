@@ -133,7 +133,7 @@ class KmerDHT {
  public:
   bool using_ctg_kmers = false;
 
-  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf);
+  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf);
 
   void clear_stores();
 

@@ -102,7 +102,7 @@ void Supermer::unpack() {
 int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 
 template <int MAX_K>
-KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf)
+KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf)
     : local_kmers({})
     , ht_inserter({})
     , kmer_store()
@@ -123,17 +123,24 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   auto my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
   double required_space = estimate_hashtable_memory(my_adjusted_num_kmers, sizeof(Kmer<MAX_K>) + sizeof(KmerCounts)) * node0_cores;
   auto max_reqd_space = upcxx::reduce_all(required_space, upcxx::op_fast_max).wait();
-  auto free_mem = get_free_mem();
+  auto free_mem = get_free_mem(true);
   auto lowest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_min).wait();
   auto highest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_max).wait();
+
+  auto est_supermer_size =
+      sizeof(kmer_count_t) + 8 + (2 * Kmer<MAX_K>::get_k() - minimizer_len + 1) / 2;  // 4-bit packed 1 minimize less than 2 k long
+  max_kmer_store_bytes = max_kmer_store_bytes * sizeof(Supermer) / est_supermer_size;
+
   SLOG_VERBOSE("With adjustment factor of ", adjustment_factor, " require ", get_size_str(max_reqd_space), " per node (",
                my_adjusted_num_kmers, " kmers per rank), and there is ", get_size_str(lowest_free_mem), " to ",
-               get_size_str(highest_free_mem), " available on the nodes\n");
+               get_size_str(highest_free_mem), " available on the nodes. sizeof(Supermer)=", sizeof(Supermer),
+               " est_size=", est_supermer_size, " max_kmer_store_bytes=", get_size_str(max_kmer_store_bytes), "\n");
+
   if (lowest_free_mem * 0.80 < max_reqd_space)
     SWARN("Insufficient memory available: this could crash with OOM (lowest=", get_size_str(lowest_free_mem),
           " vs reqd=", get_size_str(max_reqd_space), ")");
 
-  kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, useHHSS);
+  kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, my_num_kmers);
 
   barrier();
   // in this case we have to roughly estimate the hash table size because the space is reserved now

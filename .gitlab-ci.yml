@@ -185,11 +185,12 @@ Cori:accuracy:
     - cd $SCRATCH
     - FAILED=""
     - echo "Testing accuracy"
+    - export RWDI=${INSTALL_PREFIX}-knl-rwdi/bin/
     - export REL=${INSTALL_PREFIX}-knl/bin/
     - export ARCTIC=/global/cscratch1/sd/regan/GitlabCIData/
     - export OPTS="-r ${ARCTIC}/arctic_sample_0.fq --checkpoint=no"
-    - echo "Submitting job on 5 nodes... on 2 nodes is is roughly REL=170s"
-    - knl_job=$(sbatch --parsable --job-name="CImha-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=5 --qos=debug --time=10:00 --wrap="${REL}/mhm2.py $OPTS -o ${RUN_PREFIX}/rel && echo Good")
+    - echo "Submitting job on 6 nodes rwdi build... on 2 nodes rel build is roughly REL=170s"
+    - knl_job=$(sbatch --parsable --job-name="CImha-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=6 --qos=debug --time=10:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/rel && echo Good")
     - echo "Submitting full arctic job on 15 nodes"
     - export OPTS2="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
     - knl_job2=$(sbatch --parsable --job-name="CI-mhm2-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=15 --qos=debug --time=30:00 --wrap="${REL}/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-full && echo Good")

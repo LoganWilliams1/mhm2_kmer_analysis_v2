@@ -94,9 +94,15 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
     //  WARN("Found duplicate kmer in cids - this shouldn't happen!");
   });
   int est_update_size = sizeof(pair<uint64_t, int64_t>);
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  auto local_n = local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  kmer_cid_store.set_size("kmer cid store", max_store_bytes);
+  // estimate the number of updates
+  uint64_t num_updates = 0;
+  for (auto &ctg : ctgs) {
+    num_updates += ctg.seq.length();
+  }
+  kmer_cid_store.set_size("kmer cid store", max_store_bytes, local_n * 2, num_updates);
   for (auto &ctg : ctgs) {
     vector<kmer_t> kmers;
     kmer_t::get_kmers(SHUFFLE_KMER_LEN, ctg.seq, kmers);
@@ -127,18 +133,23 @@ struct KmerReqBuf {
 };
 
 // hack to avoid agg store update() within progress context
-struct UpdateCidReadsBuffer { int32_t target; int64_t cid, rid;};
-static void update_cid_reads_buffer(ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store, vector<UpdateCidReadsBuffer> &update_buffer) {
+struct UpdateCidReadsBuffer {
+  int32_t target;
+  int64_t cid, rid;
+};
+static void update_cid_reads_buffer(ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store,
+                                    vector<UpdateCidReadsBuffer> &update_buffer) {
   if (update_buffer.empty()) return;
   vector<UpdateCidReadsBuffer> tmp;
   tmp.swap(update_buffer);
-  for(auto &ub : tmp) {
+  for (auto &ub : tmp) {
     assert(ub.cid >= 0);
     cid_reads_store.update(ub.target, {ub.cid, ub.rid});
   }
 }
 static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dist_object<kmer_to_cid_map_t> &kmer_to_cid_map,
-                                 ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store, vector<UpdateCidReadsBuffer> &update_buffer) {
+                                 ThreeTierAggrStore<pair<int64_t, int64_t>> &cid_reads_store,
+                                 vector<UpdateCidReadsBuffer> &update_buffer) {
   auto fut = rpc(
                  target,
                  [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, vector<uint64_t> kmers) -> vector<int64_t> {
@@ -154,7 +165,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                  .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](vector<int64_t> cids) {
                    if (cids.size() != read_ids.size()) WARN("buff size is wrong, ", cids.size(), " != ", read_ids.size());
                    for (int i = 0; i < cids.size(); i++) {
-                     //if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
+                     // if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
                      UpdateCidReadsBuffer ub{.target = get_target_rank(cids[i]), .cid = cids[i], .rid = read_ids[i]};
                      if (cids[i] != -1) update_buffer.push_back(ub);
                    }
@@ -178,9 +189,14 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedRea
       it->second.push_back(read_id);
   });
   int est_update_size = sizeof(pair<int64_t, int64_t>);
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  auto local_n = local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  cid_reads_store.set_size("Read cid store", max_store_bytes);
+  // estimate the number of updates
+  uint64_t num_updates = 0;
+  for (auto packed_reads : packed_reads_list)
+    num_updates += packed_reads->get_local_num_reads() * (packed_reads->get_max_read_len() - SHUFFLE_KMER_LEN + 1);
+  cid_reads_store.set_size("Read cid store", max_store_bytes, local_n * 2, num_updates);
   string read_id_str, read_seq, read_quals;
   const int MAX_REQ_BUFF = 1000;
   vector<KmerReqBuf> kmer_req_bufs;
@@ -243,9 +259,10 @@ static dist_object<cid_to_reads_map_t> process_alns(vector<PackedReads *> &packe
     }
   });
   int est_update_size = sizeof(tuple<int64_t, int64_t, int>);
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  auto local_n = local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  read_cid_store.set_size("Read cid store", max_store_bytes);
+  read_cid_store.set_size("Read cid store", max_store_bytes, local_n * 2, alns.size());
 
   for (auto &aln : alns) {
     progress();
@@ -268,9 +285,9 @@ static dist_object<cid_to_reads_map_t> process_alns(vector<PackedReads *> &packe
       it->second.push_back(read_id);
   });
   est_update_size = sizeof(pair<int64_t, int64_t>);
-  mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  mem_to_use = 0.1 * get_free_mem(true) / local_n;
   max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  cid_reads_store.set_size("Read cid store", max_store_bytes);
+  cid_reads_store.set_size("Read cid store", max_store_bytes, local_n * 2, read_to_cid_map->size());
   for (auto &[read_id, cid_elem] : *read_to_cid_map) {
     progress();
     cid_reads_store.update(get_target_rank(cid_elem.first), {cid_elem.first, read_id});
@@ -297,7 +314,8 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   auto max_num_mapped_reads = reduce_one(num_mapped_reads, op_fast_max, 0).wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
-  LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads, " all_num_mapped_reads=", all_num_mapped_reads, "\n");
+  LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
+      " all_num_mapped_reads=", all_num_mapped_reads, "\n");
   barrier();
   auto avg_num_mapped_reads = all_num_mapped_reads / rank_n();
   SLOG_VERBOSE("Avg mapped reads per rank ", avg_num_mapped_reads, " max ", max_num_mapped_reads, " balance ",
@@ -305,9 +323,13 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
   dist_object<read_to_target_map_t> read_to_target_map({});
   upcxx_utils::ThreeTierAggrStore<ReadTarget> read_target_store;
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  auto local_n = local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
   auto max_store_bytes = max(mem_to_use, (int64_t)sizeof(ReadTarget) * 100);
-  read_target_store.set_size("Read-Targets", max_store_bytes);
+  // estimate the number of updates
+  uint64_t num_updates = 0;
+  for (auto &[cid, read_ids] : *cid_to_reads_map) num_updates += read_ids.size();
+  read_target_store.set_size("Read-Targets", max_store_bytes, local_n * 2, num_updates);
   read_target_store.set_update_func([&read_to_target_map](ReadTarget rt) { read_to_target_map->insert({rt.read_id, rt.target}); });
   read_to_target_map->reserve(avg_num_mapped_reads);
   barrier();
@@ -325,7 +347,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
       // each entry is a pair
       read_slot += 2;
     }
-    progbar.update(read_ids.size()*2);
+    progbar.update(read_ids.size() * 2);
   }
   assert(read_slot == fut_read_slot.wait() && "updated all Read-Targets");
   auto fut_progbar = progbar.set_done();
@@ -340,11 +362,16 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
 // hack to avoid agg store update() within progress context
 // avoid agg store update() within progress
-struct MoveReadsToTargetUpdatesBuffer { int32_t target; PackedRead read1, read2;};
-static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store, vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
+struct MoveReadsToTargetUpdatesBuffer {
+  int32_t target;
+  PackedRead read1, read2;
+};
+static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store,
+                                        vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
   if (!updates_buffer.empty()) {
-    vector<MoveReadsToTargetUpdatesBuffer> tmp_ub; tmp_ub.swap(updates_buffer);
-    for(auto &ub : tmp_ub) {
+    vector<MoveReadsToTargetUpdatesBuffer> tmp_ub;
+    tmp_ub.swap(updates_buffer);
+    for (auto &ub : tmp_ub) {
       read_seq_store.update(ub.target, {ub.read1, ub.read2});
     }
   }
@@ -355,16 +382,27 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_not_found = 0;
   dist_object<vector<PackedRead>> new_packed_reads({});
-  ThreeTierAggrStore<pair<PackedRead, PackedRead>> read_seq_store;
+  using PairPackedRead = pair<PackedRead, PackedRead>;
+  ThreeTierAggrStore<PairPackedRead> read_seq_store;
   // FIXME read_seq_store.set_restricted_updates();
-  read_seq_store.set_update_func([&new_packed_reads](pair<PackedRead, PackedRead> &&read_pair_info) {
+  read_seq_store.set_update_func([&new_packed_reads](PairPackedRead &&read_pair_info) {
     new_packed_reads->push_back(read_pair_info.first);
     new_packed_reads->push_back(read_pair_info.second);
   });
   int est_update_size = 600;
-  int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+  auto local_n = local_team().rank_n();
+  int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  read_seq_store.set_size("Read seq store", max_store_bytes);
+  // estimate the number of updates and bases transferred
+  uint64_t num_updates = 0, num_bases = 0;
+  for (auto packed_reads : packed_reads_list) {
+    num_updates += packed_reads->get_local_num_reads();
+    num_bases += packed_reads->get_local_num_reads() * packed_reads->get_max_read_len();
+  }
+  // reduce max_store_bytes by the extra_size of this non-trivial updated data
+  auto non_trivial_size = sizeof(PairPackedRead) + ((num_bases + num_updates - 1) / num_updates);
+  max_store_bytes = max_store_bytes * sizeof(PairPackedRead) / non_trivial_size;
+  read_seq_store.set_size("Read seq store", max_store_bytes, local_n * 2, num_updates);
   // hack to avoid agg store update() within progress context
   // avoid agg store update() within progress
   vector<MoveReadsToTargetUpdatesBuffer> updates_buffer;
@@ -390,7 +428,8 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
                        }
                        if (target < 0 || target >= rank_n()) DIE("target out of range ", target);
                        assert(target >= 0 && target < rank_n());
-                       MoveReadsToTargetUpdatesBuffer ub{.target = target, .read1 = std::move(packed_read1), .read2 = std::move(packed_read2)};
+                       MoveReadsToTargetUpdatesBuffer ub{
+                           .target = target, .read1 = std::move(packed_read1), .read2 = std::move(packed_read2)};
                        updates_buffer.push_back(ub);
                      });
       limit_outstanding_futures(fut).wait();
