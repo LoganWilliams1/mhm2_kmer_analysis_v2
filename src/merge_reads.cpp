@@ -84,10 +84,8 @@ static const double Q2Perror[] = {
 static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, int ranks_per_file = 7) {
   // estimate reads in this rank's section of all the files
   future<> progress_fut = make_future();
-
   BarrierTimer timer(__FILEFUNC__);
   size_t total_size = FastqReaders::open_all(reads_fname_list);
-
   // Issue #61 - reduce the # of reading ranks to fix excessively long estimates on poor filesystems
   // only a handful of ranks per file are needed to perform the estimate (i.e. 7)
   SLOG_VERBOSE("Estimating with about ", ranks_per_file, " ranks for each of the ", reads_fname_list.size(), " file(s)\n");
@@ -105,6 +103,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
 
   ProgressBar progbar(total_size / rank_n(), "Scanning reads file to estimate number of reads");
   for (auto const &reads_fname : reads_fname_list) {
+    DBG("Scanning ", reads_fname, "\n");
     discharge();
     // assume this rank will not read this file
     size_t my_file_size = 0;
@@ -126,6 +125,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
         if (will_read) break;
       }
     }
+    DBG("Will ", will_read ? "" : " NOT ", " read ", fqr.get_fname(), "\n");
 
     size_t tot_bytes_read = 0, file_bytes_read = 0;
     int64_t records_processed = 0, total_records = 0;
@@ -154,6 +154,7 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
     auto fname = fqr.get_fname();
     total_records_processed += records_processed;
     int bytes_per = (int)(records_processed > 0 ? (file_bytes_read / records_processed) : std::numeric_limits<int>::max());
+    DBG("records_processed=", records_processed, " bytes_per=", bytes_per, " file_bytes_read=", file_bytes_read, " fname=", fqr.get_fname(), "\n");
     auto fut_reduce =
         reduce_all(bytes_per, op_fast_min)
             .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records](int min_bytes_per) {
