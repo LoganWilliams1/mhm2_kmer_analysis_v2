@@ -134,6 +134,23 @@ void FastqReader::seekg(int64_t pos) {
   assert(tellg() == pos);
 }
 
+bool FastqReader::is_open() {
+  return open_fut.ready();
+}
+
+bool FastqReader::is_open(bool wait_for_open) {
+  if (wait_for_open) {
+    assert(!upcxx::in_progress());
+    open_fut.wait();
+  }
+  return is_open();
+}
+
+FastqReader &FastqReader::get_fqr2() {
+    assert(fqr2);
+    return *fqr2;
+  }
+
 int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // first record is the first record, include it.  Every other partition will be at least 1 full record after offset.
   // but read the first few lines anyway
@@ -885,10 +902,10 @@ FastqReaders &FastqReaders::getInstance() {
   return _;
 }
 
-bool FastqReaders::is_open(const string fname) {
+bool FastqReaders::is_open(const string fname, bool wait_for_open) {
   FastqReaders &me = getInstance();
   auto it = me.readers.find(fname);
-  return it != me.readers.end() && it->second->is_open();
+  return it != me.readers.end() && it->second->is_open(wait_for_open);
 }
 
 size_t FastqReaders::get_open_file_size(const string fname, bool include_file_2) {
@@ -930,6 +947,7 @@ FastqReader &FastqReaders::get(const string fname) {
 void FastqReaders::close(const string fname) {
   FastqReaders &me = getInstance();
   auto it = me.readers.find(fname);
+  DBG("Closing fname=", fname, " ", it != me.readers.end() ? " found and erasing " : " not found ", "\n");
   if (it != me.readers.end()) {
     me.readers.erase(it);
   }
