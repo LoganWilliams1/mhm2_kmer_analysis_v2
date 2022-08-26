@@ -262,9 +262,11 @@ void PackedReads::add_read(const string &read_id, const string &seq, const strin
 void PackedReads::load_reads(PackedReadsList &packed_reads_list) {
   BarrierTimer timer(__FILEFUNC__);
   upcxx::future<> all_done = upcxx::make_future();
+  vector<string> file_names;
   for (auto pr : packed_reads_list) {
-    FastqReaders::open(pr->fname);
+    file_names.push_back(pr->fname);
   }
+  FastqReaders::open_all(file_names);
   for (auto pr : packed_reads_list) {
     upcxx::discharge();
     upcxx::progress();
