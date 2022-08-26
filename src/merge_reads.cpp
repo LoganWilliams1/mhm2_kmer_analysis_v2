@@ -152,7 +152,8 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
           tot_bytes_read, " stream bytes)\n");
       if (tot_bytes_read < file_bytes_read) file_bytes_read = tot_bytes_read;  // use the minimum of the two measures
       fqr.reset();  // rewind this file for the next reading as this was only an estimation
-    } else LOG("Will not read ", fqr.get_fname(), "\n");
+    } else
+      LOG("Will not read ", fqr.get_fname(), "\n");
     auto file_size = fqr.get_file_size().wait();
     auto fname = fqr.get_fname();
     total_records_processed += records_processed;
@@ -167,9 +168,8 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
               estimated_total_records += file_size / min_bytes_per;
               fqr.set_avg_bytes_per_read(min_bytes_per);
             });
-    auto fut_set_max = pr.reduce_all(fqr.get_max_read_len(), op_fast_max).then([&fqr](int max_read_len) {
-      fqr.set_max_read_len(max_read_len);
-    });
+    auto fut_set_max =
+        pr.reduce_all(fqr.get_max_read_len(), op_fast_max).then([&fqr](int max_read_len) { fqr.set_max_read_len(max_read_len); });
     progress_fut = when_all(progress_fut, fut_reduce, fut_set_max);
     max_read_len = max(fqr.get_max_read_len(), max_read_len);
     read_file_idx++;
@@ -397,9 +397,8 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
   return false;
 }
 
-void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
-                 PackedReadsList &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
-                 int subsample_pct) {
+void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
+                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct) {
   assert(!upcxx::in_progress());
   assert(subsample_pct > 0 && subsample_pct <= 100);
   BarrierTimer timer(__FILEFUNC__);
@@ -459,7 +458,6 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   auto max_num_reads = fut_max_num_reads.wait();
   auto tot_num_reads = fut_tot_num_reads.wait();
   SLOG_VERBOSE("Estimated total number of reads as ", tot_num_reads, ", and max for any rank ", max_num_reads, "\n");
-
 
   // 2 reads per pair, 5x the block size estimate to be sure that we have no overlap. The read ids do not have to be contiguous
   auto read_id_block = (max_num_reads + 10000) * 2 * 5;
@@ -853,42 +851,48 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     // delay the summary output for when they complete
     auto fut_sh_ssw_timings = trim_timer_ssw.reduce_timings();
     auto fut_sh_trim_overhead = trim_timer.reduce_timings();
-    auto fut_reductions = when_all(
-        pr.reduce_one(num_pairs, op_fast_add, 0), pr.reduce_one(num_merged, op_fast_add, 0), pr.reduce_one(num_ambiguous, op_fast_add, 0),
-        pr.reduce_one(merged_len, op_fast_add, 0), pr.reduce_one(overlap_len, op_fast_add, 0), pr.reduce_one(max_read_len, op_fast_max, 0),
-        pr.reduce_one(bases_trimmed, op_fast_add, 0), pr.reduce_one(reads_removed, op_fast_add, 0),
-        pr.reduce_one(bases_read, op_fast_add, 0), pr.reduce_one(bytes_read, op_fast_add, 0), pr.reduce_one(missing_read1, op_fast_add, 0),
-        pr.reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings, fut_sh_trim_overhead,
-        pr.reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0), pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
+    auto fut_reductions =
+        when_all(pr.reduce_one(num_pairs, op_fast_add, 0), pr.reduce_one(num_merged, op_fast_add, 0),
+                 pr.reduce_one(num_ambiguous, op_fast_add, 0), pr.reduce_one(merged_len, op_fast_add, 0),
+                 pr.reduce_one(overlap_len, op_fast_add, 0), pr.reduce_one(max_read_len, op_fast_max, 0),
+                 pr.reduce_one(bases_trimmed, op_fast_add, 0), pr.reduce_one(reads_removed, op_fast_add, 0),
+                 pr.reduce_one(bases_read, op_fast_add, 0), pr.reduce_one(bytes_read, op_fast_add, 0),
+                 pr.reduce_one(missing_read1, op_fast_add, 0), pr.reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings,
+                 fut_sh_trim_overhead, pr.reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0),
+                 pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
-    fut_summary = when_all(fut_summary, fut_reductions)
-                      .then([reads_fname, bytes_read, &adapters](
-                                int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
-                                int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
-                                int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1,
-                                int64_t all_missing_read2, ShTimings sh_ssw_timings, ShTimings sh_trim_overhead,
-                                int min_rank, int max_rank) {
-                        SLOG_VERBOSE("Merged reads in file ", get_basename(reads_fname), " (ranks ", min_rank, "-", max_rank, "):\n");
-                        SLOG_VERBOSE("  merged ", perc_str(all_num_merged, all_num_pairs), " of ", all_num_pairs, " pairs\n");
-                        SLOG_VERBOSE("  ambiguous ", perc_str(all_num_ambiguous, all_num_pairs), " ambiguous pairs\n");
-                        SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
-                        SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
-                        SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
-                        if (!adapters.empty()) {
-                          SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
-                          SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
-                          SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
-                          SLOG_VERBOSE("  adapter trim total overhead: ", sh_trim_overhead->to_string(), "\n");
-                        }
-                        SLOG_VERBOSE("  max read length ", all_max_read_len, "\n");
-                        SLOG_VERBOSE("Rank0 bytes read ", bytes_read, " of ", all_bytes_read, "\n");
-                      });
+    fut_summary =
+        when_all(fut_summary, fut_reductions)
+            .then([reads_fname, bytes_read, &adapters](
+                      int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
+                      int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
+                      int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1, int64_t all_missing_read2,
+                      ShTimings sh_ssw_timings, ShTimings sh_trim_overhead, int min_rank, int max_rank) {
+              SLOG_VERBOSE("Merged reads in file ", get_basename(reads_fname), " (ranks ", min_rank, "-", max_rank, "):\n");
+              SLOG_VERBOSE("  merged ", perc_str(all_num_merged, all_num_pairs), " of ", all_num_pairs, " pairs\n");
+              SLOG_VERBOSE("  ambiguous ", perc_str(all_num_ambiguous, all_num_pairs), " ambiguous pairs\n");
+              SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
+              SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
+              SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
+              if (!adapters.empty()) {
+                SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
+                SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
+                SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
+                SLOG_VERBOSE("  adapter trim total overhead: ", sh_trim_overhead->to_string(), "\n");
+              }
+              SLOG_VERBOSE("  max read length ", all_max_read_len, "\n");
+              SLOG_VERBOSE("Rank0 bytes read ", bytes_read, " of ", all_bytes_read, "\n");
+            });
 
     num_reads += num_pairs * 2;
     ri++;
     FastqReaders::close(reads_fname);
     merge_file_timer.initiate_exit_reduction();
     discharge();
+#ifdef ONE_FASTQ_AT_A_TIME
+    BarrierTimer bt("Waiting for all ranks to finish reading " + get_basename(reads_fname));
+    fut_reductions.wait();
+#endif
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);
@@ -900,7 +904,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   merge_time.initiate_exit_reduction();
 
   { BarrierTimer all_merging_done("All merging done"); }
-  
+
   // ensure there is no overlap in read_ids which will cause a crash later
   using SSPair = std::pair<uint64_t, uint64_t>;
   SSPair start_stop(start_read_id, read_id);

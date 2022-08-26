@@ -66,10 +66,6 @@ using namespace upcxx_utils;
 
 using std::max;
 
-#ifndef USE_ALLOCATOR
-#define USE_ALLOCATOR 1
-#endif
-
 PackedRead::PackedRead()
     : is_allocated(0)
     , read_id(0)
@@ -79,7 +75,7 @@ PackedRead::PackedRead()
 }
 
 PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset, PackedReads *packed_reads)
-    : is_allocated(USE_ALLOCATOR && packed_reads) {
+    : is_allocated(USE_PACKED_READS_LINEAR_ALLOCATOR && packed_reads) {
   read_id = strtol(id_str.c_str() + 1, nullptr, 10) + 1;
   assert(labs(read_id) < MAX_READ_ID);
   if (id_str[id_str.length() - 1] == '1') read_id *= -1;
@@ -125,7 +121,7 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
 }
 
 PackedRead::PackedRead(const PackedRead &copy, PackedReads *packed_reads)
-    : is_allocated((USE_ALLOCATOR && packed_reads) ? 1 : 0)
+    : is_allocated((USE_PACKED_READS_LINEAR_ALLOCATOR && packed_reads) ? 1 : 0)
     , read_id(copy.read_id)
     , read_len(copy.read_len)
     , bytes(nullptr) {
@@ -149,7 +145,7 @@ PackedRead::PackedRead(const PackedRead &copy, bool no_new_allocation_ignored)
 }
 
 PackedRead::PackedRead(PackedRead &&move, PackedReads *packed_reads)
-    : is_allocated((USE_ALLOCATOR && packed_reads) ? 1 : 0)
+    : is_allocated((USE_PACKED_READS_LINEAR_ALLOCATOR && packed_reads) ? 1 : 0)
     , read_id(move.read_id)
     , read_len(move.read_len)
     , bytes(nullptr) {

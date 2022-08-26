@@ -59,6 +59,11 @@ using std::to_string;
 using std::unique_ptr;
 using std::vector;
 
+
+#ifndef USE_PACKED_READS_LINEAR_ALLOCATOR
+#define USE_PACKED_READS_LINEAR_ALLOCATOR 1
+#endif
+
 #include "linear_allocator_pool.hpp"
 
 class PackedReads;

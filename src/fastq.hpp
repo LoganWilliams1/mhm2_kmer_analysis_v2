@@ -213,7 +213,7 @@ class FastqReaders {
   template <typename Container>
   static size_t open_all(Container &fnames, int subsample_pct = 100) {
     DBG("Open all ", fnames.size(), " files\n");
-#ifdef NO_GLOBAL_FILE_BLOCKING
+#ifdef NO_FASTQ_GLOBAL_BLOCKING
     return open_all_file_blocking(fnames, subsample_pct);
 #else
     return open_all_global_blocking(fnames, subsample_pct);

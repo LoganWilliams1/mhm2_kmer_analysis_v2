@@ -147,5 +147,13 @@ add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
 # seed length used for post assembly alignment
 add_definitions(-DPOST_ASM_ALN_K=21)
-add_definitions(-DUSE_ALLOCATOR=1)
-add_definitions(-DREAD_IN_SSTREAM=0)
+
+# Enabled by default, pre-allocate the data for PackedReads in a large block
+add_definitions(-DUSE_PACKED_READS_LINEAR_ALLOCATOR=1)
+
+# Disabled by default. enable to have each rank read every fastq file
+# add_definitions(-DNO_FASTQ_GLOBAL_BLOCKING) 
+
+# Disabled by default. When reading fastqs within merge_reads, only read from 1 file at a time
+# ...will be very inefficient without also setting NO_FASTQ_GLOBAL_BLOCKING
+# add_definitions(-DONE_FASTQ_AT_A_TIME)
