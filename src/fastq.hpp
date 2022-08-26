@@ -121,6 +121,10 @@ class FastqReader {
  public:
   FastqReader() = delete;  // no default constructor
   FastqReader(const string &_fname, upcxx::future<> first_wait = make_future(), bool is_second_file = false);
+  FastqReader(const FastqReader &copy) = delete;  // no copy
+  FastqReader(FastqReader &&move) = default;
+  FastqReader &operator=(const FastqReader &copy) = delete;  // no copy
+  FastqReader &operator=(FastqReader &&move) = default;
 
   void set_subsample_pct(int pct) {
     assert(subsample_pct > 0 && subsample_pct <= 100);
@@ -172,11 +176,9 @@ class FastqReader {
                                            dist_object<PromStartStop> &dist_start_stop2);
   void seek_start();
   int64_t tellg();
-  bool is_open() { return open_fut.ready(); }
-  FastqReader &get_fqr2() {
-    assert(fqr2);
-    return *fqr2;
-  }
+  bool is_open();
+  bool is_open(bool wait_for_open);
+  FastqReader &get_fqr2();
 };
 
 class FastqReaders {
@@ -190,7 +192,7 @@ class FastqReaders {
  public:
   static FastqReaders &getInstance();
 
-  static bool is_open(const string fname);
+  static bool is_open(const string fname, bool wait_for_open = true);
 
   static size_t get_open_file_size(const string fname, bool include_file_2 = false);
 
@@ -215,19 +217,22 @@ class FastqReaders {
       fut_chain = when_all(fut_chain, fqr.get_file_size(true).then([&total_size](int64_t sz) { total_size += sz; }));
     }
     fut_chain.wait();
+    DBG("All ", fnames.size(), " file (pairs) open.  total_size=", total_size, "\n");
     return total_size;
   }
 
   // returns the total global size
   template <typename Container>
   static size_t open_all_global_blocking(Container &fnames, int subsample_pct = 100) {
+    assert(!upcxx::in_progress());
     // opens only some files and reads a partition, as if the entire set of files is one single concatented file
 
     // all files need to be opened together.  Verify either all or none are open
     bool needs_blocking = false;
     size_t total_size = 0;
     for (string &fname : fnames) {
-      if (!is_open(fname)) {
+      if (!is_open(fname, true)) {
+        DBG(fname, " is not yet open\n");
         needs_blocking = true;
       } else {
         total_size += get_open_file_size(fname, true);
@@ -242,9 +247,11 @@ class FastqReaders {
     assert(subsample_pct > 0 && subsample_pct <= 100);
     int filenum = 0;
     upcxx::future<> chain_fut = make_future();
+    upcxx::future<> chain_open_fut = make_future();
 
     for (string &fname : fnames) {
       if (is_open(fname)) {
+        DBG("Closing open file ", fname, "\n");
         close(fname);
       }
       auto &fqr = open(fname, subsample_pct, know_blocks[filenum].get_future());
@@ -258,6 +265,7 @@ class FastqReaders {
                   total_size += sz;
                 });
         chain_fut = when_all(chain_fut, fut);
+        chain_open_fut = when_all(chain_open_fut, fqr.get_open_fut());
       }
       filenum++;
     }
@@ -376,6 +384,8 @@ class FastqReaders {
 
     // block and wait with variables still in scope
     chain_fut.wait();
+    chain_open_fut.wait();
+    DBG("All ", fnames.size(), " file (pairs) open.  total_size=", total_size, "\n");
     return total_size;
   }
 
