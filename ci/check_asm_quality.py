@@ -179,7 +179,7 @@ def main():
                 print("MISMATCH:", key, val, "!=", new_quals[key], 'd = %.3f' % d, ' thres = %0.3f' % thres)
                 num_mismatches += 1
             #print(key, val, d)
-    print("Comparison yielded", num_mismatches, "mismatches")
+    print("Comparison yielded", num_mismatches, "mismatches with", options.quals_fname)
     if num_mismatches > 0: 
         sys.exit("Detected %d mismatches!" % (num_mismatches)) # exit non-zero
     
