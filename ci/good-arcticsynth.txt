@@ -41,6 +41,6 @@ Largest alignment            1244692
 Total aligned length         95053234      
 NA50                         86480         
 NA90                         5028          
-auNA                         185961.9
+auNA                         181399
 LA50                         230           
 LA90                         2191          
