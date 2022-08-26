@@ -149,14 +149,13 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
           tot_bytes_read, " stream bytes)\n");
       if (tot_bytes_read < file_bytes_read) file_bytes_read = tot_bytes_read;  // use the minimum of the two measures
       fqr.reset();  // rewind this file for the next reading as this was only an estimation
-    }
+    } else LOG("Will not read ", fqr.get_fname(), "\n");
     auto file_size = fqr.get_file_size().wait();
     auto fname = fqr.get_fname();
     total_records_processed += records_processed;
     int bytes_per = (int)(records_processed > 0 ? (file_bytes_read / records_processed) : std::numeric_limits<int>::max());
-    DBG("records_processed=", records_processed, " bytes_per=", bytes_per, " file_bytes_read=", file_bytes_read, " fname=", fqr.get_fname(), "\n");
     auto fut_reduce =
-        reduce_all(bytes_per, op_fast_min)
+        reduce_all(bytes_per > 0 ? bytes_per : std::numeric_limits<int>::max(), op_fast_min)
             .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records](int min_bytes_per) {
               DBG("Found min_bytes_per=", min_bytes_per, " for file ", fname, " my_size=", my_file_size, "\n");
               assert(min_bytes_per < std::numeric_limits<int>::max());
