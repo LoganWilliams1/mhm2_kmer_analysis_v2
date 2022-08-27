@@ -268,6 +268,7 @@ HULK:build:
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
@@ -289,6 +290,7 @@ HULK:validation:
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
@@ -310,6 +312,7 @@ HULK:accuracy:
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
@@ -345,6 +348,7 @@ Bacteria:build:
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
@@ -367,6 +371,7 @@ Bacteria:validation:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
@@ -389,6 +394,7 @@ Bacteria:accuracy:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
@@ -434,6 +440,7 @@ Fungi:build:
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=/usr/bin/mpicxx --enable-ibv --with-default-network=ibv"
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
@@ -456,6 +463,7 @@ Fungi:validation:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
@@ -478,6 +486,7 @@ Fungi:accuracy:
     - export PATH=/usr/bin:${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
