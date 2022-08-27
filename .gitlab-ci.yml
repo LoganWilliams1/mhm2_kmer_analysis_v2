@@ -322,7 +322,7 @@ Bacteria:build:
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CONFIGURE_OPTS="--enable-valgrind --enable-cuda --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
+    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --enable-cuda --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
     - ./ci/ubuntu.build.sh ${BASE}
     
@@ -393,7 +393,7 @@ Fungi:build:
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
-    - export CONFIGURE_OPTS="--enable-valgrind --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
+    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
     - ./ci/ubuntu.build.sh ${BASE}
     
 
