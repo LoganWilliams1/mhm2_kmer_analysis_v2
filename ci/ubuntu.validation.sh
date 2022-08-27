@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -x
 set -e
 
 USAGE="$0 base_dir
@@ -38,8 +37,9 @@ echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n)
 echo "Validating all tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
 
 export MHM2_SOURCE=$(pwd)
-env
+df -h
 uname -a
+uptime
 pwd
 find * -type d -ls
 date
@@ -50,11 +50,8 @@ echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 upcxx --version || FAILED="${FAILED} no upcxx was found"
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
-env
-df -h
-uname -a
-pwd
-date
+set -x
+
 cd ${CI_SCRATCH}
 reads=${HIPMER_DATA}/arctic_sample_0.fq 
 export DBG=${INSTALL_PREFIX}/mhm2-dbg/bin/

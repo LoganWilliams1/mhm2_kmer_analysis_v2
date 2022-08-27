@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -x
 set -e
 
 USAGE="$0 base_dir
@@ -28,19 +27,17 @@ export GASNET_BACKTRACE=1
 export INSTALL_PREFIX=${CI_SCRATCH}
 export GASNET_BACKTRACE=1
 
-exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
-exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
-echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"  
-echo "Running accuracy tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
-
-env
 df -h
 uname -a
+uptime
 pwd
 date
+which upcxx
 upcxx --version
 cd ${CI_SCRATCH}
 FAILED=""
+
+set -x
 
 export REL=${INSTALL_PREFIX}/mhm2-rel/bin/
 echo "Starting Release mhm2 on Arctic"

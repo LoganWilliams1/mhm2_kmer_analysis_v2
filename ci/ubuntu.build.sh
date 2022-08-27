@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -x
 set -e
 
 USAGE="$0 base_dir
@@ -54,11 +53,15 @@ exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
 echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"  
 
 export MHM2_SOURCE=$(pwd)
-env
 uname -a
+uptime
 pwd
 find * -type d -ls
 date
+which upcxx
+upcxx --version
+
+set -x
 
 echo "Purging any old tests"
 find ${BASE}/scratch -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true

@@ -27,7 +27,6 @@ Cori:build:
     - Cori
   script:
     - set -e
-    - set -x
     - git submodule init
     - git submodule sync
     - git submodule update
@@ -50,10 +49,13 @@ Cori:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - module list
     - git describe
     - cd upcxx-utils
     - git describe
     - cd ${MHM2_SOURCE}
+    - set -x
     - echo "Copying source from ${MHM2_SOURCE}/ to ${CI_SCRATCH}/src/"
     - mkdir -p ${CI_SCRATCH}/src
     - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${CI_SCRATCH}/src/
@@ -102,7 +104,6 @@ Cori:validation:
     - Cori
   script:
     - set -e
-    - set -x
     - uname -a
     - pwd
     - date
@@ -122,6 +123,9 @@ Cori:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)   
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - module list
+    - set -x
     - FAILED=""   
     - inst=${INSTALL_PREFIX}-knl
     - echo "Testing builds on KNL - $inst"
@@ -171,7 +175,6 @@ Cori:accuracy:
     - Cori
   script:
     - set -e
-    - set -x
     - uname -a
     - pwd
     - date
@@ -189,7 +192,9 @@ Cori:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"    
+    - env
     - module list
+    - set -x
     - cd $CI_SCRATCH
     - FAILED=""
     - echo "Testing accuracy"
@@ -256,13 +261,18 @@ HULK:build:
     - HULK
   script:
     - set -e
-    - set -x
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - set -x
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -272,13 +282,18 @@ HULK:validation:
     - HULK
   script:
     - set -e
-    - set -x
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
 
 HULK:accuracy:
@@ -287,14 +302,19 @@ HULK:accuracy:
     - HULK
   script:
     - set -e
-    - set -x
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - env
+    - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on hulk"
     - cd ${CI_SCRATCH}
@@ -315,7 +335,6 @@ Bacteria:build:
     - Bacteria
   script:
     - set -e
-    - set -x
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
@@ -326,6 +345,11 @@ Bacteria:build:
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - set -x
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -335,7 +359,6 @@ Bacteria:validation:
     - Bacteria
   script:
     - set -e
-    - set -x
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
@@ -344,6 +367,11 @@ Bacteria:validation:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
 
 Bacteria:accuracy:
@@ -352,7 +380,6 @@ Bacteria:accuracy:
     - Bacteria
   script:
     - set -e
-    - set -x
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
@@ -362,6 +389,11 @@ Bacteria:accuracy:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - env
+    - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
     - cd ${CI_SCRATCH}
@@ -391,7 +423,6 @@ Fungi:build:
     - Fungi
   script:
     - set -e
-    - set -x
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
@@ -402,6 +433,12 @@ Fungi:build:
     - export GASNET_PHYSMEM_MAX=2/3
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=/usr/bin/mpicxx --enable-ibv --with-default-network=ibv"
+    - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - set -x
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -411,7 +448,6 @@ Fungi:validation:
     - Fungi
   script:
     - set -e
-    - set -x
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
@@ -420,6 +456,11 @@ Fungi:validation:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - env
+    - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
 
 Fungi:accuracy:
@@ -428,7 +469,6 @@ Fungi:accuracy:
     - Fungi
   script:
     - set -e
-    - set -x
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
@@ -438,6 +478,11 @@ Fungi:accuracy:
     - export PATH=/usr/bin:${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - env
+    - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on fungi and bacteria CPU only scheduled via the batch system"
     - cd ${CI_SCRATCH}
