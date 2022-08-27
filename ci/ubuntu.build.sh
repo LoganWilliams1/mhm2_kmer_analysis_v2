@@ -43,6 +43,7 @@ export ARCTIC_URL=https://portal.nersc.gov/project/hipmer/MetaHipMer_datasets_12
 for i in 0 1 2 3 4 5 6 7 8 9 10 11 ; do [ -f ${HIPMER_DATA}/arctic_sample_$i.fq ] || ( curl -LO ${ARCTIC_URL}/arctic_sample_$i.fq.gz && gunzip arctic_sample_$i.fq.gz && mv arctic_sample_$i.fq ${HIPMER_DATA}/arctic_sample_$i.fq ) ; done
 
 echo "Establishing all tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
+set -x
 rm -rf ${CI_SCRATCH}
 mkdir -p ${CI_SCRATCH}
 chmod a+rx ${CI_SCRATCH}
@@ -53,12 +54,10 @@ export MHM2_SOURCE=$(pwd)
 uname -a
 uptime
 pwd
-find * -type d -ls
+find * -type d -ls || /bin/true
 date
 which upcxx
 upcxx --version
-
-set -x
 
 echo "Purging any old tests"
 find ${BASE}/scratch -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true
