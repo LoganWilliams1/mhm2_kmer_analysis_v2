@@ -6,7 +6,6 @@ USAGE="$0 base_dir
 Optionally set UPCXX_VER to download and install that version of UPCXX
 Optionally set CI_UPCXX_CONFIGURE_OPTS to add extra options when building upcxx
 Optionally set CI_CMAKE_OPTS to change the build options (such as -DENABLE_CUDA=off)
-Optionally set CI_EXTRA_PATH to include something built outside of this CI
 
 "
 
@@ -29,7 +28,6 @@ git submodule update
 git describe
 ( cd upcxx-utils ; git describe )
 CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${UPCXX_VER}
-PATH=$CI_INSTALL/bin:/bin:/usr/bin:/usr/local/bin:${CI_EXTRA_PATH}
 export HIPMER_DATA=${BASE}/scratch/
 mkdir -p ${HIPMER_DATA}
 export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}

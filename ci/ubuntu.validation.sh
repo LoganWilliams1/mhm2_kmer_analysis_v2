@@ -4,7 +4,6 @@ set -e
 
 USAGE="$0 base_dir
 Optionally set UPCXX_VER to download and install that version of UPCXX
-Optionall set CI_EXTRA_PATH to include something build outside of this CI
 
 "
 
@@ -22,7 +21,6 @@ CI_CMAKE_OPTS=${CI_CMAKE_OPTS}
 echo "Using CI_CMAKE_OPTS=${CI_CMAKE_OPTS}"
 
 CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${UPCXX_VER}
-PATH=$CI_INSTALL/bin:/bin:/usr/bin:/usr/local/bin:${CI_EXTRA_PATH}
 export HIPMER_DATA=${BASE}/scratch/
 mkdir -p ${HIPMER_DATA}
 export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}

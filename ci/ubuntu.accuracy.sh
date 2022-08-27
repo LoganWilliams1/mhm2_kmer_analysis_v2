@@ -4,7 +4,6 @@ set -e
 
 USAGE="$0 base_dir
 Optionally set UPCXX_VER to download and install that version of UPCXX
-Optionally set CI_EXTRA_PATH to include something built outside of this CI
 
 "
 
@@ -19,7 +18,6 @@ UPCXX_VER=${UPCXX_VER:=2021.3.0}
 echo "Using upcxx version $UPCXX_VER"
 
 CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${UPCXX_VER}
-PATH=$CI_INSTALL/bin:/bin:/usr/bin:/usr/local/bin:${CI_EXTRA_PATH}
 export HIPMER_DATA=${BASE}/scratch/
 export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
 export RUN_PREFIX=${CI_SCRATCH}/runs
