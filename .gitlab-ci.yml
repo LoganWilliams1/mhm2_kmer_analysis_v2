@@ -37,26 +37,26 @@ Cori:build:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/tmp/gitlab-runner-scratch-Cori-mhm2-${USER}
-    - export SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export INSTALL_PREFIX=${SCRATCH}/install
-    - export BUILD_PREFIX=${SCRATCH}/build
-    - export RUN_PREFIX=${SCRATCH}/runs
-    - echo "BASE=${BASE} SCRATCH=${SCRATCH}"
+    - export CI_SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export INSTALL_PREFIX=${CI_SCRATCH}/install
+    - export BUILD_PREFIX=${CI_SCRATCH}/build
+    - export RUN_PREFIX=${CI_SCRATCH}/runs
+    - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - mkdir -p ${BASE}
-    - rm -rf ${SCRATCH}
+    - rm -rf ${CI_SCRATCH}
     - echo "Cleaning out old installs"
     - find ${BASE} -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true
-    - mkdir -p ${SCRATCH} ${RUN_PREFIX}
-    - exec >  >(tee -ia ${SCRATCH}/build.log)
-    - exec 2> >(tee -ia ${SCRATCH}/build.err >&2)    
-    - echo "Logging to ${SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - mkdir -p ${CI_SCRATCH} ${RUN_PREFIX}
+    - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)    
+    - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
     - git describe
     - cd upcxx-utils
     - git describe
     - cd ${MHM2_SOURCE}
-    - echo "Copying source from ${MHM2_SOURCE}/ to ${SCRATCH}/src/"
-    - mkdir -p ${SCRATCH}/src
-    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${SCRATCH}/src/
+    - echo "Copying source from ${MHM2_SOURCE}/ to ${CI_SCRATCH}/src/"
+    - mkdir -p ${CI_SCRATCH}/src
+    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${CI_SCRATCH}/src/
     - lmstat -a -c $INTEL_LICENSE_FILE || /bin/true
     - echo "Loading Haswell modules for upcxx GNU"
     - source ${MHM2_SOURCE}/contrib/environments/cori-haswell/gnu.sh
@@ -110,18 +110,18 @@ Cori:validation:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/tmp/gitlab-runner-scratch-Cori-mhm2-${USER}
-    - export SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export INSTALL_PREFIX=${SCRATCH}/install
-    - export BUILD_PREFIX=${SCRATCH}/build
-    - export RUN_PREFIX=${SCRATCH}/runs
-    - echo "BASE=${BASE} SCRATCH=${SCRATCH}"
+    - export CI_SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export INSTALL_PREFIX=${CI_SCRATCH}/install
+    - export BUILD_PREFIX=${CI_SCRATCH}/build
+    - export RUN_PREFIX=${CI_SCRATCH}/runs
+    - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - echo "Loading KNL modules for upcxx on cori"
     - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
     - module list
-    - cd $SCRATCH
-    - exec >  >(tee -ia ${SCRATCH}/validation.log)
-    - exec 2> >(tee -ia ${SCRATCH}/validation.err >&2)   
-    - echo "Logging to ${SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - cd $CI_SCRATCH
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)   
+    - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
     - FAILED=""   
     - inst=${INSTALL_PREFIX}-knl
     - echo "Testing builds on KNL - $inst"
@@ -135,11 +135,11 @@ Cori:validation:
     - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/knl-rwdi-0 && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/knl-dbg-0-k63 && echo Good")
     - echo "KNL JOB ${knl_job}"
     - echo "Submitting build on cori gpu"
-    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 -c 5 -G 1 -A m342 --wrap="source ${SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; mkdir -p build-cori-gpu && cd build-cori-gpu && cmake \$MHM2_CMAKE_EXTRAS -DCMAKE_INSTALL_PREFIX=install ${SCRATCH}/src && make VERBOSE=1 -j 10 all install && srun install/bin/mhm2_test")
+    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 -c 5 -G 1 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; mkdir -p build-cori-gpu && cd build-cori-gpu && cmake \$MHM2_CMAKE_EXTRAS -DCMAKE_INSTALL_PREFIX=install ${CI_SCRATCH}/src && make VERBOSE=1 -j 10 all install && srun install/bin/mhm2_test")
     - echo "GPU Build job $gpu_job"
     - echo "Waiting for knl job $knl_job"
     - date
-    - while /bin/true ; do sleep 120 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
+    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
     - sacct=$(sacct -j $knl_job -X -n)
     - echo "sacct $sacct"
@@ -156,7 +156,7 @@ Cori:validation:
     - echo "Waiting for gpu job ${gpu_job}"
     - module load cgpu
     - date
-    - while /bin/true ; do sleep 120 ; date ; sacct=$(sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
+    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
     - sacct=$(sacct -j $gpu_job -X -n)
     - cat slurm-${gpu_job}.out
@@ -179,18 +179,18 @@ Cori:accuracy:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/tmp/gitlab-runner-scratch-Cori-mhm2-${USER}
-    - export SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export INSTALL_PREFIX=${SCRATCH}/install
-    - export BUILD_PREFIX=${SCRATCH}/build
-    - export RUN_PREFIX=${SCRATCH}/runs
-    - echo "BASE=${BASE} SCRATCH=${SCRATCH}"
+    - export CI_SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export INSTALL_PREFIX=${CI_SCRATCH}/install
+    - export BUILD_PREFIX=${CI_SCRATCH}/build
+    - export RUN_PREFIX=${CI_SCRATCH}/runs
+    - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - echo "Loading KNL modules for upcxx on cori"
     - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
-    - exec >  >(tee -ia ${SCRATCH}/accuracy.log)
-    - exec 2> >(tee -ia ${SCRATCH}/accuracy.err >&2)
-    - echo "Logging to ${SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"    
+    - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"    
     - module list
-    - cd $SCRATCH
+    - cd $CI_SCRATCH
     - FAILED=""
     - echo "Testing accuracy"
     - export RWDI=${INSTALL_PREFIX}-knl-rwdi/bin/
@@ -203,10 +203,10 @@ Cori:accuracy:
     - export OPTS2="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
     - knl_job2=$(sbatch --parsable --job-name="CI-mhm2-${CI_COMMIT_SHORT_SHA}" --account=mp215 -C knl --nodes=15 --qos=debug --time=30:00 --wrap="${REL}/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-full && echo Good")
     - echo "Submitting GPU full arctic job on 2 cori GPU nodes"
-    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 --exclusive --nodes=2 -G 16 -A m342 --wrap="source ${SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; build-cori-gpu/install/bin/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-gpu && echo Good")
+    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 --exclusive --nodes=2 -G 16 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; build-cori-gpu/install/bin/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-gpu && echo Good")
     - echo "Waiting for knl job $knl_job"
     - date
-    - while /bin/true ; do sleep 120 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
+    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
     - sacct=$(sacct -j $knl_job -X -n)
     - echo "sacct $sacct"
@@ -218,7 +218,7 @@ Cori:accuracy:
     - ${REL}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/rel --expected-quals ${REL}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Waiting for second (full) job to finish ${knl_job2}"
-    - while /bin/true ; do sleep 120 ; date ; sacct=$(sacct -j $knl_job2 -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
+    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job2 -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
     - sacct=$(sacct -j $knl_job2 -X -n)
     - echo "sacct $sacct"
@@ -230,7 +230,7 @@ Cori:accuracy:
     - ${REL}/check_asm_quality.py --thres 0.015 --rna --asm-dir ${RUN_PREFIX}/rel-full --expected-quals ${REL}/../share/good-arcticsynth.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py (full)"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Waiting for GPU job to finish ${gpu_job}"
-    - while /bin/true ; do sleep 120 ; date ; sacct=$(module load cgpu; sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
+    - while /bin/true ; do sleep 60 ; date ; sacct=$(module load cgpu; sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
     - sacct=$(module load cgpu; sacct -j $gpu_job -X -n)
     - echo "sacct $sacct"
@@ -261,6 +261,7 @@ HULK:build:
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin"
+    - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - ./ci/ubuntu.build.sh ${BASE}
     
@@ -276,6 +277,7 @@ HULK:validation:
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin"
+    - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - ./ci/ubuntu.validation.sh ${BASE}
 
@@ -289,7 +291,9 @@ HULK:accuracy:
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export RUN_PREFIX=${CI_SCRATCH}/runs
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin"
+    - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on hulk"
@@ -318,7 +322,7 @@ Bacteria:build:
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CONFIGURE_OPTS="--enable-valgrind --enable-cuda"
+    - export CONFIGURE_OPTS="--enable-valgrind --enable-cuda --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
     - ./ci/ubuntu.build.sh ${BASE}
     
@@ -348,6 +352,7 @@ Bacteria:accuracy:
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -360,7 +365,7 @@ Bacteria:accuracy:
         export PATH=${PATH} # keep CI path within batch
         ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >full_test.log 2>&1  && echo Success > full_test_status || echo Failed > full_test_status
       END_TEXT
-    - while [ ! -f full_test_status ] ; do echo "Waiting for job to complete via batch subsystem"; date; sleep 60 ; date ; done
+    - while [ ! -f full_test_status ] ; do echo "Waiting for job to complete via batch subsystem"; date; uptime ; sleep 60  ; done
     - cat full_test.log
     - grep Success full_test_status || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
@@ -388,7 +393,7 @@ Fungi:build:
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
-    - export CONFIGURE_OPTS="--enable-valgrind"
+    - export CONFIGURE_OPTS="--enable-valgrind --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -417,6 +422,7 @@ Fungi:accuracy:
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -429,7 +435,7 @@ Fungi:accuracy:
         export PATH=${PATH} # keep CI path within batch
         ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >full_test.log 2>&1  && echo Success > full_test_status || echo Failed > full_test_status
       END_TEXT
-    - while [ ! -f full_test_status ] ; do echo "Waiting for batch job to complete" ; date; sleep 60 ; done
+    - while [ ! -f full_test_status ] ; do echo "Waiting for job to complete via batch subsystem"; date; uptime ; sleep 60  ; done
     - cat full_test.log
     - grep Success full_test_status || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
