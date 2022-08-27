@@ -56,8 +56,6 @@ uptime
 pwd
 find * -type d -ls || /bin/true
 date
-which upcxx
-upcxx --version
 
 echo "Purging any old tests"
 find ${BASE}/scratch -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true
@@ -72,6 +70,9 @@ echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 echo "Checking or building upcxx"
 which upcxx || UPCXXVER=${UPCXX_VER} ./upcxx-utils/contrib/install_upcxx.sh $CI_INSTALL --enable-gasnet-verbose ${CI_UPCXX_CONFIGURE_OPTS} || FAILED="${FAILED} could not install upcxx"
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
+
+which upcxx
+upcxx --version
 
 upcxx --version || FAILED="${FAILED} no upcxx was found"
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
