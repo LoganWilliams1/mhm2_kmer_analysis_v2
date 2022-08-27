@@ -30,10 +30,6 @@ export RUN_PREFIX=${CI_SCRATCH}/runs
 export INSTALL_PREFIX=${CI_SCRATCH}
 export GASNET_BACKTRACE=1
 
-echo "Establishing all tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
-exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
-exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
-echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"  
 echo "Validating all tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
 
 export MHM2_SOURCE=$(pwd)

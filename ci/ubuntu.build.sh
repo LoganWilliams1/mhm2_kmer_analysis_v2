@@ -48,9 +48,6 @@ mkdir -p ${CI_SCRATCH}
 chmod a+rx ${CI_SCRATCH}
 chmod g+s ${CI_SCRATCH}
 mkdir -p ${RUN_PREFIX}
-exec >  >(tee -ia ${CI_SCRATCH}/build.log)
-exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
-echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"  
 
 export MHM2_SOURCE=$(pwd)
 uname -a
