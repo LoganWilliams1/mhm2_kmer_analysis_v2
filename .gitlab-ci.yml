@@ -147,11 +147,11 @@ Cori:validation:
     - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
     - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job} failed somehow - ${wasgood}"; false ; fi
     - if [ ! -f ${RUN_PREFIX}/knl-rwdi-0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-rwdi-0" ; fi
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-rwdi-0 --expected-quals ${RWDI}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on knl-rwdi-0"
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - if [ ! -f ${RUN_PREFIX}/knl-dbg-0-k63/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-dbg-0-k63" ; fi
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-dbg-0-k63 --expected-quals ${RWDI}/../share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || echo "WARN Did not pass check_asm_quality.py on knl-dbg-0-k63 with reduced workflow k63"
     - echo "Waiting for gpu job ${gpu_job}"
     - module load cgpu
@@ -162,8 +162,7 @@ Cori:validation:
     - cat slurm-${gpu_job}.out
     - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
     - if [ -z "$wasgood" ] ; then  true ; else FAILED="${FAILED} -- gpu job ${gpu_job} failed somehow - ${wasgood}"; fi
-    - echo "FAILED=${FAILED}"
-    - if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed"
 
 Cori:accuracy:
@@ -215,9 +214,9 @@ Cori:accuracy:
     - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
     - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job} failed somehow - ${wasgood}"; false ; fi
     - if [ ! -f ${RUN_PREFIX}/rel/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - ${REL}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/rel --expected-quals ${REL}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py"
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Waiting for second (full) job to finish ${knl_job2}"
     - while /bin/true ; do sleep 120 ; date ; sacct=$(sacct -j $knl_job2 -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
@@ -227,9 +226,9 @@ Cori:accuracy:
     - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
     - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job2} failed somehow - ${wasgood}"; false ; fi
     - if [ ! -f ${RUN_PREFIX}/rel-full/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel-full" ; fi
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - ${REL}/check_asm_quality.py --thres 0.015 --rna --asm-dir ${RUN_PREFIX}/rel-full --expected-quals ${REL}/../share/good-arcticsynth.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py (full)"
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Waiting for GPU job to finish ${gpu_job}"
     - while /bin/true ; do sleep 120 ; date ; sacct=$(module load cgpu; sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
@@ -240,8 +239,7 @@ Cori:accuracy:
     - if [ -z "$wasgood" ] ; then  true ; else  echo "gpu job ${gpu_job} failed somehow - ${wasgood}"; false ; fi
     - if [ ! -f ${RUN_PREFIX}/rel-gpu/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel-gpu" ; fi
     - echo "FAILED=${FAILED}"
-    - if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed"
 
 
@@ -259,80 +257,7 @@ HULK:build:
   script:
     - set -e
     - set -x
-    - git submodule init
-    - git submodule sync
-    - git submodule update
-    - BASE=/work/gitlab-ci
-    - CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${HULK_UPCXX_VER}
-    - export PATH=$CI_INSTALL/bin:/bin:/usr/bin:/usr/local/bin
-    - export HIPMER_DATA=${BASE}/scratch/
-    - mkdir -p ${HIPMER_DATA}
-    - export SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export RUN_PREFIX=${SCRATCH}/runs
-    - export GASNET_BACKTRACE=1
-    - echo "Verifing and/or downloading test arctic data set"
-    - export ARCTIC_URL=https://portal.nersc.gov/project/hipmer/MetaHipMer_datasets_12_2019/ArcticSynth/samples/
-    - bash -c "[ -f ${HIPMER_DATA}/arcticsynth-refs.fa ] || ( curl -LO ${ARCTIC_URL}/arcticsynth-refs.fa.gz && gunzip arcticsynth-refs.fa.gz && mv arcticsynth-refs.fa ${HIPMER_DATA}/arcticsynth-refs.fa )"
-    - bash -c "for i in 0 1 2 3 4 5 6 7 8 9 10 11 ; do [ -f ${HIPMER_DATA}/arctic_sample_\$i.fq ] || ( curl -LO ${ARCTIC_URL}/arctic_sample_\$i.fq.gz && gunzip arctic_sample_\$i.fq.gz && mv arctic_sample_\$i.fq ${HIPMER_DATA}/arctic_sample_\$i.fq ) ; done"
-    - echo "Establishing all tests under BASE=$BASE and SCRATCH=$SCRATCH"
-    - rm -rf ${SCRATCH}
-    - mkdir -p ${SCRATCH}
-    - chmod a+rx ${SCRATCH}
-    - chmod g+s ${SCRATCH}
-    - mkdir -p ${RUN_PREFIX}
-    - exec >  >(tee -ia ${SCRATCH}/build.log)
-    - exec 2> >(tee -ia ${SCRATCH}/build.err >&2)
-    - echo "Logging to ${SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"  
-    - export MHM2_SOURCE=$(pwd)
-    - env
-    - uname -a
-    - pwd
-    - find * -type d -ls
-    - date
-    - echo "Purging any old tests"
-    - find ${BASE}/scratch -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true
-    - df -h
-    - FAILED=""
-    - echo "Checking for cmake, Berkeley UPC and UPC++"
-    - which cmake && cmake --version || FAILED="${FAILED} cmake not found"
-    - echo "FAILED=${FAILED}"
-    - echo "Checking or building upcxx"
-    - which upcxx || UPCXXVER=${HULK_UPCXX_VER} ./upcxx-utils/contrib/install_upcxx.sh $CI_INSTALL || FAILED="${FAILED} could not install upcxx"
-    - echo "FAILED=${FAILED}"
-    - upcxx --version || FAILED="${FAILED} no upcxx was found"
-    - echo "FAILED=${FAILED}"
-    - echo "Building all flavors"
-    - mkdir -p ${RUN_PREFIX}
-    - export GASNET_BACKTRACE=1
-    - export INSTALL_PREFIX=${SCRATCH}
-    - rm -rf $SCRATCH/build
-    - mkdir -p $SCRATCH/build
-    - cd $SCRATCH/build
-    - echo "Building Debug"
-    - cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}/mhm2-dbg -DCMAKE_BUILD_TYPE=Debug ${MHM2_SOURCE} || FAILED="${FAILED} Could not configure Debug"
-    - echo "FAILED=${FAILED}"
-    - make -j 16 all check install || FAILED="${FAILED} Could not build Debug"
-    - echo "FAILED=${FAILED}"
-    - make clean
-    - export UPCXX_CODEMODE=debug
-    - echo "Building RelWithDebInfo with UPCXX_CODEMODE=$UPCXX_CODEMODE"
-    - cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}/mhm2-rwdi -DCMAKE_BUILD_TYPE=RelWithDebInfo ${MHM2_SOURCE} || FAILED="${FAILED} could not configure RelWithDebInfo"
-    - echo "FAILED=${FAILED}"
-    - make -j 16 all check install || FAILED="${FAILED} Cuold not build RelWithDebInfo"
-    - echo "FAILED=${FAILED}"
-    - make clean
-    - unset UPCXX_CODEMODE
-    - echo "Building Release"
-    - cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}/mhm2-rel -DCMAKE_BUILD_TYPE=Release ${MHM2_SOURCE} || FAILED="${FAILED} could not configure Release"
-    - echo "FAILED=${FAILED}"
-    - make -j 16 all check install || FAILED="${FAILED} Could not build Release"
-    - echo "FAILED=${FAILED}"
-    - if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
-    - echo "FAILED=${FAILED}"
-    - cd -
-    - rm -rf $SCRATCH/build
-    - echo "Completed"
-
+    - ./ci/ubuntu.build.sh /work/gitlab-ci
     
 
 HULK:validation:
@@ -342,48 +267,7 @@ HULK:validation:
   script:
     - set -e
     - set -x
-    - BASE=/work/gitlab-ci
-    - CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${HULK_UPCXX_VER}
-    - export PATH=$CI_INSTALL/bin:/bin:/usr/bin:/usr/local/bin
-    - export HIPMER_DATA=${BASE}/scratch/
-    - export SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export RUN_PREFIX=${SCRATCH}/runs
-    - export INSTALL_PREFIX=${SCRATCH}
-    - export GASNET_BACKTRACE=1
-    - exec >  >(tee -ia ${SCRATCH}/validation.log)
-    - exec 2> >(tee -ia ${SCRATCH}/validation.err >&2)
-    - echo "Logging to ${SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"  
-    - echo "Validating all tests under BASE=$BASE and SCRATCH=$SCRATCH"
-    - env
-    - df -h
-    - uname -a
-    - pwd
-    - date
-    - upcxx --version
-    - cd ${SCRATCH}
-    - FAILED=""
-    - reads=${HIPMER_DATA}/arctic_sample_0.fq 
-    - export DBG=${INSTALL_PREFIX}/mhm2-dbg/bin/
-    - export RWDI=${INSTALL_PREFIX}/mhm2-rwdi/bin/
-    - export REL=${INSTALL_PREFIX}/mhm2-rel/bin/
-    - echo "Starting RelWithDebInfo mhm2 on Arctic $reads"
-    - if [ ! -f arctic_sample_0.fq -a -f $reads ] ; then ln -s $reads ; fi
-    - if [ ! -f arcticsynth-refs.fa -a -f ${HIPMER_DATA}/arcticsynth-refs.fa ] ; then ln -s ${HIPMER_DATA}/arcticsynth-refs.fa ; fi
-    - ${RWDI}/ci_asm_qual_test.sh || FAILED="${FAILED} Could not run ci_asm_qual_test"
-    - echo "FAILED=${FAILED}"
-    - if [ ! -f ./test-arctic-sample0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta for rwdi in test-arctic-sample0" ; fi
-    - echo "FAILED=${FAILED}"
-    - mv test-arctic-sample0 ${RUN_PREFIX}/rwdi-test-arctic-sample0
-    - echo "Starting debug run on with reduced workflow"
-    - ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
-    - echo "FAILED=${FAILED}"
-    - echo "verify dbg-k3163 results $(ls -la ${RUN_PREFIX}/dbg-k3163)"
-    - if [ ! -f ${RUN_PREFIX}/dbg-k3163/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on dbg-k3163" ; fi
-    - echo "FAILED=${FAILED}"
-    - ${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg-k3163 --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || echo "WARN did not pass check_asm_quality.py for dbg-k3163 with reduced workflow k31k63"
-    - if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
-    - echo "FAILED=${FAILED}"
-    - echo "Completed"
+    - ./ci/ubuntu.validation.sh /work/gitlab-ci
 
 HULK:accuracy:
   stage: accuracy
@@ -392,60 +276,126 @@ HULK:accuracy:
   script:
     - set -e
     - set -x
-    - git submodule init
-    - git submodule sync
-    - git submodule update
-    - BASE=/work/gitlab-ci
-    - CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${HULK_UPCXX_VER}
-    - export PATH=$CI_INSTALL/bin:/bin:/usr/bin:/usr/local/bin
-    - export HIPMER_DATA=${BASE}/scratch/
-    - export SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export RUN_PREFIX=${SCRATCH}/runs
-    - export INSTALL_PREFIX=${SCRATCH}
-    - export GASNET_BACKTRACE=1
-    - exec >  >(tee -ia ${SCRATCH}/accuracy.log)
-    - exec 2> >(tee -ia ${SCRATCH}/accuracy.err >&2)
-    - echo "Logging to ${SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"  
-    - echo "Running accuracy tests under BASE=$BASE and SCRATCH=$SCRATCH"
-    - env
-    - df -h
-    - uname -a
-    - pwd
-    - date
-    - upcxx --version
-    - cd ${SCRATCH}
-    - FAILED=""
-    - export REL=${INSTALL_PREFIX}/mhm2-rel/bin/
-    - echo "Starting Release mhm2 on Arctic"
-    - if [ ! -f arctic_sample_0.fq -a -f ${HIPMER_DATA}/arctic_sample_0.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_0.fq ; fi
-    - if [ ! -f arctic_sample_1.fq -a -f ${HIPMER_DATA}/arctic_sample_1.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_1.fq ; fi
-    - if [ ! -f arctic_sample_2.fq -a -f ${HIPMER_DATA}/arctic_sample_2.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_2.fq ; fi
-    - if [ ! -f arctic_sample_3.fq -a -f ${HIPMER_DATA}/arctic_sample_3.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_3.fq ; fi
-    - if [ ! -f arctic_sample_4.fq -a -f ${HIPMER_DATA}/arctic_sample_4.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_4.fq ; fi
-    - if [ ! -f arctic_sample_5.fq -a -f ${HIPMER_DATA}/arctic_sample_5.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_5.fq ; fi
-    - if [ ! -f arctic_sample_6.fq -a -f ${HIPMER_DATA}/arctic_sample_6.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_6.fq ; fi
-    - if [ ! -f arctic_sample_7.fq -a -f ${HIPMER_DATA}/arctic_sample_7.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_7.fq ; fi
-    - if [ ! -f arctic_sample_8.fq -a -f ${HIPMER_DATA}/arctic_sample_8.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_8.fq ; fi
-    - if [ ! -f arctic_sample_9.fq -a -f ${HIPMER_DATA}/arctic_sample_9.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_9.fq ; fi
-    - if [ ! -f arctic_sample_10.fq -a -f ${HIPMER_DATA}/arctic_sample_10.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_10.fq ; fi
-    - if [ ! -f arctic_sample_11.fq -a -f ${HIPMER_DATA}/arctic_sample_11.fq ] ; then ln -s ${HIPMER_DATA}/arctic_sample_11.fq ; fi
-    - if [ ! -f arcticsynth-refs.fa -a -f ${HIPMER_DATA}/arcticsynth-refs.fa ] ; then ln -s ${HIPMER_DATA}/arcticsynth-refs.fa ; fi
-    - ${REL}/ci_asm_qual_test.sh || FAILED="${FAILED} Could not run ci_asm_qual_test"
-    - echo "FAILED=${FAILED}"
-    - if [ ! -f ./test-arctic-sample0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
-    - echo "FAILED=${FAILED}"
-    - mv test-arctic-sample0 ${RUN_PREFIX}/rel-test-arctic-sample0
-    - ${REL}/ci_asm_qual_test-full.sh || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
-    - echo "FAILED=${FAILED}"
+    - ./ci/ubuntu.accuracy.sh /work/gitlab-ci
+    - echo "Extra full CI run on hulk"
+    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - cd ${CI_SCRATCH}
+    - ./mhm2-rel/bin/ci_asm_qual_test-full.sh || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
-    - echo "FAILED=${FAILED}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - mv test-arctic-samples ${RUN_PREFIX}/rel-test-arctic-samples
-    - if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
-    - echo "FAILED=${FAILED}"
-    - echo "Completed"
+
+
+#
+# Bacteria.lbl.gov - build with GPU
+#
+
+Bacteria:build:
+  stage: build
+  tags:
+    - Bacteria
+  script:
+    - set -e
+    - set -x
+    - export CI_EXTRA_PATH=/usr/local/cuda/bin
+    - export CONFIGURE_OPTS="--enable-valgrind --enable-cuda"
+    - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
+    - ./ci/ubuntu.build.sh /scratch-bacteria/gitlab-ci
+    
+
+Bacteria:validation:
+  stage: validation
+  tags:
+    - Bacteria
+  script:
+    - set -e
+    - set -x
+    - export CI_EXTRA_PATH=/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0
+    - ./ci/ubuntu.validation.sh /scratch-bacteria/gitlab-ci
+
+Bacteria:accuracy:
+  stage: accuracy
+  tags:
+    - Bacteria
+  script:
+    - set -e
+    - set -x
+    - export CI_EXTRA_PATH=/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0
+    - ./ci/ubuntu.accuracy.sh /scratch-bacteria/gitlab-ci
+    - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
+    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - cd ${CI_SCRATCH}
+    - rm -f full_test_status
+    - |
+      batch << END_TEXT
+        export PATH=$PATH
+        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >full_test.log 2>&1  && echo Success > full_test_status || echo Failed > full_test_status
+      END_TEXT
+    - while [ ! -f full_test_status ] ; do echo "Waiting for job to complete via batch subsystem"; date; sleep 60 ; date
+    - cat full_test.log
+    - grep Success full_test_status || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - mv test-arctic-samples ${RUN_PREFIX}/rel-test-arctic-samples
+    - echo "Completed successfully on bacteria"
+
+
+#
+# Fungi.lbl.gov - build without GPU
+#
+
+Fungi:build:
+  stage: build
+  tags:
+    - Fungi
+  script:
+    - set -e
+    - set -x
+    - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
+    - ./ci/ubuntu.build.sh /scratch-fungi/gitlab-ci
+    
+
+Fungi:validation:
+  stage: validation
+  tags:
+    - Fungi
+  script:
+    - set -e
+    - set -x
+    - export CI_EXTRA_PATH=/scratch-fungi/quast-quast_5.2.0
+    - ./ci/ubuntu.validation.sh /scratch-fungi/gitlab-ci
+
+Fungi:accuracy:
+  stage: accuracy
+  tags:
+    - Fungi
+  script:
+    - set -e
+    - set -x
+    - export CI_EXTRA_PATH=/scratch-fungi/quast-quast_5.2.0
+    - ./ci/ubuntu.accuracy.sh /scratch-fungi/gitlab-ci
+    - echo "Extra full CI run on fungi and bacteria CPU only scheduled via the batch system"
+    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - cd ${CI_SCRATCH}
+    - rm -f full_test_status
+    - |
+      batch << END_TEXT
+        export PATH=$PATH
+        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >full_test.log 2>&1  && echo Success > full_test_status || echo Failed > full_test_status
+      END_TEXT
+    - while [ ! -f full_test_status ] ; do echo "Waiting for batch job to complete" ; date; sleep 60 ; done
+    - cat full_test.log
+    - grep Success full_test_status || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - mv test-arctic-samples ${RUN_PREFIX}/rel-test-arctic-samples
+    - echo "Completed successfully on bacteria"
+
+
 
 after_script:
   - date
   - echo "Done"
-
-
