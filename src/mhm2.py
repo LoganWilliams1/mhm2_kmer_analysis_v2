@@ -421,6 +421,7 @@ def main():
     argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument("--procs", default=0, type=int, help="Total numer of processes")
+    argparser.add_argument("--nodes", default=0, type=int, help="Override the default number of nodes as detected in job or scheduler")
     argparser.add_argument("--gasnet-stats", action="store_true", help="Collect GASNet communication statistics")
     argparser.add_argument("--gasnet-trace", action="store_true", help="Collect GASNet trace in separate files")
     argparser.add_argument("--preproc", default=None, help="Comma separated preprocesses and options like (valgrind,--leak-check=full) or options to upcxx-run before binary")
@@ -443,6 +444,10 @@ def main():
     num_nodes = get_job_nodes()
     if options.procs == 0:
         options.procs = num_nodes * get_job_cores_per_node()
+
+    if options.nodes != 0 and options.nodes != num_nodes:
+        print("Overriding to use", options.nodes, "nodes, instead of the detected", num_nodes)
+        num_nodes = options.nodes
 
     cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
 
