@@ -355,7 +355,6 @@ Bacteria:build:
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
-    
 
 Bacteria:validation:
   stage: validation
@@ -448,7 +447,6 @@ Fungi:build:
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
     
-
 Fungi:validation:
   stage: validation
   tags:
@@ -509,7 +507,6 @@ Fungi:accuracy:
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - mv test-arctic-samples ${RUN_PREFIX}/rel-test-arctic-samples
     - echo "Completed successfully on bacteria"
-
 
 
 after_script:
