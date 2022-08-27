@@ -320,11 +320,12 @@ Bacteria:build:
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --enable-cuda --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
+    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --enable-cuda --with-cxx=/usr/bin/mpicxx --enable-ibv --with-default-network=ibv"
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
-    - export CXX=mpicxx
+    - export CXX=/usr/bin/mpicxx
+    - export GASNET_PHYSMEM_MAX=2/3
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -339,9 +340,10 @@ Bacteria:validation:
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CXX=mpicxx
+    - export CXX=/usr/bin/mpicxx
+    - export GASNET_PHYSMEM_MAX=2/3
     - ./ci/ubuntu.validation.sh ${BASE}
 
 Bacteria:accuracy:
@@ -356,9 +358,10 @@ Bacteria:accuracy:
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install, cuda and quast to path"
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CXX=mpicxx
+    - export CXX=/usr/bin/mpicxx
+    - export GASNET_PHYSMEM_MAX=2/3
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
     - cd ${CI_SCRATCH}
@@ -393,11 +396,12 @@ Fungi:build:
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CXX=mpicxx
+    - export CXX=/usr/bin/mpicxx
+    - export GASNET_PHYSMEM_MAX=2/3
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
-    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
+    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=/usr/bin/mpicxx --enable-ibv --with-default-network=ibv"
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -412,9 +416,10 @@ Fungi:validation:
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CXX=mpicxx
+    - export CXX=/usr/bin/mpicxx
+    - export GASNET_PHYSMEM_MAX=2/3
     - ./ci/ubuntu.validation.sh ${BASE}
 
 Fungi:accuracy:
@@ -429,9 +434,10 @@ Fungi:accuracy:
     - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install and quast to path"
-    - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
-    - export PATH=${CI_EXTRA_PATH}:$PATH
-    - export CXX=mpicxx
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export PATH=/usr/bin:${CI_EXTRA_PATH}:$PATH
+    - export CXX=/usr/bin/mpicxx
+    - export GASNET_PHYSMEM_MAX=2/3
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on fungi and bacteria CPU only scheduled via the batch system"
     - cd ${CI_SCRATCH}
