@@ -35,7 +35,6 @@ df -h
 uname -a
 uptime
 pwd
-find * -type d -ls
 date
 
 FAILED=""

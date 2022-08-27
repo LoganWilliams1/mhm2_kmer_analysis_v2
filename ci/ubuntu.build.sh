@@ -52,7 +52,7 @@ export MHM2_SOURCE=$(pwd)
 uname -a
 uptime
 pwd
-find * -type d -ls || /bin/true
+find * -type d -ls -maxdepth 3 || /bin/true
 date
 
 echo "Purging any old tests"
