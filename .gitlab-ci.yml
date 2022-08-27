@@ -257,7 +257,8 @@ HULK:build:
   script:
     - set -e
     - set -x
-    - ./ci/ubuntu.build.sh /work/gitlab-ci
+    - export BASE=/work/gitlab-ci
+    - ./ci/ubuntu.build.sh ${BASE}
     
 
 HULK:validation:
@@ -267,7 +268,8 @@ HULK:validation:
   script:
     - set -e
     - set -x
-    - ./ci/ubuntu.validation.sh /work/gitlab-ci
+    - export BASE=/work/gitlab-ci
+    - ./ci/ubuntu.validation.sh ${BASE}
 
 HULK:accuracy:
   stage: accuracy
@@ -276,7 +278,8 @@ HULK:accuracy:
   script:
     - set -e
     - set -x
-    - ./ci/ubuntu.accuracy.sh /work/gitlab-ci
+    - export BASE=/work/gitlab-ci
+    - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on hulk"
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - cd ${CI_SCRATCH}
@@ -301,7 +304,8 @@ Bacteria:build:
     - export CI_EXTRA_PATH=/usr/local/cuda/bin
     - export CONFIGURE_OPTS="--enable-valgrind --enable-cuda"
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
-    - ./ci/ubuntu.build.sh /scratch-bacteria/gitlab-ci
+    - export BASE=/scratch-bacteria/gitlab-ci
+    - ./ci/ubuntu.build.sh ${BASE}
     
 
 Bacteria:validation:
@@ -312,7 +316,8 @@ Bacteria:validation:
     - set -e
     - set -x
     - export CI_EXTRA_PATH=/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0
-    - ./ci/ubuntu.validation.sh /scratch-bacteria/gitlab-ci
+    - export BASE=/scratch-bacteria/gitlab-ci
+    - ./ci/ubuntu.validation.sh ${BASE}
 
 Bacteria:accuracy:
   stage: accuracy
@@ -322,7 +327,8 @@ Bacteria:accuracy:
     - set -e
     - set -x
     - export CI_EXTRA_PATH=/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0
-    - ./ci/ubuntu.accuracy.sh /scratch-bacteria/gitlab-ci
+    - export BASE=/scratch-bacteria/gitlab-ci
+    - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - cd ${CI_SCRATCH}
@@ -354,7 +360,8 @@ Fungi:build:
     - set -e
     - set -x
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
-    - ./ci/ubuntu.build.sh /scratch-fungi/gitlab-ci
+    - export BASE=/scratch-fungi/gitlab-ci
+    - ./ci/ubuntu.build.sh ${BASE}
     
 
 Fungi:validation:
@@ -365,7 +372,8 @@ Fungi:validation:
     - set -e
     - set -x
     - export CI_EXTRA_PATH=/scratch-fungi/quast-quast_5.2.0
-    - ./ci/ubuntu.validation.sh /scratch-fungi/gitlab-ci
+    - export BASE=/scratch-fungi/gitlab-ci
+    - ./ci/ubuntu.validation.sh ${BASE}
 
 Fungi:accuracy:
   stage: accuracy
@@ -375,7 +383,8 @@ Fungi:accuracy:
     - set -e
     - set -x
     - export CI_EXTRA_PATH=/scratch-fungi/quast-quast_5.2.0
-    - ./ci/ubuntu.accuracy.sh /scratch-fungi/gitlab-ci
+    - export BASE=/scratch-fungi/gitlab-ci
+    - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on fungi and bacteria CPU only scheduled via the batch system"
     - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - cd ${CI_SCRATCH}
