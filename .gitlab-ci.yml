@@ -324,6 +324,7 @@ Bacteria:build:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --enable-cuda --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
+    - export CXX=mpicxx
     - ./ci/ubuntu.build.sh ${BASE}
     
 
@@ -340,6 +341,7 @@ Bacteria:validation:
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CXX=mpicxx
     - ./ci/ubuntu.validation.sh ${BASE}
 
 Bacteria:accuracy:
@@ -356,6 +358,7 @@ Bacteria:accuracy:
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CXX=mpicxx
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
     - cd ${CI_SCRATCH}
@@ -392,6 +395,7 @@ Fungi:build:
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CXX=mpicxx
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=mpicxx --enable-ibv --with-default-network=ibv"
     - ./ci/ubuntu.build.sh ${BASE}
@@ -410,6 +414,7 @@ Fungi:validation:
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CXX=mpicxx
     - ./ci/ubuntu.validation.sh ${BASE}
 
 Fungi:accuracy:
@@ -426,6 +431,7 @@ Fungi:accuracy:
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CXX=mpicxx
     - ./ci/ubuntu.accuracy.sh ${BASE}
     - echo "Extra full CI run on fungi and bacteria CPU only scheduled via the batch system"
     - cd ${CI_SCRATCH}
