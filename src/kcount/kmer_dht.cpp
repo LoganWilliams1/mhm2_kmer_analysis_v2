@@ -151,7 +151,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   double kmers_space_reserved = my_adjusted_num_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts));
   SLOG_VERBOSE("Reserving at least ", get_size_str(node0_cores * kmers_space_reserved), " for kmer hash tables with ",
                node0_cores * my_adjusted_num_kmers, " entries on node 0\n");
-  double init_free_mem = get_free_mem();
+  double init_free_mem = get_free_mem(true);
   if (my_adjusted_num_kmers <= 0) DIE("no kmers to reserve space for");
   kmer_store.set_update_func(
       [&ht_inserter = this->ht_inserter, &num_supermer_inserts = this->num_supermer_inserts](Supermer supermer) {
