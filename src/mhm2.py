@@ -69,7 +69,7 @@ _err_thread = None
 _stop_thread = False
 
 def print_red(*args):
-    print("\033[91m", *args, "\033[00m", sep='',  file=sys.stderr)
+    print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
 
 _defaultCores = None
 def get_hdw_cores_per_node():
