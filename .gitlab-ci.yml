@@ -267,6 +267,7 @@ HULK:build:
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --disable-ibv --with-default-network=smp"
     - export GASNET_PHYSMEM_MAX=2/3
     - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
