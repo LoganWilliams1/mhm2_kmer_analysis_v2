@@ -27,10 +27,10 @@ git submodule sync
 git submodule update
 git describe
 ( cd upcxx-utils ; git describe )
-CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${UPCXX_VER}
+CI_INSTALL=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
 export HIPMER_DATA=${BASE}/scratch/
 mkdir -p ${HIPMER_DATA}
-export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
 export RUN_PREFIX=${CI_SCRATCH}/runs
 export INSTALL_PREFIX=${CI_SCRATCH}
 export GASNET_BACKTRACE=1
@@ -56,7 +56,7 @@ find * -type d -ls -maxdepth 3 || /bin/true
 date
 
 echo "Purging any old tests"
-find ${BASE}/scratch -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true
+find ${BASE}/scratch -maxdepth 1  -name "${CI_PROJECT_NAME}-*-*-*"  -mtime +7 -type d -exec rm -rf '{}' ';' || /bin/true
 df -h
 
 echo "PATH=$PATH"
@@ -114,4 +114,4 @@ if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILE
 cd -
 rm -rf $CI_SCRATCH/build
 
-echo "Completed $0 Successfully at $(date)"
+echo "Completed Successfully: '$0 $@' at $(date) on $(uname) for ${SECONDS} s"
