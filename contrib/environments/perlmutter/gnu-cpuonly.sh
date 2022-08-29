@@ -5,8 +5,9 @@ module swap gcc/11.2.0
 module remove darshan
 
 module use /global/common/software/m2878/perlmutter/modulefiles
+module rm upcxx
 # module load upcxx
-module load upcxx/bleeding-edge ; export GASNET_OFI_RECEIVE_BUFF_SIZE=single
+module load upcxx/nightly ; export GASNET_OFI_RECEIVE_BUFF_SIZE=single
 
 module list
 which cc

@@ -6,7 +6,7 @@ module load cmake
 module rm xl
 module load gcc
 module load cuda
-module load upcxx
+module load upcxx/nightly
 module load python
 
 export GASNET_ODP_VERBOSE=0 # disable warnings
