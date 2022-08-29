@@ -42,7 +42,6 @@ for i in 0 1 2 3 4 5 6 7 8 9 10 11 ; do [ -f ${HIPMER_DATA}/arctic_sample_$i.fq 
 
 echo "Establishing all tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
 set -x
-rm -rf ${CI_SCRATCH}
 mkdir -p ${CI_SCRATCH}
 chmod a+rx ${CI_SCRATCH}
 chmod g+s ${CI_SCRATCH}
