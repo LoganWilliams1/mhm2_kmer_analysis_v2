@@ -35,10 +35,6 @@ if(KCOUNT_GPU_STATIC)
   add_library(KCOUNT_GPU_LIBRARY_static STATIC
               $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
   target_link_libraries(KCOUNT_GPU_LIBRARY_static INTERFACE)
-  # unsuccessful attempt to suppress warning about recursion
-  target_link_options(
-    KCOUNT_GPU_LIBRARY_static PRIVATE $<DEVICE_LINK:--nvlink-options
-    -suppress-stack-size-warning>)
   set_property(TARGET KCOUNT_GPU_LIBRARY_static
                PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
   install(TARGETS KCOUNT_GPU_LIBRARY_static ARCHIVE DESTINATION lib)
