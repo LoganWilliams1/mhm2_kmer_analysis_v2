@@ -61,7 +61,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
-  vector<PackedReads *> packed_reads_list;
+  PackedReadsList packed_reads_list;
   FastqReaders::open_all_global_blocking(options->reads_fnames);
   for (auto const &reads_fname : options->reads_fnames) {
     packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
@@ -80,6 +80,8 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   }
   LOG_MEM("Read Post Assembly Reads");
   stage_timers.cache_reads->stop();
+  LOG_MEM("After loading post-assembly reads");
+  
   unsigned rlen_limit = 0;
   for (auto packed_reads : packed_reads_list) {
     rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());

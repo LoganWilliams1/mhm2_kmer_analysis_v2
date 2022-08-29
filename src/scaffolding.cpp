@@ -59,11 +59,11 @@ using std::tie;
 using std::vector;
 
 void traverse_ctg_graph(int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len, int min_ctg_print_len,
-                        vector<PackedReads *> &packed_reads_list, int break_scaffolds, Contigs &ctgs, Alns &alns,
+                        PackedReadsList &packed_reads_list, int break_scaffolds, Contigs &ctgs, Alns &alns,
                         const string &graph_fname);
 
 template <int MAX_K>
-void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedReads *> packed_reads_list, Contigs &ctgs,
+void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
                  int &max_expected_ins_size, int &ins_avg, int &ins_stddev, shared_ptr<Options> options) {
   BarrierTimer(string("Scaffolding ") + to_string(max_kmer_len));
   LOG_MEM("Scaffolding started");

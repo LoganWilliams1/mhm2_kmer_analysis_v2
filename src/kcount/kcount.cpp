@@ -52,7 +52,7 @@ using namespace upcxx_utils;
 using namespace upcxx;
 
 template <int MAX_K>
-static void count_kmers(unsigned kmer_len, int qual_offset, vector<PackedReads *> &packed_reads_list,
+static void count_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list,
                         dist_object<KmerDHT<MAX_K>> &kmer_dht) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_reads = 0;
@@ -147,7 +147,7 @@ static void add_ctg_kmers(unsigned kmer_len, unsigned prev_kmer_len, Contigs &ct
 };
 
 template <int MAX_K>
-void analyze_kmers(unsigned kmer_len, unsigned prev_kmer_len, int qual_offset, vector<PackedReads *> &packed_reads_list,
+void analyze_kmers(unsigned kmer_len, unsigned prev_kmer_len, int qual_offset, PackedReadsList &packed_reads_list,
                    int dmin_thres, Contigs &ctgs, dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers) {
   BarrierTimer timer(__FILEFUNC__);
   auto fut_has_contigs = upcxx::reduce_all(ctgs.size(), upcxx::op_fast_max).then([](size_t max_ctgs) { return max_ctgs > 0; });

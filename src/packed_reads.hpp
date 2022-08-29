@@ -43,6 +43,7 @@
 */
 
 #include <array>
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -50,6 +51,7 @@
 
 #include <upcxx/upcxx.hpp>
 
+using std::deque;
 using std::max;
 using std::string;
 using std::string_view;
@@ -57,15 +59,23 @@ using std::to_string;
 using std::unique_ptr;
 using std::vector;
 
+
+#ifndef USE_PACKED_READS_LINEAR_ALLOCATOR
+#define USE_PACKED_READS_LINEAR_ALLOCATOR 1
+#endif
+
+#include "linear_allocator_pool.hpp"
+
+class PackedReads;
 class PackedRead {
   static inline const std::array<char, 5> nucleotide_map = {'A', 'C', 'G', 'T', 'N'};
-  // read_id is not packed as it is already reduced to an index number
+  static const uint64_t MAX_READ_ID = 1ULL << 46; // 70 trillion read pairs.
+  // This class is packed into 16 bytes, a pointer + bitfield packed into 64-bits: is_allocated, read_id and read_len
+  uint64_t is_allocated : 1;
   // the pair number is indicated in the read id - negative means pair 1, positive means pair 2
-  // int64_t read_id : 48;
-  int64_t read_id;
+  int64_t read_id : 47;
   // the read is not going to be larger than 65536 in length, but possibly larger than 256
-  // uint64_t read_len : 16;
-  uint16_t read_len;
+  uint64_t read_len : 16;
   // each cached read packs the nucleotide into 3 bits (ACGTN), and the quality score into 5 bits
   unsigned char *bytes;
 
@@ -75,9 +85,10 @@ class PackedRead {
  public:
   // default, move and (deep) copy constructors to support containers without unique_ptr overhead
   PackedRead();
-  PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset);
-  PackedRead(const PackedRead &copy);
-  PackedRead(PackedRead &&Move);
+  PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset, PackedReads * = nullptr);
+  PackedRead(const PackedRead &copy, PackedReads * = nullptr);
+  PackedRead(const PackedRead &reference, bool no_new_allocation);
+  PackedRead(PackedRead &&Move, PackedReads * = nullptr);
   PackedRead &operator=(const PackedRead &copy);
   PackedRead &operator=(PackedRead &&move);
 
@@ -90,14 +101,15 @@ class PackedRead {
   string get_str_id();
   static int64_t to_packed_id(const string &id_str);
 
-  uint16_t get_read_len();
+  uint16_t get_read_len() const;
   unsigned char *get_raw_bytes();
 
   struct upcxx_serialization {
     template <typename Writer>
     static void serialize(Writer &writer, PackedRead const &packed_read) {
-      writer.write(packed_read.read_id);
-      writer.write(packed_read.read_len);
+      int64_t bitpacked_fields;
+      memcpy(&bitpacked_fields, &packed_read, sizeof(int64_t));
+      writer.write(bitpacked_fields);
       for (int i = 0; i < packed_read.read_len; i++) {
         writer.write(packed_read.bytes[i]);
       }
@@ -106,8 +118,9 @@ class PackedRead {
     template <typename Reader>
     static PackedRead *deserialize(Reader &reader, void *storage) {
       PackedRead *packed_read = new (storage) PackedRead();
-      packed_read->read_id = reader.template read<int64_t>();
-      packed_read->read_len = reader.template read<uint16_t>();
+      int64_t bitpacked_fields = reader.template read<int64_t>();
+      memcpy((void*) packed_read, &bitpacked_fields, sizeof(int64_t));
+      packed_read->is_allocated = 0;
       packed_read->bytes = new unsigned char[packed_read->read_len];
       for (int i = 0; i < packed_read->read_len; i++) {
         packed_read->bytes[i] = reader.template read<unsigned char>();
@@ -117,10 +130,14 @@ class PackedRead {
   };
 };
 
+using PackedReadsList = deque<PackedReads *>;
+using PackedReadsContainer = vector<PackedRead>;
 class PackedReads {
-  vector<PackedRead> packed_reads;
+  const static size_t ALLOCATION_BLOCK_SIZE = 4 * 1024 * 1024;
+  PackedReadsContainer packed_reads;
+  LinearAllocatorPool allocator;
   // this is only used when we need to know the actual name of the original reads
-  vector<string> read_id_idx_to_str;
+  deque<string> read_id_idx_to_str;
   unsigned max_read_len = 0;
   uint64_t index = 0;
   uint64_t bases = 0;
@@ -130,9 +147,9 @@ class PackedReads {
   bool str_ids;
 
  public:
-  using PackedReadsList = vector<PackedReads *>;
+  
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
-  PackedReads(int qual_offset, vector<PackedRead> &packed_reads);
+  PackedReads(int qual_offset, PackedReadsContainer &packed_reads);
   ~PackedReads();
 
   bool get_next_read(string &id, string &seq, string &quals);
@@ -145,6 +162,8 @@ class PackedReads {
 
   void clear();
 
+  void reserve(uint64_t num_reads, uint64_t num_bases);
+
   string get_fname() const;
 
   unsigned get_max_read_len() const;
@@ -153,7 +172,7 @@ class PackedReads {
 
   int64_t get_local_num_reads() const;
 
-  static int64_t get_total_local_num_reads(const vector<PackedReads*> &packed_reads_list);
+  static int64_t get_total_local_num_reads(const PackedReadsList &packed_reads_list);
 
   void add_read(const string &read_id, const string &seq, const string &quals);
 
@@ -165,10 +184,14 @@ class PackedReads {
 
   void report_size();
 
+  int64_t get_local_bases() const;
+
   int64_t get_bases();
 
   int get_qual_offset();
 
-  static uint64_t estimate_num_kmers(unsigned kmer_len, vector<PackedReads *> &packed_reads_list);
+  static uint64_t estimate_num_kmers(unsigned kmer_len, PackedReadsList &packed_reads_list);
+  
+  unsigned char * allocate_read(uint16_t read_len);
 };
 

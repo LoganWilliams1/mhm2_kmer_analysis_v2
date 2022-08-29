@@ -440,7 +440,7 @@ void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
   SLOG_CPU_HT("Allocating ", max_elems, " elements\n");
   state->kmers->reserve(max_elems);
   double used_mem = free_mem - get_free_mem(true);
-  SLOG_CPU_HT("Memory available: ", get_size_str(get_free_mem()), ", used ", get_size_str(used_mem), "\n");
+  SLOG_CPU_HT("Memory available: ", get_size_str(free_mem - used_mem), ", used ", get_size_str(used_mem), "\n");
 }
 
 template <int MAX_K>

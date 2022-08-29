@@ -45,6 +45,7 @@
 #include <map>
 #include <upcxx/upcxx.hpp>
 
+#include "upcxx_utils/log.hpp"
 #include "upcxx_utils/timers.hpp"
 #include "zstr.hpp"
 
@@ -58,6 +59,10 @@ using upcxx::rank_me;
 using upcxx::rank_n;
 
 using upcxx_utils::IntermittentTimer;
+using upcxx_utils::AsyncTimer;
+using upcxx_utils::BarrierTimer;
+using upcxx_utils::Timer;
+using upcxx_utils::get_basename;
 
 #define INT_CEIL(numerator, denominator) (((numerator)-1) / (denominator) + 1)
 #define BUF_SIZE 2047
@@ -72,6 +77,7 @@ class FastqReader {
   int64_t start_read;                        // may be bgzf_virtual_file_pointer int
   int64_t end_read;                          // may be bgzf_virtual_file_pointer int
   unsigned max_read_len;
+  unsigned avg_bytes_per_read;
   int subsample_pct = 100;
   string buf;
   int qual_offset;
@@ -149,6 +155,8 @@ class FastqReader {
   void set_block(int64_t start, int64_t size);
 
   size_t get_next_fq_record(string &id, string &seq, string &quals, bool wait_open = true);
+
+  void set_max_read_len(int len);
   int get_max_read_len();
 
   double static get_io_time();
@@ -179,6 +187,9 @@ class FastqReader {
   bool is_open();
   bool is_open(bool wait_for_open);
   FastqReader &get_fqr2();
+  void set_avg_bytes_per_read(unsigned bytes);
+  unsigned get_avg_bytes_per_read() const;
+
 };
 
 class FastqReaders {
@@ -202,7 +213,11 @@ class FastqReaders {
   template <typename Container>
   static size_t open_all(Container &fnames, int subsample_pct = 100) {
     DBG("Open all ", fnames.size(), " files\n");
+#ifdef NO_FASTQ_GLOBAL_BLOCKING
+    return open_all_file_blocking(fnames, subsample_pct);
+#else
     return open_all_global_blocking(fnames, subsample_pct);
+#endif
   }
 
   // returns the total global size
@@ -212,10 +227,16 @@ class FastqReaders {
     assert(subsample_pct > 0 && subsample_pct <= 100);
     auto fut_chain = make_future();
     size_t total_size = 0;
+    AsyncTimer t_all("open_all_file_blocking all files");
+    t_all.start();
     for (string &fname : fnames) {
+      AsyncTimer t_finish_seek("open_all_file_blocking seeks on file:" + get_basename(fname));
+      t_finish_seek.start();
       FastqReader &fqr = open(fname, subsample_pct);
-      fut_chain = when_all(fut_chain, fqr.get_file_size(true).then([&total_size](int64_t sz) { total_size += sz; }));
+      auto fut = fqr.get_open_fut().then([t_finish_seek]() { t_finish_seek.stop(); });
+      fut_chain = when_all(fut_chain, fut, fqr.get_file_size(true).then([&total_size](int64_t sz) { total_size += sz; }));
     }
+    fut_chain = fut_chain.then([t_all]() { t_all.stop(); });
     fut_chain.wait();
     DBG("All ", fnames.size(), " file (pairs) open.  total_size=", total_size, "\n");
     return total_size;
@@ -224,6 +245,7 @@ class FastqReaders {
   // returns the total global size
   template <typename Container>
   static size_t open_all_global_blocking(Container &fnames, int subsample_pct = 100) {
+    BarrierTimer t(__FILEFUNC__);
     assert(!upcxx::in_progress());
     // opens only some files and reads a partition, as if the entire set of files is one single concatented file
 
@@ -250,6 +272,7 @@ class FastqReaders {
     upcxx::future<> chain_open_fut = make_future();
 
     for (string &fname : fnames) {
+      Timer open_t("Opening " + fname);
       if (is_open(fname)) {
         DBG("Closing open file ", fname, "\n");
         close(fname);
@@ -257,12 +280,15 @@ class FastqReaders {
       auto &fqr = open(fname, subsample_pct, know_blocks[filenum].get_future());
       if (!fqr.is_open()) {
         needs_blocking = true;
+        AsyncTimer t_file_sizes("Get file sizes of " + get_basename(fqr.get_fname()));
+        t_file_sizes.start();
         upcxx::future<> fut =
             when_all(fqr.get_file_size(true), fqr.get_file_size(false))
-                .then([&total_size, &file_size = file_sizes[filenum], &file_size1 = file_sizes1[filenum]](int64_t sz, int64_t sz1) {
+                .then([t_file_sizes, &fqr, &total_size, &file_size = file_sizes[filenum], &file_size1 = file_sizes1[filenum]](int64_t sz, int64_t sz1) {
                   file_size = sz;
                   file_size1 = sz1;
                   total_size += sz;
+                  t_file_sizes.stop();
                 });
         chain_fut = when_all(chain_fut, fut);
         chain_open_fut = when_all(chain_open_fut, fqr.get_open_fut());
@@ -270,7 +296,9 @@ class FastqReaders {
       filenum++;
     }
 
-    chain_fut = chain_fut.then([&fnames, &file_sizes, &file_sizes1, &total_size, &know_blocks]() {
+    AsyncTimer t_finish_seek("Finish global block seeks on all files");
+    chain_fut = chain_fut.then([t_finish_seek, &fnames, &file_sizes, &file_sizes1, &total_size, &know_blocks]() {
+      t_finish_seek.start();
       assert(fnames.size() == file_sizes.size());
       assert(file_sizes.size() == know_blocks.size());
       auto global_block = INT_CEIL(total_size, rank_n());
@@ -380,11 +408,15 @@ class FastqReaders {
         know_blocks[i].fulfill_anonymous(1);
         my_read_offset = global_file_stop;
       }
+      t_finish_seek.stop();
     });
 
     // block and wait with variables still in scope
     chain_fut.wait();
     chain_open_fut.wait();
+    t_finish_seek.initiate_start_reduction();
+    t_finish_seek.initiate_stop_reduction();
+    
     DBG("All ", fnames.size(), " file (pairs) open.  total_size=", total_size, "\n");
     return total_size;
   }

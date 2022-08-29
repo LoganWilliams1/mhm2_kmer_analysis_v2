@@ -45,6 +45,7 @@
 #include "contigging.hpp"
 #include "klign.hpp"
 #include "fastq.hpp"
+#include "packed_reads.hpp"
 #include "post_assembly.hpp"
 #include "scaffolding.hpp"
 #include "stage_timers.hpp"
@@ -63,9 +64,8 @@ using namespace upcxx_utils;
 void init_devices();
 void done_init_devices();
 
-void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
-                 vector<PackedReads *> &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
-                 int subsample_pct);
+void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
+                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct);
 
 int main(int argc, char **argv) {
   // capture the free memory and timers before upcxx::init is called
@@ -192,6 +192,7 @@ int main(int argc, char **argv) {
 
   init_devices();
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
+
   Contigs ctgs;
   int max_kmer_len = 0;
   int max_expected_ins_size = 0;
@@ -200,11 +201,12 @@ int main(int argc, char **argv) {
     LOG_MEM("Preparing to load reads");
     auto start_free_mem = get_free_mem(true);
     SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
-    PackedReads::PackedReadsList packed_reads_list;
+    PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
     }
     LOG_MEM("Opened read files");
+    auto before_merge_mem = get_free_mem(true);
 
     double elapsed_write_io_t = 0;
     if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
@@ -220,15 +222,14 @@ int main(int argc, char **argv) {
       // load the merged reads instead of merge the original ones again
       SLOG_VERBOSE("Restarting and expecting merged reads to be checkpointed on disk\n");
       stage_timers.cache_reads->start();
-      double free_mem = get_free_mem(true);
-      upcxx::barrier();
+      barrier(local_team());
       PackedReads::load_reads(packed_reads_list);
       stage_timers.cache_reads->stop();
-      double post_free_mem = get_free_mem(true);
-      SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(free_mem - post_free_mem), " memory on node 0", KNORM,
-                   "\n");
     }
     LOG_MEM("Loaded Reads");
+    auto after_merge_mem = get_free_mem(true);
+    SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(before_merge_mem - after_merge_mem),
+                 " memory on node 0 for reads", KNORM, "\n");
 
     int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
@@ -242,6 +243,7 @@ int main(int argc, char **argv) {
       ctgs.load_contigs(options->ctgs_fname);
       stage_timers.load_ctgs->stop();
     }
+
     std::chrono::duration<double> init_t_elapsed = std::chrono::high_resolution_clock::now() - init_start_t;
     SLOG("\n");
     auto post_init_free_mem = get_free_mem(true);
@@ -257,10 +259,13 @@ int main(int argc, char **argv) {
          " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
     { BarrierTimer("Start Contigging"); }
 
+    { BarrierTimer("Start Contigging"); }
+
     // contigging loops
     if (options->kmer_lens.size()) {
       max_kmer_len = options->kmer_lens.back();
       for (auto kmer_len : options->kmer_lens) {
+        if (kmer_len <= 1) continue; // short circuit to just load reads
         auto max_k = (kmer_len / 32 + 1) * 32;
         LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
@@ -291,6 +296,8 @@ int main(int argc, char **argv) {
         prev_kmer_len = kmer_len;
       }
     }
+
+    { BarrierTimer("Start Scaffolding)"); }
 
     // scaffolding loops
     if (options->dump_gfa) {
@@ -385,7 +392,6 @@ int main(int argc, char **argv) {
     std::chrono::duration<double> t_elapsed = std::chrono::high_resolution_clock::now() - start_t;
     SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
   }
-  FastqReaders::close_all();
 
   // post processing
   if (options->post_assm_aln || options->post_assm_only || options->post_assm_abundances) {

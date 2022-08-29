@@ -82,10 +82,12 @@ static const double Q2Perror[] = {
     1.995e-08, 1.585e-08, 1.259e-08, 1e-08};
 
 static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, int ranks_per_file = 7) {
+  assert(!upcxx::in_progress());
   // estimate reads in this rank's section of all the files
   future<> progress_fut = make_future();
   BarrierTimer timer(__FILEFUNC__);
-  size_t total_size = FastqReaders::open_all(reads_fname_list);
+  uint64_t total_size = FastqReaders::open_all(reads_fname_list);
+
   // Issue #61 - reduce the # of reading ranks to fix excessively long estimates on poor filesystems
   // only a handful of ranks per file are needed to perform the estimate (i.e. 7)
   SLOG_VERBOSE("Estimating with about ", ranks_per_file, " ranks for each of the ", reads_fname_list.size(), " file(s)\n");
@@ -100,20 +102,21 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
   int64_t my_estimated_total_records = 0;
   int64_t estimated_total_records = 0;
   std::vector<int> file_bytes_per_record(reads_fname_list.size(), 0);
-
+  LOG_MEM("Before estimate_num_reads");
+  auto &pr = Timings::get_promise_reduce();
   ProgressBar progbar(total_size / rank_n(), "Scanning reads file to estimate number of reads");
   for (auto const &reads_fname : reads_fname_list) {
     DBG("Scanning ", reads_fname, "\n");
     discharge();
     // assume this rank will not read this file
-    size_t my_file_size = 0;
+    uint64_t my_file_size = 0;
     bool will_read = false;
     FastqReader &fqr = FastqReaders::get(reads_fname);
     if (FastqReaders::is_open(reads_fname) && fqr.my_file_size() > 0) {
       // test if my block crosses one of the evenly spaced boundaries on this file
-      auto division_blocks = fqr.get_file_size().wait() / (ranks_per_file + 1);
+      auto division_blocks = fqr.get_file_size(true).wait() / (ranks_per_file + 1);
       auto my_start = fqr.tellg();
-      my_file_size = fqr.my_file_size();
+      my_file_size = fqr.my_file_size(true);
       auto my_end = my_start + my_file_size;
       for (int i = 0; i < ranks_per_file; i++) {
         auto block_boundary = division_blocks * (i + 1);
@@ -127,13 +130,13 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
     }
     DBG("Will ", will_read ? "" : " NOT ", " read ", fqr.get_fname(), "\n");
 
-    size_t tot_bytes_read = 0, file_bytes_read = 0;
+    uint64_t tot_bytes_read = 0, file_bytes_read = 0;
     int64_t records_processed = 0, total_records = 0;
     my_total_file_size += my_file_size;
     if (will_read) {
       auto pos = fqr.tellg();
       while (true) {
-        size_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
+        uint64_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
         if (!bytes_read) break;
         num_lines += 4;
         num_reads++;
@@ -149,32 +152,40 @@ static pair<uint64_t, int> estimate_num_reads(vector<string> &reads_fname_list, 
           tot_bytes_read, " stream bytes)\n");
       if (tot_bytes_read < file_bytes_read) file_bytes_read = tot_bytes_read;  // use the minimum of the two measures
       fqr.reset();  // rewind this file for the next reading as this was only an estimation
-    } else LOG("Will not read ", fqr.get_fname(), "\n");
+    } else
+      LOG("Will not read ", fqr.get_fname(), "\n");
     auto file_size = fqr.get_file_size().wait();
     auto fname = fqr.get_fname();
     total_records_processed += records_processed;
     int bytes_per = (int)(records_processed > 0 ? (file_bytes_read / records_processed) : std::numeric_limits<int>::max());
     auto fut_reduce =
-        reduce_all(bytes_per > 0 ? bytes_per : std::numeric_limits<int>::max(), op_fast_min)
-            .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records](int min_bytes_per) {
+        pr.reduce_all(bytes_per, op_fast_min)
+            .then([file_size, my_file_size, fname, &my_estimated_total_records, &estimated_total_records, &fqr](int min_bytes_per) {
               DBG("Found min_bytes_per=", min_bytes_per, " for file ", fname, " my_size=", my_file_size, "\n");
               assert(min_bytes_per < std::numeric_limits<int>::max());
               assert(min_bytes_per > 0);
               my_estimated_total_records += my_file_size / min_bytes_per;
               estimated_total_records += file_size / min_bytes_per;
+              fqr.set_avg_bytes_per_read(min_bytes_per);
             });
-    progress_fut = when_all(progress_fut, fut_reduce);
+    auto fut_set_max =
+        pr.reduce_all(fqr.get_max_read_len(), op_fast_max).then([&fqr](int max_read_len) { fqr.set_max_read_len(max_read_len); });
+    progress_fut = when_all(progress_fut, fut_reduce, fut_set_max);
     max_read_len = max(fqr.get_max_read_len(), max_read_len);
     read_file_idx++;
   }
   progress_fut = when_all(progress_fut, progbar.set_done());
-  auto fut_max_read_len = reduce_all(max_read_len, op_fast_max);
+  auto fut_max_read_len = pr.reduce_all(max_read_len, op_fast_max);
   DBG("This rank processed ", num_lines, " lines (", num_reads, " reads) with max_read_len=", max_read_len,
       " my_est=", my_estimated_total_records, "\n");
+
+  // complete all pending reductions
+  pr.fulfill().wait();
   progress_fut.wait();
   max_read_len = fut_max_read_len.wait();
 
-  timer.initate_exit_barrier();  // barrier ensures all have completed for next reduction
+  timer.initiate_exit_barrier();  // barrier ensures all have completed for next reduction
+  LOG_MEM("After estimate_num_reads");
   SLOG_VERBOSE("Found maximum read length of ", max_read_len, " and (rank 0's) max estimated total ", estimated_total_records,
                " per rank\n");
   return {my_estimated_total_records, max_read_len};
@@ -248,7 +259,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
 
   // avoid every rank reading this small file
   adapter_sequences_t new_seqs;
-  vector<size_t> sizes;
+  vector<uint64_t> sizes;
   if (!rank_me()) {
     ifstream f(fname);
     if (!f.is_open()) DIE("Could not open adapters file '", fname, "': ", strerror(errno));
@@ -285,7 +296,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
 
   // broadcast the concatenated new sequences
   string concat_seqs;
-  size_t total_seq_size = 0;
+  uint64_t total_seq_size = 0;
   for (int i = 0; i < num_seqs; i++) {
     concat_seqs += new_seqs[i];
     total_seq_size += sizes[i];
@@ -295,7 +306,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
   upcxx::broadcast(concat_seqs.data(), total_seq_size, 0).wait();
 
   // partition back into separate sequences
-  size_t cursor = 0;
+  uint64_t cursor = 0;
   for (int i = 0; i < num_seqs; i++) {
     if (rank_me() == 0) assert(new_seqs[i].size() == sizes[i]);
     new_seqs[i].resize(sizes[i]);
@@ -386,9 +397,8 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
   return false;
 }
 
-void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t,
-                 vector<PackedReads *> &packed_reads_list, bool checkpoint, const string &adapter_fname, int min_kmer_len,
-                 int subsample_pct) {
+void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
+                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct) {
   assert(!upcxx::in_progress());
   assert(subsample_pct > 0 && subsample_pct <= 100);
   BarrierTimer timer(__FILEFUNC__);
@@ -408,8 +418,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     load_adapter_seqs(adapter_fname, adapter_seqs, adapters, min_kmer_len);
   }
 
-  size_t total_size = FastqReaders::open_all(reads_fname_list, subsample_pct);
+  uint64_t total_size = FastqReaders::open_all(reads_fname_list, subsample_pct);
   vector<string> merged_reads_fname_list;
+  LOG_MEM("After opening all fastq files");
 
   using shared_of = shared_ptr<upcxx_utils::dist_ofstream>;
   std::vector<shared_of> all_outputs;
@@ -421,15 +432,39 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   int64_t tot_bases = 0;
   // for unique read id need to estimate number of reads in our sections of all files
   auto [my_num_reads_estimate, read_len] = estimate_num_reads(reads_fname_list);
-  auto max_num_reads = reduce_all(my_num_reads_estimate, op_fast_max).wait();
-  auto tot_num_reads = reduce_all(my_num_reads_estimate, op_fast_add).wait();
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_max_num_reads = pr.reduce_all(my_num_reads_estimate, op_fast_max);
+  auto fut_tot_num_reads = pr.reduce_all(my_num_reads_estimate, op_fast_add);
+
+  // reserve space for PackedReads now
+  assert(reads_fname_list.size() == packed_reads_list.size());
+  for (int i = 0; i < reads_fname_list.size(); i++) {
+    const string &reads_fname = reads_fname_list[i];
+    PackedReads &packed_reads = *packed_reads_list[i];
+    FastqReader &fqr = FastqReaders::get(reads_fname);
+    auto max_read_len = fqr.get_max_read_len();
+    auto bytes_per_read = fqr.get_avg_bytes_per_read();
+    auto my_size = fqr.my_file_size(true);
+    if (my_size > 0) {
+      uint64_t est_num_reads = my_size / bytes_per_read * 1.05;
+      uint64_t est_num_bases = est_num_reads * max_read_len;
+      packed_reads.reserve(est_num_reads, est_num_bases);
+    }
+  }
+  LOG_MEM("After reserving space for storing reads");
+
+  // Finish reductions
+  pr.fulfill().wait();
+  auto max_num_reads = fut_max_num_reads.wait();
+  auto tot_num_reads = fut_tot_num_reads.wait();
   SLOG_VERBOSE("Estimated total number of reads as ", tot_num_reads, ", and max for any rank ", max_num_reads, "\n");
+
   // 2 reads per pair, 5x the block size estimate to be sure that we have no overlap. The read ids do not have to be contiguous
   auto read_id_block = (max_num_reads + 10000) * 2 * 5;
   uint64_t read_id = rank_me() * read_id_block;
   uint64_t start_read_id = read_id;
   DBG("starting read_id=", start_read_id, " max_num_reads=", max_num_reads, " read_id_block=", read_id_block, "\n");
-  IntermittentTimer dump_reads_t("dump_reads");
+  IntermittentTimer dump_reads_t("dump_reads"), read_files_t("read_files");
   future<> wrote_all_files_fut = make_future();
   promise<> summary_promise;
   future<> fut_summary = summary_promise.get_future();
@@ -445,6 +480,10 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     if (file_exists(out_fname)) SWARN("File ", out_fname, " already exists, will overwrite...");
 
     FastqReader &fqr = FastqReaders::get(reads_fname);
+    read_files_t.start();
+    fqr.advise(true);
+    read_files_t.stop();
+    auto my_file_size = fqr.my_file_size();
 
     shared_of sh_out_file;
     if (checkpoint) {
@@ -472,9 +511,6 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
     auto &packed_reads_i = packed_reads_list[ri];
 
-    fqr.advise(true);
-    auto my_file_size = fqr.my_file_size();
-
     const int16_t MIN_OVERLAP = 12;
     const int16_t EXTRA_TEST_OVERLAP = 2;
     const int16_t MAX_MISMATCHES = 3;  // allow up to 3 mismatches, with MAX_PERROR
@@ -496,7 +532,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       // DBG_VERBOSE("Merging num_pair=", num_pairs, " read_id=", read_id, "\n");
       if (!fqr.is_paired()) {
         // unpaired reads get dummy read2 just like merged reads
+        read_files_t.start();
         int64_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
+        read_files_t.stop();
         if (!bytes_read1) {
           DBG("Found end on ", fqr.get_fname(), " after read_id=", read_id, "\n");
           break;
@@ -506,6 +544,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         read_id += 2;
+        if (read_id % 1000 == 0) progress();
         if (checkpoint) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
@@ -514,7 +553,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
       if (skip_read1 && skip_read2) break;
       if (!skip_read1) {
+        read_files_t.start();
         int64_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
+        read_files_t.stop();
         if (!bytes_read1) break;  // end of file
         // DBG("Read1: ", id1, " ", seq1.length(), "\n");
 
@@ -524,9 +565,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         // use the last read as read1
         assert(!tmp_id.empty());
         // DBG("Using deferred Read1: ", tmp_id, " ", tmp_seq.length(), "\n");
-        id1 = tmp_id;
-        seq1 = tmp_seq;
-        quals1 = tmp_quals;
+        id1.swap(tmp_id);
+        seq1.swap(tmp_seq);
+        quals1.swap(tmp_quals);
         tmp_id.clear();
         skip_read1 = false;
       }
@@ -541,8 +582,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         missing_read1++;
         // set read2
         id2 = id1;
-        seq2 = seq1;
-        quals2 = quals1;
+        seq2.swap(seq1);
+        quals2.swap(quals1);
         // generate a fake read1
         id1[id1.length() - 1] = '1';
         seq1 = "N";
@@ -551,7 +592,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
 
       if (!skip_read2) {
+        read_files_t.start();
         int64_t bytes_read2 = fqr.get_next_fq_record(id2, seq2, quals2);
+        read_files_t.stop();
         if (!bytes_read2) {
           // record missing read2
           id2.clear();
@@ -575,9 +618,9 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         missing_read2++;
         // preserve this as the *next* read1 (may actually be a read2)
         assert(tmp_id.empty());
-        tmp_id = id2;
-        tmp_seq = seq2;
-        tmp_quals = quals2;
+        tmp_id.swap(id2);
+        tmp_seq.swap(seq2);
+        tmp_quals.swap(quals2);
         // generate a fake read2
         if (id2.empty()) skip_read2 = true;  // end of file
         id2 = id1;
@@ -784,9 +827,12 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       }
       // inc by 2 so that we can use a later optimization of treating the even as /1 and the odd as /2
       read_id += 2;
+      if (read_id % 1000 == 0) progress();
     }
     DBG("Merged my set of reads. num_merged=", num_merged, " num_ambig=", num_ambiguous, " bytes_read=", bytes_read, "\n");
+    read_files_t.start();
     fqr.advise(false);  // free kernel memory
+    read_files_t.stop();
 
     if (checkpoint) {
       // close this file, but do not wait for it yet
@@ -805,38 +851,48 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     // delay the summary output for when they complete
     auto fut_sh_ssw_timings = trim_timer_ssw.reduce_timings();
     auto fut_sh_trim_overhead = trim_timer.reduce_timings();
-    auto fut_reductions = when_all(
-        reduce_one(num_pairs, op_fast_add, 0), reduce_one(num_merged, op_fast_add, 0), reduce_one(num_ambiguous, op_fast_add, 0),
-        reduce_one(merged_len, op_fast_add, 0), reduce_one(overlap_len, op_fast_add, 0), reduce_one(max_read_len, op_fast_max, 0),
-        reduce_one(bases_trimmed, op_fast_add, 0), reduce_one(reads_removed, op_fast_add, 0),
-        reduce_one(bases_read, op_fast_add, 0), reduce_one(bytes_read, op_fast_add, 0), reduce_one(missing_read1, op_fast_add, 0),
-        reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings, fut_sh_trim_overhead);
+    auto fut_reductions =
+        when_all(pr.reduce_one(num_pairs, op_fast_add, 0), pr.reduce_one(num_merged, op_fast_add, 0),
+                 pr.reduce_one(num_ambiguous, op_fast_add, 0), pr.reduce_one(merged_len, op_fast_add, 0),
+                 pr.reduce_one(overlap_len, op_fast_add, 0), pr.reduce_one(max_read_len, op_fast_max, 0),
+                 pr.reduce_one(bases_trimmed, op_fast_add, 0), pr.reduce_one(reads_removed, op_fast_add, 0),
+                 pr.reduce_one(bases_read, op_fast_add, 0), pr.reduce_one(bytes_read, op_fast_add, 0),
+                 pr.reduce_one(missing_read1, op_fast_add, 0), pr.reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings,
+                 fut_sh_trim_overhead, pr.reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0),
+                 pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
-    fut_summary = when_all(fut_summary, fut_reductions)
-                      .then([reads_fname, bytes_read, &adapters](
-                                int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
-                                int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
-                                int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1,
-                                int64_t all_missing_read2, ShTimings sh_ssw_timings, ShTimings sh_trim_overhead) {
-                        SLOG_VERBOSE("Merged reads in file ", reads_fname, ":\n");
-                        SLOG_VERBOSE("  merged ", perc_str(all_num_merged, all_num_pairs), " of ", all_num_pairs, " pairs\n");
-                        SLOG_VERBOSE("  ambiguous ", perc_str(all_num_ambiguous, all_num_pairs), " ambiguous pairs\n");
-                        SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
-                        SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
-                        SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
-                        if (!adapters.empty()) {
-                          SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
-                          SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
-                          SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
-                          SLOG_VERBOSE("  adapter trim total overhead: ", sh_trim_overhead->to_string(), "\n");
-                        }
-                        SLOG_VERBOSE("  max read length ", all_max_read_len, "\n");
-                        SLOG_VERBOSE("Rank0 bytes read ", bytes_read, " of ", all_bytes_read, "\n");
-                      });
+    fut_summary =
+        when_all(fut_summary, fut_reductions)
+            .then([reads_fname, bytes_read, &adapters](
+                      int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
+                      int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
+                      int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1, int64_t all_missing_read2,
+                      ShTimings sh_ssw_timings, ShTimings sh_trim_overhead, int min_rank, int max_rank) {
+              SLOG_VERBOSE("Merged reads in file ", get_basename(reads_fname), " (ranks ", min_rank, "-", max_rank, "):\n");
+              SLOG_VERBOSE("  merged ", perc_str(all_num_merged, all_num_pairs), " of ", all_num_pairs, " pairs\n");
+              SLOG_VERBOSE("  ambiguous ", perc_str(all_num_ambiguous, all_num_pairs), " ambiguous pairs\n");
+              SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
+              SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
+              SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
+              if (!adapters.empty()) {
+                SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
+                SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
+                SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
+                SLOG_VERBOSE("  adapter trim total overhead: ", sh_trim_overhead->to_string(), "\n");
+              }
+              SLOG_VERBOSE("  max read length ", all_max_read_len, "\n");
+              SLOG_VERBOSE("Rank0 bytes read ", bytes_read, " of ", all_bytes_read, "\n");
+            });
 
     num_reads += num_pairs * 2;
     ri++;
     FastqReaders::close(reads_fname);
+    merge_file_timer.initiate_exit_reduction();
+    discharge();
+#ifdef ONE_FASTQ_AT_A_TIME
+    BarrierTimer bt("Waiting for all ranks to finish reading " + get_basename(reads_fname));
+    fut_reductions.wait();
+#endif
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);
@@ -847,7 +903,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   assert(read_id < start_read_id + read_id_block);
   merge_time.initiate_exit_reduction();
 
-  //#ifdef DEBUG
+  { BarrierTimer all_merging_done("All merging done"); }
+
   // ensure there is no overlap in read_ids which will cause a crash later
   using SSPair = std::pair<uint64_t, uint64_t>;
   SSPair start_stop(start_read_id, read_id);
@@ -878,9 +935,13 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     rpc_tests = when_all(rpc_tests, fut);
   }
   rpc_tests.wait();
-  //#endif
 
   // finish all file writing and report
+  auto fut_msm = pr.msm_reduce_one(read_files_t.get_elapsed());
+  fut_summary = when_all(fut_summary, fut_msm).then([](upcxx_utils::MinSumMax<double> msm) {
+    SLOG_VERBOSE("Total time reading fastq files: ", msm.to_string(), "\n");
+  });
+
   dump_reads_t.start();
   wrote_all_files_fut.wait();
   for (auto sh_of : all_outputs) {
@@ -892,8 +953,10 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   elapsed_write_io_t = dump_reads_t.get_elapsed();
   dump_reads_t.done();
 
+  // Finish all reductions
+  pr.fulfill().wait();
   summary_promise.fulfill_anonymous(1);
   fut_summary.wait();
 
-  timer.initate_exit_barrier();
+  timer.initiate_exit_barrier();
 }

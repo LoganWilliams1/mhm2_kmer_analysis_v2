@@ -174,7 +174,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
   return fut;
 }
 
-static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedReads *> &packed_reads_list,
+static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList &packed_reads_list,
                                                                 dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   dist_object<cid_to_reads_map_t> cid_to_reads_map({});
@@ -243,7 +243,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(vector<PackedRea
   return cid_to_reads_map;
 }
 
-static dist_object<cid_to_reads_map_t> process_alns(vector<PackedReads *> &packed_reads_list, Alns &alns, int64_t num_ctgs) {
+static dist_object<cid_to_reads_map_t> process_alns(PackedReadsList &packed_reads_list, Alns &alns, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   using read_to_cid_map_t = HASH_TABLE<int64_t, pair<int64_t, int>>;
   dist_object<read_to_cid_map_t> read_to_cid_map({});
@@ -309,9 +309,14 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   for (auto &[cid, read_ids] : *cid_to_reads_map) num_mapped_reads += read_ids.size();
   // counted read pairs
   num_mapped_reads *= 2;
+  auto &pr = Timings::get_promise_reduce();
   auto fut_read_slot = upcxx_utils::reduce_prefix(num_mapped_reads, upcxx::op_fast_add);
-  auto fut_all_num_mapped_reads = reduce_all(num_mapped_reads, op_fast_add);
-  auto max_num_mapped_reads = reduce_one(num_mapped_reads, op_fast_max, 0).wait();
+  auto fut_all_num_mapped_reads = pr.reduce_all(num_mapped_reads, op_fast_add);
+  auto fut_max_num_mapped_reads = pr.reduce_one(num_mapped_reads, op_fast_max, 0);
+
+  // complete pending reductions
+  pr.fulfill().wait();
+  auto max_num_mapped_reads =fut_max_num_mapped_reads.wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
   LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
@@ -362,32 +367,30 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
 // hack to avoid agg store update() within progress context
 // avoid agg store update() within progress
+using PairPackedRead = pair<PackedRead, PackedRead>;
 struct MoveReadsToTargetUpdatesBuffer {
   int32_t target;
-  PackedRead read1, read2;
+  PairPackedRead read_pair;
 };
-static void move_reads_to_target_update(ThreeTierAggrStore<pair<PackedRead, PackedRead>> &read_seq_store,
+static void move_reads_to_target_update(ThreeTierAggrStore<PairPackedRead> &read_seq_store,
                                         vector<MoveReadsToTargetUpdatesBuffer> &updates_buffer) {
   if (!updates_buffer.empty()) {
     vector<MoveReadsToTargetUpdatesBuffer> tmp_ub;
     tmp_ub.swap(updates_buffer);
     for (auto &ub : tmp_ub) {
-      read_seq_store.update(ub.target, {ub.read1, ub.read2});
+      read_seq_store.update(ub.target, std::move(ub.read_pair));
     }
   }
 }
-static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads *> &packed_reads_list,
-                                                             dist_object<read_to_target_map_t> &read_to_target_map,
-                                                             int64_t all_num_reads) {
+static void move_reads_to_targets(PackedReadsList &packed_reads_list, dist_object<read_to_target_map_t> &read_to_target_map,
+                                  int64_t all_num_reads, dist_object<PackedReadsContainer> &new_packed_reads) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_not_found = 0;
-  dist_object<vector<PackedRead>> new_packed_reads({});
-  using PairPackedRead = pair<PackedRead, PackedRead>;
   ThreeTierAggrStore<PairPackedRead> read_seq_store;
   // FIXME read_seq_store.set_restricted_updates();
   read_seq_store.set_update_func([&new_packed_reads](PairPackedRead &&read_pair_info) {
-    new_packed_reads->push_back(read_pair_info.first);
-    new_packed_reads->push_back(read_pair_info.second);
+    new_packed_reads->emplace_back(std::move(read_pair_info.first));
+    new_packed_reads->emplace_back(std::move(read_pair_info.second));
   });
   int est_update_size = 600;
   auto local_n = local_team().rank_n();
@@ -421,16 +424,15 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
                        return it->second;
                      },
                      read_to_target_map, read_id)
-                     .then([&updates_buffer, &num_not_found, &read_seq_store, packed_read1, packed_read2](int target) {
+                     .then([&updates_buffer, &num_not_found, &read_seq_store, &packed_read1, &packed_read2](int target) {
                        if (target == -1) {
                          num_not_found++;
                          target = std::experimental::randint(0, rank_n() - 1);
                        }
                        if (target < 0 || target >= rank_n()) DIE("target out of range ", target);
                        assert(target >= 0 && target < rank_n());
-                       MoveReadsToTargetUpdatesBuffer ub{
-                           .target = target, .read1 = std::move(packed_read1), .read2 = std::move(packed_read2)};
-                       updates_buffer.push_back(ub);
+                       MoveReadsToTargetUpdatesBuffer ub{.target = target, {std::move(packed_read1), std::move(packed_read2)}};
+                       updates_buffer.emplace_back(std::move(ub));
                      });
       limit_outstanding_futures(fut).wait();
       move_reads_to_target_update(read_seq_store, updates_buffer);
@@ -442,21 +444,25 @@ static dist_object<vector<PackedRead>> move_reads_to_targets(vector<PackedReads 
   barrier();
   auto all_num_not_found = reduce_one(num_not_found, op_fast_add, 0).wait();
   SLOG_VERBOSE("Didn't find contig targets for ", perc_str(all_num_not_found, all_num_reads / 2), " pairs\n");
-  return new_packed_reads;
+  return;
 }
 
-// void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Alns &alns, Contigs &ctgs) {
-void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Contigs &ctgs) {
+void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs &ctgs) {
   BarrierTimer timer(__FILEFUNC__);
 
   int64_t num_reads = 0;
   for (auto packed_reads : packed_reads_list) num_reads += packed_reads->get_local_num_reads();
-  auto all_num_reads = reduce_all(num_reads, op_fast_add).wait();
+  auto msm_num_reads = min_sum_max_reduce_one(num_reads).wait();
+  auto all_num_reads = broadcast(msm_num_reads.sum, 0).wait();
 
   auto kmer_to_cid_map = compute_kmer_to_cid_map(ctgs);
   auto cid_to_reads_map = compute_cid_to_reads_map(packed_reads_list, kmer_to_cid_map, ctgs.size());
   auto read_to_target_map = compute_read_locations(cid_to_reads_map, all_num_reads);
-  auto new_packed_reads = move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads);
+  dist_object<PackedReadsContainer> new_packed_reads({});
+  new_packed_reads->reserve(num_reads * 1.3);
+  move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads, new_packed_reads);
+
+  LOG("Had ", num_reads, " shuffled to ", new_packed_reads->size(), "\n");
 
   // now copy the new packed reads to the old
   for (auto packed_reads : packed_reads_list) delete packed_reads;
@@ -464,12 +470,27 @@ void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Co
   packed_reads_list.push_back(new PackedReads(qual_offset, *new_packed_reads));
   packed_reads_list[0]->set_max_read_len();
   assert(packed_reads_list.size() == 1);
-  auto num_reads_received = new_packed_reads->size();
-  double avg_num_received = (double)reduce_one(num_reads_received, op_fast_add, 0).wait() / rank_n();
-  auto max_reads_received = reduce_one(num_reads_received, op_fast_max, 0).wait();
-  SLOG_VERBOSE("Balance in reads ", fixed, setprecision(3), avg_num_received / max_reads_received, "\n");
-  auto all_num_new_reads = reduce_one(new_packed_reads->size(), op_fast_add, 0).wait();
-  if (all_num_new_reads != all_num_reads)
-    SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
+  uint64_t num_reads_received = packed_reads_list[0]->get_local_num_reads();
+  assert(num_reads_received == new_packed_reads->size());
+  new_packed_reads->clear();
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_msm_num_reads_received = pr.msm_reduce_one(num_reads_received);
+  uint64_t num_bases_received = packed_reads_list[0]->get_local_bases();
+  auto fut_msm_bases_received = pr.msm_reduce_one(num_bases_received);
+
+  auto fut =
+      when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
+          .then([msm_num_reads, all_num_reads](MinSumMax<uint64_t> shuffled_msm_num_reads, MinSumMax<uint64_t> shuffled_msm_num_bases) {
+            SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
+            SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
+            SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");
+            auto all_num_new_reads = shuffled_msm_num_reads.sum;
+            if (all_num_new_reads != all_num_reads)
+              SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
+          });
+  // finish pending reductions
+  pr.fulfill().wait();
+  Timings::wait_pending();
+  fut.wait();
   barrier();
 }

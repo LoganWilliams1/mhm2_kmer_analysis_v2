@@ -206,8 +206,6 @@ CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs, int64_t num_ctg_bases)
       it->second.reads_right.push_back(std::move(read_seq));
     DBG_VERBOSE("Added read_seq cid=", ctg_read_data.cid, " read_id=", read_seq.read_id, "\n");
   });
-  LOG("Set size CtgsWithReads add ctg\n");
-  barrier();
 }
 
 void CtgsWithReadsDHT::add_ctg(Contig &ctg) {
@@ -345,7 +343,7 @@ struct MerFreqs {
   }
 };
 
-void process_reads(unsigned kmer_len, vector<PackedReads *> &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
+void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
                    CtgsWithReadsDHT &ctgs_dht) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_reads = 0;

@@ -62,12 +62,12 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kmer_len, vector<PackedReads *> &packed_reads_list,
+void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kmer_len, PackedReadsList &packed_reads_list,
                      Contigs &ctgs, Alns &alns);
 void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff_Ns, Contigs &ctgs);
 
 void traverse_ctg_graph(int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len, int min_ctg_print_len,
-                        vector<PackedReads *> &packed_reads_list, int break_scaff_Ns, Contigs &ctgs, Alns &alns,
+                        PackedReadsList &packed_reads_list, int break_scaff_Ns, Contigs &ctgs, Alns &alns,
                         const string &graph_fname) {
   BarrierTimer timer(__FILEFUNC__);
 

@@ -781,7 +781,7 @@ static int align_kmers(KmerCtgDHT<MAX_K> &kmer_ctg_dht, Aligner &aligner,
 }
 
 template <int MAX_K>
-static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads *> &packed_reads_list, Alns &alns, int rlen_limit,
+static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReadsList &packed_reads_list, Alns &alns, int rlen_limit,
                             int seed_space, int64_t all_num_ctgs, bool compute_cigar) {
   BarrierTimer timer(__FILEFUNC__);
   SLOG_VERBOSE("Using a seed space of ", seed_space, "\n");
@@ -865,7 +865,8 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads 
   auto fut = align_file_timer.reduce_timings().then([](ShTimings sh_align_file_timings) {
     SLOG_VERBOSE("Alignment timings: ", sh_align_file_timings->to_string(true, true), "\n");
   });
-  all_done = when_all(all_done, fut, progbar.set_done());
+  Timings::set_pending(fut);
+  all_done = when_all(all_done, progbar.set_done());
   // free some memory
   HASH_TABLE<Kmer<MAX_K>, vector<KmerToRead>>().swap(kmer_read_map);
 
@@ -878,7 +879,9 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads 
 
   aligner.sort_alns();
   auto num_overlaps = aligner.get_num_overlaps();
+  
   all_done.wait();
+  Timings::wait_pending();
   barrier();
 
   auto tot_num_reads = tot_num_reads_fut.wait();
@@ -916,7 +919,7 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads 
 }
 
 template <int MAX_K>
-double find_alignments(unsigned kmer_len, vector<PackedReads *> &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
+double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
                        Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool use_kmer_cache, bool compute_cigar,
                        int min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
