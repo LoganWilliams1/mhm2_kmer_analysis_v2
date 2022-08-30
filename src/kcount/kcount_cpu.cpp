@@ -251,7 +251,7 @@ class KmerMapExts {
       // reset variables for search
       slot = start_slot;
       for (size_t i = 1; i <= MAX_PROBE; i++) {
-        assert(kmer != keys[slot]); // FIXME? probe_lens[slot] != 0
+        assert(kmer != keys[slot]);  // FIXME? probe_lens[slot] != 0
         if (counts[slot].count == 1) {
           num_singleton_overrides++;
           keys[slot] = kmer;
@@ -514,6 +514,9 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     if (kmer_ext_counts->count < 2) {
       num_purged++;
       continue;
+    }
+    if (kmer_ext_counts->count >= KCOUNT_HIGH_KMER_COUNT) {
+      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
     }
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = kmer_ext_counts->count,
