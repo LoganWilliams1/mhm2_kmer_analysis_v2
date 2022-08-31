@@ -332,11 +332,16 @@ void Options::cleanup() {
 #endif
 }
 
+CLI::Option *add_flag_def(CLI::App &app, string flag, bool var, string help) {
+  return app.add_flag(flag, var, help + " (" + (var ? "true" : "false") + ")");
+}
+
 bool Options::load(int argc, char **argv) {
   // MHM2 version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
   string full_version_str = "MHM2 version " + string(MHM2_VERSION) + "-" + string(MHM2_BRANCH) + " with upcxx-utils " +
                             string(UPCXX_UTILS_VERSION) + " built on " + string(MHM2_BUILD_DATE);
   CLI::App app(full_version_str);
+  app.option_defaults()->always_capture_default();
   // basic options - see user guide
   app.add_option("-r, --reads", reads_fnames,
                  "Files containing interleaved paired reads in FASTQ format (comma or space separated).")
@@ -355,43 +360,30 @@ bool Options::load(int argc, char **argv) {
       ->delimiter(':')
       ->expected(2)
       ->check(CLI::Range(1, 10000));
-  auto *kmer_lens_opt = app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging.")
-                            ->delimiter(',')
-                            ->capture_default_str();
+  auto *kmer_lens_opt =
+      app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging.")->delimiter(',');
   auto *scaff_kmer_lens_opt = app.add_option("-s, --scaff-kmer-lens", scaff_kmer_lens,
                                              "kmer lengths (comma separated) for scaffolding (set to 0 to disable scaffolding).")
-                                  ->delimiter(',')
-                                  ->capture_default_str();
+                                  ->delimiter(',');
   app.add_option("--min-ctg-print-len", min_ctg_print_len, "Minimum length required for printing a contig in the final assembly.")
-      ->capture_default_str()
+      ->default_val(to_string(min_ctg_print_len))
       ->check(CLI::Range(0, 100000));
-  auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.")->capture_default_str();
-  app.add_flag("--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality")->capture_default_str();
-  app.add_flag("--checkpoint", checkpoint, "Enable checkpointing.")
-      ->default_val(checkpoint ? "true" : "false")
-      ->capture_default_str()
-      ->multi_option_policy();
-  app.add_flag("--checkpoint-merged", checkpoint_merged,
+  auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.");
+  add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.")->multi_option_policy();
+  add_flag_def(app, "--checkpoint-merged", checkpoint_merged,
                "(debugging option) enables checkpointing of merged fastq files in the output directory")
-      ->capture_default_str()
       ->multi_option_policy();
-  app.add_flag("--restart", restart,
-               "Restart in previous directory where a run failed (must specify the previous directory with -o).")
-      ->capture_default_str();
-  app.add_flag("--klign-kmer-cache", klign_kmer_cache,
-               "Include a cache of kmer seed to contigs which helps avoid repeat lookups of the same kmer -- most useful after "
-               "shuffle-reads localization")
-      ->capture_default_str();
-  app.add_flag("--post-asm-align", post_assm_aln, "Align reads to final assembly")->capture_default_str();
-  app.add_flag("--post-asm-abd", post_assm_abundances, "Compute and output abundances for final assembly (used by MetaBAT).")
-      ->capture_default_str();
-  app.add_flag("--post-asm-only", post_assm_only, "Only run post assembly (alignment and/or abundances).")->capture_default_str();
-  app.add_flag("--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.")->capture_default_str();
-  app.add_flag("--dump-kmers", dump_kmers, "Write kmers out after kmer counting.")->capture_default_str();
+  add_flag_def(app, "--restart", restart,
+               "Restart in previous directory where a run failed (must specify the previous directory with -o).");
+  add_flag_def(app, "--post-asm-align", post_assm_aln, "Align reads to final assembly");
+  add_flag_def(app, "--post-asm-abd", post_assm_abundances, "Compute and output abundances for final assembly (used by MetaBAT).");
+  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly (alignment and/or abundances).");
+  add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.");
+  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
   app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
       ->check(CLI::IsMember({0, 33, 64}));
-  app.add_flag("--progress", show_progress, "Show progress bars for operations.");
-  app.add_flag("-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).");
+  add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.");
+  add_flag_def(app, "-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).");
   auto *cfg_opt = app.set_config("--config", "", "Load options from a configuration file.");
 
   // advanced options
@@ -407,21 +399,30 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 1000));
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
       ->check(CLI::Range(1, 100));
+  app.add_option("--optimize", optimize_for,
+                 "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
+                 "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
+      ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
   // performance trade-offs
-  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (default 100 (all)).")
+  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
+  add_flag_def(app, "--klign-kmer-cache", klign_kmer_cache,
+               "Include a cache of kmer seed to contigs which helps avoid repeat lookups of the same kmer -- most useful after "
+               "shuffle-reads localization");
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (can be set to all).")
       ->check(CLI::Range(1, 100));
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
       ->check(CLI::Range(0, 5000));
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
                  "Maximum number of RPCs in flight, per process (set to 0 for unlimited).")
       ->check(CLI::Range(0, 10000));
-  app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool (default 3)")
+  app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
       ->check(CLI::Range(0, (int)4 * upcxx::local_team().rank_n()));
-  app.add_flag("--pin", pin_by,
-               "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
-               "or NUMA domains (cpu, core, numa, none).")
+  app.add_option("--pin", pin_by,
+                 "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
+                 "or NUMA domains (cpu, core, numa, none).")
       ->check(CLI::IsMember({"cpu", "core", "numa", "none"}));
-  app.add_flag("--use-qf", use_qf, "Use quotient filter to reduce memory at the cost of slower processing.")->capture_default_str();
+  add_flag_def(app, "--use-qf", use_qf,
+               "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError &e) {
@@ -513,7 +514,7 @@ bool Options::load(int argc, char **argv) {
     // disable scaffolding rounds
     scaff_kmer_lens.clear();
   }
-  min_kmer_len = kmer_lens.empty() ? (scaff_kmer_lens.empty() ? -1 : scaff_kmer_lens[scaff_kmer_lens.size()-1]) : kmer_lens[0];
+  min_kmer_len = kmer_lens.empty() ? (scaff_kmer_lens.empty() ? -1 : scaff_kmer_lens[scaff_kmer_lens.size() - 1]) : kmer_lens[0];
   // save to per_rank, but hardlink to output_dir
   string config_file = "per_rank/mhm2.config";
   string linked_config_file = "mhm2.config";

@@ -115,6 +115,7 @@ class Options {
   bool shuffle_reads = true;
   bool dump_kmers = false;
   bool use_qf = true;
+  string optimize_for = "default";
 
   Options();
   ~Options();
