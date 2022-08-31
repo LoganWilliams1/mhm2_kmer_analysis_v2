@@ -95,7 +95,7 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
   }
 
   for (unsigned i = 0; i < seq.length(); i++) {
-    switch (seq[i]) {
+    switch (toupper(seq[i])) {
       case 'A': bytes[i] = 0; break;
       case 'C': bytes[i] = 1; break;
       case 'G': bytes[i] = 2; break;

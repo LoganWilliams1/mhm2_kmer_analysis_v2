@@ -56,7 +56,7 @@ using namespace std;
 static void revcomp(char *str, char *str_rc, int size) {
   int size_rc = 0;
   for (int i = size - 1; i >= 0; i--) {
-    switch (str[i]) {
+    switch (toupper(str[i])) {
       case 'A': str_rc[size_rc] = 'T'; break;
       case 'C': str_rc[size_rc] = 'G'; break;
       case 'G': str_rc[size_rc] = 'C'; break;
@@ -82,7 +82,7 @@ static void revcomp(char *str, char *str_rc, int size) {
 static std::string revcomp(std::string instr) {
   std::string str_rc;
   for (int i = instr.size() - 1; i >= 0; i--) {
-    switch (instr[i]) {
+    switch (toupper(instr[i])) {
       case 'A': str_rc += 'T'; break;
       case 'C': str_rc += 'G'; break;
       case 'G': str_rc += 'C'; break;

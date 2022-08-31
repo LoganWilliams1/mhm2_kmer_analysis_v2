@@ -95,7 +95,7 @@ string revcomp(const string &seq) {
   string seq_rc = "";
   seq_rc.reserve(seq.size());
   for (int i = seq.size() - 1; i >= 0; i--) {
-    switch (seq[i]) {
+    switch (toupper(seq[i])) {
       case 'A': seq_rc += 'T'; break;
       case 'C': seq_rc += 'G'; break;
       case 'G': seq_rc += 'C'; break;
@@ -119,7 +119,7 @@ string revcomp(const string &seq) {
 }
 
 char comp_nucleotide(char ch) {
-  switch (ch) {
+  switch (toupper(ch)) {
     case 'A': return 'T';
     case 'C': return 'G';
     case 'G': return 'C';
