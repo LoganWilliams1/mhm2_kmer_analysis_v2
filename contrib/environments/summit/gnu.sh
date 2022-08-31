@@ -9,6 +9,7 @@ module load cuda
 module load upcxx/nightly
 module load python
 
+export UPCXX_NETWORK=ucx
 export GASNET_ODP_VERBOSE=0 # disable warnings
 export GASNET_RBUF_COUNT=32676 # maximum allowed currently support 778 nodes "fully provisioned for simultaneous all-to-all"
 export GASNET_AM_CREDITS_SLACK=0 # to disable warnings
