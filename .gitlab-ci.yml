@@ -49,6 +49,8 @@ Cori:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - module list
     - git describe
@@ -123,6 +125,8 @@ Cori:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)   
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - module list
     - set -x
@@ -191,7 +195,9 @@ Cori:accuracy:
     - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
-    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"    
+    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - module list
     - set -x
@@ -274,6 +280,8 @@ HULK:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
@@ -297,6 +305,8 @@ HULK:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
@@ -320,6 +330,8 @@ HULK:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
@@ -358,6 +370,8 @@ Bacteria:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
@@ -381,6 +395,8 @@ Bacteria:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
@@ -405,6 +421,8 @@ Bacteria:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
@@ -451,6 +469,8 @@ Fungi:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
@@ -473,6 +493,8 @@ Fungi:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
@@ -496,6 +518,8 @@ Fungi:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
