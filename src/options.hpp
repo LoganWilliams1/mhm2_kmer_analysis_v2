@@ -96,7 +96,7 @@ class Options {
   int dmin_thres = 2.0;
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
   bool checkpoint = true;
-  bool checkpoint_merged = false;
+  bool dump_merged = false;
   bool klign_kmer_cache = false;
   bool post_assm_aln = false;
   bool post_assm_abundances = false;

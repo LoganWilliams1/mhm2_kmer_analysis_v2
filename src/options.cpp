@@ -370,8 +370,7 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 100000));
   auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.");
   add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.")->multi_option_policy();
-  add_flag_def(app, "--checkpoint-merged", checkpoint_merged,
-               "(debugging option) enables checkpointing of merged fastq files in the output directory")
+  add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
       ->multi_option_policy();
   add_flag_def(app, "--restart", restart,
                "Restart in previous directory where a run failed (must specify the previous directory with -o).");

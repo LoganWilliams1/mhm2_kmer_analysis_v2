@@ -398,7 +398,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
 }
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
-                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct) {
+                 bool dump_merged, const string &adapter_fname, int min_kmer_len, int subsample_pct) {
   assert(!upcxx::in_progress());
   assert(subsample_pct > 0 && subsample_pct <= 100);
   BarrierTimer timer(__FILEFUNC__);
@@ -486,7 +486,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     auto my_file_size = fqr.my_file_size();
 
     shared_of sh_out_file;
-    if (checkpoint) {
+    if (dump_merged) {
       auto merged_name = get_merged_reads_fname(reads_fname);
       sh_out_file = make_shared<upcxx_utils::dist_ofstream>(merged_name);
       all_outputs.push_back(sh_out_file);
@@ -545,7 +545,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         read_id += 2;
         if (read_id % 1000 == 0) progress();
-        if (checkpoint) {
+        if (dump_merged) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
         }
@@ -811,7 +811,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
-        if (checkpoint) {
+        if (dump_merged) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
         }
@@ -820,7 +820,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         // write without the revcomp
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", seq2, quals2);
-        if (checkpoint) {
+        if (dump_merged) {
           *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
           *sh_out_file << "@r" << read_id << "/2\n" << seq2 << "\n+\n" << quals2 << "\n";
         }
@@ -834,7 +834,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     fqr.advise(false);  // free kernel memory
     read_files_t.stop();
 
-    if (checkpoint) {
+    if (dump_merged) {
       // close this file, but do not wait for it yet
       dump_reads_t.start();
       wrote_all_files_fut = when_all(wrote_all_files_fut, sh_out_file->close_async());

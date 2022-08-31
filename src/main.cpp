@@ -209,24 +209,14 @@ int main(int argc, char **argv) {
     auto before_merge_mem = get_free_mem(true);
 
     double elapsed_write_io_t = 0;
-    if ((!options->restart || !options->checkpoint_merged) && options->min_kmer_len > 0) {
-      // merge the reads and insert into the packed reads memory cache
-      begin_gasnet_stats("merge_reads");
-      stage_timers.merge_reads->start();
-      merge_reads(options->reads_fnames, options->qual_offset, elapsed_write_io_t, packed_reads_list, options->checkpoint_merged,
-                  options->adapter_fname, options->min_kmer_len, options->subsample_fastq_pct);
-      stage_timers.merge_reads->stop();
-      end_gasnet_stats();
-    } else {
-      // since this is a restart with checkpoint_merged true, the merged reads should be on disk already
-      // load the merged reads instead of merge the original ones again
-      SLOG_VERBOSE("Restarting and expecting merged reads to be checkpointed on disk\n");
-      stage_timers.cache_reads->start();
-      barrier(local_team());
-      PackedReads::load_reads(packed_reads_list);
-      stage_timers.cache_reads->stop();
-    }
-    LOG_MEM("Loaded Reads");
+
+    // merge the reads and insert into the packed reads memory cache (always do this even for restarts)
+    begin_gasnet_stats("merge_reads");
+    stage_timers.merge_reads->start();
+    merge_reads(options->reads_fnames, options->qual_offset, elapsed_write_io_t, packed_reads_list, options->dump_merged,
+                options->adapter_fname, options->min_kmer_len, options->subsample_fastq_pct);
+    stage_timers.merge_reads->stop();
+    end_gasnet_stats();
     auto after_merge_mem = get_free_mem(true);
     SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(before_merge_mem - after_merge_mem),
                  " memory on node 0 for reads", KNORM, "\n");
@@ -265,7 +255,7 @@ int main(int argc, char **argv) {
     if (options->kmer_lens.size()) {
       max_kmer_len = options->kmer_lens.back();
       for (auto kmer_len : options->kmer_lens) {
-        if (kmer_len <= 1) continue; // short circuit to just load reads
+        if (kmer_len <= 1) continue;  // short circuit to just load reads
         auto max_k = (kmer_len / 32 + 1) * 32;
         LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
