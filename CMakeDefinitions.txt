@@ -86,7 +86,7 @@ add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 # turns off code used for kmer caches (i.e. disables --klign-kmer-cache option)
 add_definitions(-DUSE_KMER_CACHE)
 # determine the output format of alignments when not using cigars
-add_definitions(-DBLAST6_OUTPUT_FORMAT)
+# add_definitions(-DBLAST6_OUTPUT_FORMAT)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)

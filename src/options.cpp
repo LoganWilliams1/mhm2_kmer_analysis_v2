@@ -360,7 +360,8 @@ bool Options::load(int argc, char **argv) {
       ->delimiter(':')
       ->expected(2)
       ->check(CLI::Range(1, 10000));
-  app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging.")->delimiter(',');
+  app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging (set to 0 to disable contigging).")
+      ->delimiter(',');
   app.add_option("-s, --scaff-kmer-lens", scaff_kmer_lens,
                  "kmer lengths (comma separated) for scaffolding (set to 0 to disable scaffolding).")
       ->delimiter(',');
@@ -387,7 +388,8 @@ bool Options::load(int argc, char **argv) {
   // advanced options
   // restarts
   app.add_option("-c, --contigs", ctgs_fname, "FASTA file containing contigs used for restart.");
-  app.add_option("--max-kmer-len", max_kmer_len, "Maximum contigging kmer length for restart (only needed if not contigging).")
+  app.add_option("--max-kmer-len", max_kmer_len,
+                 "Maximum contigging kmer length for restart (needed if only scaffolding and contig file is specified).")
       ->check(CLI::Range(0, 159));
   app.add_option("--prev-kmer-len", prev_kmer_len,
                  "Previous contigging kmer length for restart (needed if contigging and contig file is specified).")
