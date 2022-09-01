@@ -310,7 +310,7 @@ static void get_kmers_and_exts(Supermer &supermer, vector<KmerAndExt<MAX_K>> &km
   quals.resize(supermer.seq.length());
   for (int i = 0; i < supermer.seq.length(); i++) {
     quals[i] = isupper(supermer.seq[i]);
-    supermer.seq[i] = toupper(supermer.seq[i]);
+    if (supermer.seq[i] >= 'a' && supermer.seq[i] <= 'z') supermer.seq[i] += ('A' - 'a');
   }
   auto kmer_len = Kmer<MAX_K>::get_k();
   vector<Kmer<MAX_K>> kmers;
@@ -453,7 +453,8 @@ void HashTableInserter<MAX_K>::insert_supermer(const std::string &supermer_seq, 
   Supermer supermer = {.seq = supermer_seq, .count = supermer_count};
   state->kernel_timer.start();
   for (int i = 0; i < supermer.seq.length(); i++) {
-    char base = toupper(supermer.seq[i]);
+    char base = supermer.seq[i];
+    if (base >= 'a' && base <= 'z') base += ('A' - 'a');
     if (base != 'A' && base != 'C' && base != 'G' && base != 'T' && base != 'N')
       DIE("bad char '", supermer.seq[i], "' in supermer seq int val ", (int)supermer.seq[i], " length ", supermer.seq.length(),
           " supermer ", supermer.seq);

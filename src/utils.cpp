@@ -95,12 +95,17 @@ string revcomp(const string &seq) {
   string seq_rc = "";
   seq_rc.reserve(seq.size());
   for (int i = seq.size() - 1; i >= 0; i--) {
-    switch (toupper(seq[i])) {
-      case 'A': seq_rc += 'T'; break;
-      case 'C': seq_rc += 'G'; break;
-      case 'G': seq_rc += 'C'; break;
-      case 'T': seq_rc += 'A'; break;
-      case 'N': seq_rc += 'N'; break;
+    switch (seq[i]) {
+      case 'A':
+      case 'a': seq_rc += 'T'; break;
+      case 'C':
+      case 'c': seq_rc += 'G'; break;
+      case 'G':
+      case 'g': seq_rc += 'C'; break;
+      case 'T':
+      case 't': seq_rc += 'A'; break;
+      case 'N':
+      case 'n': seq_rc += 'N'; break;
       case 'U':
       case 'R':
       case 'Y':
@@ -119,12 +124,17 @@ string revcomp(const string &seq) {
 }
 
 char comp_nucleotide(char ch) {
-  switch (toupper(ch)) {
-    case 'A': return 'T';
-    case 'C': return 'G';
-    case 'G': return 'C';
-    case 'T': return 'A';
-    case 'N': return 'N';
+  switch (ch) {
+    case 'A':
+    case 'a': return 'T';
+    case 'C':
+    case 'c': return 'G';
+    case 'G':
+    case 'g': return 'C';
+    case 'T':
+    case 't': return 'A';
+    case 'N':
+    case 'n': return 'N';
     case '0': return '0';
     case 'U':
     case 'R':
