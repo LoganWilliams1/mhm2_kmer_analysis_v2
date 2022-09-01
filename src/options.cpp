@@ -360,11 +360,10 @@ bool Options::load(int argc, char **argv) {
       ->delimiter(':')
       ->expected(2)
       ->check(CLI::Range(1, 10000));
-  auto *kmer_lens_opt =
-      app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging.")->delimiter(',');
-  auto *scaff_kmer_lens_opt = app.add_option("-s, --scaff-kmer-lens", scaff_kmer_lens,
-                                             "kmer lengths (comma separated) for scaffolding (set to 0 to disable scaffolding).")
-                                  ->delimiter(',');
+  app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging.")->delimiter(',');
+  app.add_option("-s, --scaff-kmer-lens", scaff_kmer_lens,
+                 "kmer lengths (comma separated) for scaffolding (set to 0 to disable scaffolding).")
+      ->delimiter(',');
   app.add_option("--min-ctg-print-len", min_ctg_print_len, "Minimum length required for printing a contig in the final assembly.")
       ->default_val(to_string(min_ctg_print_len))
       ->check(CLI::Range(0, 100000));
@@ -492,27 +491,9 @@ bool Options::load(int argc, char **argv) {
   setup_time += setup_output_dir();
   setup_time += setup_log_file();
 
-  // make sure we only use defaults for kmer lens if none of them were set by the user
-  if (!*kmer_lens_opt && !*scaff_kmer_lens_opt) {
-    kmer_lens = {21, 33, 55, 77, 99};
-    scaff_kmer_lens = {99, 33};
-    // set the option default strings so that the correct values are printed and saved to the .config file
-    kmer_lens_opt->default_str("21 33 55 77 99");
-    scaff_kmer_lens_opt->default_str("99 33");
-  } else if (kmer_lens.size() && *kmer_lens_opt && !*scaff_kmer_lens_opt) {
-    // use the last and second from kmer_lens for scaffolding
-    auto n = kmer_lens.size();
-    if (n == 1) {
-      scaff_kmer_lens = kmer_lens;
-      scaff_kmer_lens_opt->default_str(to_string(scaff_kmer_lens[0]));
-    } else {
-      scaff_kmer_lens = {kmer_lens[n - 1], kmer_lens[n == 2 ? 0 : 1]};
-      scaff_kmer_lens_opt->default_str(to_string(scaff_kmer_lens[0]) + " " + to_string(scaff_kmer_lens[1]));
-    }
-  } else if (scaff_kmer_lens.size() == 1 && scaff_kmer_lens[0] == 0) {
-    // disable scaffolding rounds
-    scaff_kmer_lens.clear();
-  }
+  // disable scaffolding rounds
+  if (scaff_kmer_lens.size() == 1 && scaff_kmer_lens[0] == 0) scaff_kmer_lens.clear();
+
   min_kmer_len = kmer_lens.empty() ? (scaff_kmer_lens.empty() ? -1 : scaff_kmer_lens[scaff_kmer_lens.size() - 1]) : kmer_lens[0];
   // save to per_rank, but hardlink to output_dir
   string config_file = "per_rank/mhm2.config";
@@ -534,6 +515,9 @@ bool Options::load(int argc, char **argv) {
     // use 1% of the minimum available memory
     max_kmer_store_mb = get_free_mem(true) / 1024 / 1024 / 100;
     max_kmer_store_mb = upcxx::reduce_all(max_kmer_store_mb / upcxx::local_team().rank_n(), upcxx::op_fast_min).wait();
+  }
+
+  if (optimize_for == "contiguity") {
   }
 
   auto logger_t = chrono::high_resolution_clock::now();
@@ -591,7 +575,7 @@ bool Options::load(int argc, char **argv) {
   if (!upcxx::rank_me()) {
     // write out configuration file for restarts
     ofstream ofs(config_file);
-    ofs << app.config_to_str(true, true);
+    ofs << app.config_to_str(false, true);
     ofs.close();
     unlink(linked_config_file.c_str());  // ignore errors
     auto ret = link(config_file.c_str(), linked_config_file.c_str());

@@ -95,19 +95,17 @@ int get_cigar_length(const string &cigar) {
   return base_count;
 }
 
-CPUAligner::CPUAligner(bool compute_cigar)
+CPUAligner::CPUAligner(bool compute_cigar, bool use_blastn_scores)
     : ssw_aligner() {
   // default for normal alignments in the pipeline, but for final alignments, uses minimap2 defaults
-  if (!compute_cigar)
+  if (use_blastn_scores)
     aln_scoring = {.match = ALN_MATCH_SCORE,
                    .mismatch = ALN_MISMATCH_COST,
                    .gap_opening = ALN_GAP_OPENING_COST,
                    .gap_extending = ALN_GAP_EXTENDING_COST,
                    .ambiguity = ALN_AMBIGUITY_COST};
   else
-    // these are BLASTN defaults (https://www.arabidopsis.org/Blast/BLASToptions.jsp) - except match is actually 2
-    // there is no BLAST value for ambiguity
-    aln_scoring = {.match = 2, .mismatch = 3, .gap_opening = 5, .gap_extending = 2, .ambiguity = 1};
+    aln_scoring = {.match = 1, .mismatch = 1, .gap_opening = 1, .gap_extending = 1, .ambiguity = 1};
   SLOG_VERBOSE("Alignment scoring parameters: ", aln_scoring.to_string(), "\n");
 
   // aligner construction: SSW internal defaults are 2 2 3 1
@@ -152,7 +150,8 @@ void CPUAligner::ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const 
   ssw_align_read(ssw_aligner, ssw_filter, alns, aln_scoring, aln, cseq, rseq, read_group_id);
 }
 
-upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, IntermittentTimer &aln_kernel_timer) {
+upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns,
+                                            IntermittentTimer &aln_kernel_timer) {
   AsyncTimer t("ssw_align_block (thread)");
   future<> fut = upcxx_utils::execute_in_thread_pool(
       [&ssw_aligner = this->ssw_aligner, &ssw_filter = this->ssw_filter, &aln_scoring = this->aln_scoring, aln_block_data, t]() {

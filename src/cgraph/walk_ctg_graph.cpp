@@ -143,11 +143,16 @@ static bool is_overlap_mismatch(int dist, int overlap) {
   return (dist > CGRAPH_GAP_CLOSING_OVERLAP_MISMATCH_THRES || dist > overlap / 10);
 }
 
-static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_Ns, vector<Walk> &walks, Contigs &ctgs) {
+static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_Ns, vector<Walk> &walks, Contigs &ctgs,
+                                bool use_blastn_scores) {
   BarrierTimer timer(__FILEFUNC__);
   // match, mismatch, gap opening, gap extending, ambiguious
-  StripedSmithWaterman::Aligner ssw_aligner(ALN_MATCH_SCORE, ALN_MISMATCH_COST, ALN_GAP_OPENING_COST, ALN_GAP_EXTENDING_COST,
-                                            ALN_AMBIGUITY_COST);
+  int match_score = ALN_MATCH_SCORE, mismatch_cost = ALN_MISMATCH_COST, gap_opening_cost = ALN_GAP_OPENING_COST,
+      gap_extending_cost = ALN_GAP_EXTENDING_COST;
+  if (!use_blastn_scores) match_score = mismatch_cost = gap_opening_cost = gap_extending_cost = 1;
+
+  StripedSmithWaterman::Aligner ssw_aligner(match_score, mismatch_cost, gap_opening_cost, gap_extending_cost, ALN_AMBIGUITY_COST);
+
   StripedSmithWaterman::Filter ssw_filter;
   ssw_filter.report_cigar = false;
   GapStats gap_stats = {0};
@@ -687,7 +692,7 @@ static vector<pair<cid_t, int32_t>> sort_ctgs(int min_ctg_len) {
   return sorted_ctgs;
 }
 
-void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff_Ns, Contigs &ctgs) {
+void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff_Ns, Contigs &ctgs, bool use_blastn_scores) {
   // The general approach is to have each rank do walks starting from its local vertices only.
   // First, to prevent loops within a walk, the vertices visited locally are kept track of using a visited hash table.
   // Once walks starting from all local vertices have been completed, any conflicts (overlaps) between walks are resolved.
@@ -788,6 +793,6 @@ void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff
     SLOG_VERBOSE("Didn't visit ", tot_unvisited, " vertices, max len ", tot_max_unvisited_len, " total length ", tot_unvisited_len,
                  "\n");
   walk_stats.print();
-  get_ctgs_from_walks(max_kmer_len, kmer_len, break_scaff_Ns, walks, ctgs);
+  get_ctgs_from_walks(max_kmer_len, kmer_len, break_scaff_Ns, walks, ctgs, use_blastn_scores);
   barrier();
 }
