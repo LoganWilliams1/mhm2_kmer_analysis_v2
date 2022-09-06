@@ -143,11 +143,14 @@ static bool is_overlap_mismatch(int dist, int overlap) {
   return (dist > CGRAPH_GAP_CLOSING_OVERLAP_MISMATCH_THRES || dist > overlap / 10);
 }
 
-static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_Ns, vector<Walk> &walks, Contigs &ctgs) {
+static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_Ns, vector<Walk> &walks, Contigs &ctgs,
+                                bool use_blastn_scores) {
   BarrierTimer timer(__FILEFUNC__);
-  // match, mismatch, gap opening, gap extending, ambiguious
-  StripedSmithWaterman::Aligner ssw_aligner(ALN_MATCH_SCORE, ALN_MISMATCH_COST, ALN_GAP_OPENING_COST, ALN_GAP_EXTENDING_COST,
-                                            ALN_AMBIGUITY_COST);
+  StripedSmithWaterman::Aligner ssw_aligner;
+  ssw_aligner.Clear();
+  if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
+    SDIE("Failed to set aln scores");
+
   StripedSmithWaterman::Filter ssw_filter;
   ssw_filter.report_cigar = false;
   GapStats gap_stats = {0};
@@ -246,11 +249,11 @@ static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_
               break_scaffold = true;
               gap_stats.num_excess_breaks++;
               DBG_WALK("break neg gap\n");
-            } else if (ssw_aln.sw_score < aln_len - ALN_MISMATCH_COST * CGRAPH_MAX_MISMATCHES_THRES) {
+            } else if (ssw_aln.sw_score < aln_len - ssw_aligner.get_mismatch_penalty() * CGRAPH_MAX_MISMATCHES_THRES) {
               break_scaffold = true;
               gap_stats.num_tolerance_breaks++;
-              DBG_WALK("break poor aln: score ", ssw_aln.sw_score, " < ", aln_len - ALN_MISMATCH_COST * CGRAPH_MAX_MISMATCHES_THRES,
-                       "\n");
+              DBG_WALK("break poor aln: score ", ssw_aln.sw_score, " < ",
+                       aln_len - ssw_aligner.get_mismatch_penalty() * CGRAPH_MAX_MISMATCHES_THRES, "\n");
             } else {
               DBG_WALK("close neg gap trunc left at ", ctg.seq.length() - max_overlap + ssw_aln.query_end + 1,
                        " and from right at ", ssw_aln.ref_end + 1, "\n");
@@ -687,7 +690,7 @@ static vector<pair<cid_t, int32_t>> sort_ctgs(int min_ctg_len) {
   return sorted_ctgs;
 }
 
-void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff_Ns, Contigs &ctgs) {
+void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff_Ns, Contigs &ctgs, bool use_blastn_scores) {
   // The general approach is to have each rank do walks starting from its local vertices only.
   // First, to prevent loops within a walk, the vertices visited locally are kept track of using a visited hash table.
   // Once walks starting from all local vertices have been completed, any conflicts (overlaps) between walks are resolved.
@@ -788,6 +791,6 @@ void walk_graph(CtgGraph *graph, int max_kmer_len, int kmer_len, int break_scaff
     SLOG_VERBOSE("Didn't visit ", tot_unvisited, " vertices, max len ", tot_max_unvisited_len, " total length ", tot_unvisited_len,
                  "\n");
   walk_stats.print();
-  get_ctgs_from_walks(max_kmer_len, kmer_len, break_scaff_Ns, walks, ctgs);
+  get_ctgs_from_walks(max_kmer_len, kmer_len, break_scaff_Ns, walks, ctgs, use_blastn_scores);
   barrier();
 }
