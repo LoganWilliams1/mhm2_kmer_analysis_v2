@@ -58,31 +58,6 @@ using std::string;
 using std::string_view;
 using upcxx_utils::IntermittentTimer;
 
-struct AlnScoring {
-  int match, mismatch, gap_opening, gap_extending, ambiguity;
-
-  AlnScoring(void) {}
-
-  AlnScoring(string s) { this->set(s); }
-
-  void set(string s) {
-    if (s.length() != 5)
-      SDIE("Invalid number of alignment scoring parameters (found ", s.length(), " but require 5), string is ", s);
-    match = s[0] - '0';
-    mismatch = s[1] - '0';
-    gap_opening = s[2] - '0';
-    gap_extending = s[3] - '0';
-    ambiguity = s[4] - '0';
-  }
-
-  string to_string() {
-    std::ostringstream oss;
-    oss << "match " << match << " mismatch " << mismatch << " gap open " << gap_opening << " gap extend " << gap_extending
-        << " ambiguity " << ambiguity;
-    return oss.str();
-  }
-};
-
 // encapsulate the data for a kernel to run a block independently
 struct AlignBlockData {
   vector<Aln> kernel_alns;
