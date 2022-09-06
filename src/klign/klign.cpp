@@ -76,7 +76,8 @@ extern IntermittentTimer compute_alns_timer;
 extern IntermittentTimer get_ctgs_timer;
 extern IntermittentTimer aln_kernel_timer;
 
-void init_aligner(AlnScoring &aln_scoring, int rlen_limit);
+void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
+                  int rlen_limit);
 void cleanup_aligner();
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
@@ -335,7 +336,7 @@ class Aligner {
       int rstop = rstart + overlap_len;
       int cstop = cstart + overlap_len;
       if (orient == '-') switch_orient(rstart, rstop, rlen);
-      int score1 = overlap_len * cpu_aligner.aln_scoring.match;
+      int score1 = overlap_len * cpu_aligner.ssw_aligner.get_match_score();
       Aln aln(rname, cid, rstart, rstop, rlen, cstart, cstop, clen, orient, score1, 0, 0, read_group_id);
       assert(aln.is_valid());
       if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(rseq, to_string(overlap_len) + "=");
@@ -379,7 +380,9 @@ class Aligner {
       , alns(&alns) {
     ctg_cache.set_invalid_key(std::numeric_limits<cid_t>::max());
     ctg_cache.reserve(3 * all_num_ctgs / rank_n() + 1024);
-    init_aligner(cpu_aligner.aln_scoring, rlen_limit);
+    init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
+                 (int)cpu_aligner.ssw_aligner.get_gap_opening_penalty(), (int)cpu_aligner.ssw_aligner.get_gap_extending_penalty(),
+                 (int)cpu_aligner.ssw_aligner.get_ambiguity_penalty(), rlen_limit);
   }
 
   ~Aligner() {

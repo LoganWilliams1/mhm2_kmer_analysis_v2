@@ -190,8 +190,10 @@ class Aligner {
                const int& translation_matrix_size);
 
   uint8_t get_match_score() const { return match_score_; }
-
   uint8_t get_mismatch_penalty() const { return mismatch_penalty_; }
+  uint8_t get_gap_opening_penalty() const { return gap_opening_penalty_; }
+  uint8_t get_gap_extending_penalty() const { return gap_extending_penalty_; }
+  uint8_t get_ambiguity_penalty() const { return ambiguity_penalty_; }
 
  private:
   int8_t* score_matrix_;
