@@ -146,12 +146,10 @@ static bool is_overlap_mismatch(int dist, int overlap) {
 static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_Ns, vector<Walk> &walks, Contigs &ctgs,
                                 bool use_blastn_scores) {
   BarrierTimer timer(__FILEFUNC__);
-  // match, mismatch, gap opening, gap extending, ambiguious
-  int match_score = ALN_MATCH_SCORE, mismatch_cost = ALN_MISMATCH_COST, gap_opening_cost = ALN_GAP_OPENING_COST,
-      gap_extending_cost = ALN_GAP_EXTENDING_COST;
-  if (!use_blastn_scores) match_score = mismatch_cost = gap_opening_cost = gap_extending_cost = 1;
-
-  StripedSmithWaterman::Aligner ssw_aligner(match_score, mismatch_cost, gap_opening_cost, gap_extending_cost, ALN_AMBIGUITY_COST);
+  StripedSmithWaterman::Aligner ssw_aligner;
+  ssw_aligner.Clear();
+  if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
+    SDIE("Failed to set aln scores");
 
   StripedSmithWaterman::Filter ssw_filter;
   ssw_filter.report_cigar = false;
@@ -251,11 +249,11 @@ static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_
               break_scaffold = true;
               gap_stats.num_excess_breaks++;
               DBG_WALK("break neg gap\n");
-            } else if (ssw_aln.sw_score < aln_len - ALN_MISMATCH_COST * CGRAPH_MAX_MISMATCHES_THRES) {
+            } else if (ssw_aln.sw_score < aln_len - ssw_aligner.get_mismatch_penalty() * CGRAPH_MAX_MISMATCHES_THRES) {
               break_scaffold = true;
               gap_stats.num_tolerance_breaks++;
-              DBG_WALK("break poor aln: score ", ssw_aln.sw_score, " < ", aln_len - ALN_MISMATCH_COST * CGRAPH_MAX_MISMATCHES_THRES,
-                       "\n");
+              DBG_WALK("break poor aln: score ", ssw_aln.sw_score, " < ",
+                       aln_len - ssw_aligner.get_mismatch_penalty() * CGRAPH_MAX_MISMATCHES_THRES, "\n");
             } else {
               DBG_WALK("close neg gap trunc left at ", ctg.seq.length() - max_overlap + ssw_aln.query_end + 1,
                        " and from right at ", ssw_aln.ref_end + 1, "\n");

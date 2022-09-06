@@ -65,7 +65,7 @@ void init_devices();
 void done_init_devices();
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
-                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct);
+                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
 
 int main(int argc, char **argv) {
   // capture the free memory and timers before upcxx::init is called
@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
     begin_gasnet_stats("merge_reads");
     stage_timers.merge_reads->start();
     merge_reads(options->reads_fnames, options->qual_offset, elapsed_write_io_t, packed_reads_list, options->dump_merged,
-                options->adapter_fname, options->min_kmer_len, options->subsample_fastq_pct);
+                options->adapter_fname, options->min_kmer_len, options->subsample_fastq_pct, options->optimize_for == "contiguity");
     stage_timers.merge_reads->stop();
     end_gasnet_stats();
     auto after_merge_mem = get_free_mem(true);

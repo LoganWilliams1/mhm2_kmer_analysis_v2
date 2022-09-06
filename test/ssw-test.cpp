@@ -93,12 +93,8 @@ string aln2string(Alignment &aln) {
   return ss.str();
 }
 
-AlnScoring aln_scoring = {.match = ALN_MATCH_SCORE,
-                          .mismatch = ALN_MISMATCH_COST,
-                          .gap_opening = ALN_GAP_OPENING_COST,
-                          .gap_extending = ALN_GAP_EXTENDING_COST,
-                          .ambiguity = ALN_AMBIGUITY_COST};
-AlnScoring cigar_aln_scoring = {.match = 2, .mismatch = 4, .gap_opening = 4, .gap_extending = 2, .ambiguity = 1};
+AlnScoring aln_scoring(to_string(ALTERNATE_ALN_SCORES));
+AlnScoring cigar_aln_scoring("24421");
 
 Aligner ssw_aligner;
 Aligner ssw_aligner_mhm2(aln_scoring.match, aln_scoring.mismatch, aln_scoring.gap_opening, aln_scoring.gap_extending,

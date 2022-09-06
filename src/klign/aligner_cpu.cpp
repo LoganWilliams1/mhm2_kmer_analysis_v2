@@ -97,21 +97,15 @@ int get_cigar_length(const string &cigar) {
 
 CPUAligner::CPUAligner(bool compute_cigar, bool use_blastn_scores)
     : ssw_aligner() {
-  // default for normal alignments in the pipeline, but for final alignments, uses minimap2 defaults
-  if (use_blastn_scores)
-    aln_scoring = {.match = ALN_MATCH_SCORE,
-                   .mismatch = ALN_MISMATCH_COST,
-                   .gap_opening = ALN_GAP_OPENING_COST,
-                   .gap_extending = ALN_GAP_EXTENDING_COST,
-                   .ambiguity = ALN_AMBIGUITY_COST};
-  else
-    aln_scoring = {.match = 1, .mismatch = 1, .gap_opening = 1, .gap_extending = 1, .ambiguity = 1};
-  SLOG_VERBOSE("Alignment scoring parameters: ", aln_scoring.to_string(), "\n");
-
   // aligner construction: SSW internal defaults are 2 2 3 1
   ssw_aligner.Clear();
-  ssw_aligner.ReBuild(aln_scoring.match, aln_scoring.mismatch, aln_scoring.gap_opening, aln_scoring.gap_extending,
-                      aln_scoring.ambiguity);
+  if (use_blastn_scores) {
+    aln_scoring.set(to_string(BLASTN_ALN_SCORES));
+    if (!ssw_aligner.ReBuild(to_string(BLASTN_ALN_SCORES))) SDIE("Failed to set aln scores");
+  } else {
+    aln_scoring.set(to_string(ALTERNATE_ALN_SCORES));
+    if (!ssw_aligner.ReBuild(to_string(ALTERNATE_ALN_SCORES))) SDIE("Failed to set aln scores");
+  }
   ssw_filter.report_cigar = compute_cigar;
 }
 

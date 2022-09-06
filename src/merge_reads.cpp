@@ -373,7 +373,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
         ssw_aligner.Align(adapter_seq.data(), adapter_seq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
                           max((int)(seq.length() / 2), 15));
         int max_match_len = min(adapter_seq.length(), seq.length() - ssw_aln.ref_begin);
-        double identity = (double)ssw_aln.sw_score / (double)ALN_MATCH_SCORE / (double)(max_match_len);
+        double identity = (double)ssw_aln.sw_score / (double)ssw_aligner.get_match_score() / (double)(max_match_len);
         if (identity >= best_identity) {
           best_identity = identity;
           best_trim_pos = ssw_aln.ref_begin;
@@ -398,7 +398,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
 }
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
-                 bool dump_merged, const string &adapter_fname, int min_kmer_len, int subsample_pct) {
+                 bool dump_merged, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores) {
   assert(!upcxx::in_progress());
   assert(subsample_pct > 0 && subsample_pct <= 100);
   BarrierTimer timer(__FILEFUNC__);
@@ -409,8 +409,11 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
   adapter_sequences_t adapter_seqs;
   adapter_hash_table_t adapters;
-  StripedSmithWaterman::Aligner ssw_aligner(ALN_MATCH_SCORE, ALN_MISMATCH_COST, ALN_GAP_OPENING_COST, ALN_GAP_EXTENDING_COST,
-                                            ALN_AMBIGUITY_COST);
+  StripedSmithWaterman::Aligner ssw_aligner;
+  ssw_aligner.Clear();
+  if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
+    SDIE("Failed to set aln scores");
+
   StripedSmithWaterman::Filter ssw_filter;
 
   ssw_filter.report_cigar = false;
