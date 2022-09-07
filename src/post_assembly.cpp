@@ -81,7 +81,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   LOG_MEM("Read Post Assembly Reads");
   stage_timers.cache_reads->stop();
   LOG_MEM("After loading post-assembly reads");
-  
+
   unsigned rlen_limit = 0;
   for (auto packed_reads : packed_reads_list) {
     rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
@@ -92,9 +92,9 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   bool compute_cigar = true;
   int kmer_len = POST_ASM_ALN_K;
   const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
-  double kernel_elapsed =
-      find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns, 4,
-                             rlen_limit, options->klign_kmer_cache, compute_cigar, options->min_ctg_print_len);
+  double kernel_elapsed = find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight,
+                                                 ctgs, alns, 4, rlen_limit, options->klign_kmer_cache, compute_cigar,
+                                                 options->optimize_for == "contiguity", options->min_ctg_print_len);
   stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
   stage_timers.alignments->stop();
   LOG_MEM("Aligned Post Assembly Reads");

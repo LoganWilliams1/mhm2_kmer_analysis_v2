@@ -278,7 +278,8 @@ void HashTableInserter<MAX_K>::flush_inserts() {
     SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
              " balance\n");
     uint64_t qf_failures = (uint64_t)state->ht_gpu_driver.get_qf_failures();
-    //if (qf_failures) WARN("GQF failed to insert ", qf_failures, " items, load factor ", state->ht_gpu_driver.get_qf_load_factor());
+    // if (qf_failures) WARN("GQF failed to insert ", qf_failures, " items, load factor ",
+    // state->ht_gpu_driver.get_qf_load_factor());
     auto all_qf_failures = reduce_one(qf_failures, op_fast_add, 0).wait();
     if (all_qf_failures) SWARN("GQF failed to insert ", all_qf_failures, " items");
   }
@@ -329,9 +330,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   Timings::wait_pending();
   auto msm_num_dropped = min_sum_max_reduce_one(num_dropped).wait();
   auto msm_num_entries = min_sum_max_reduce_one(num_entries).wait();
-  auto msm_pct_dropped = min_sum_max_reduce_one((float) (num_entries == 0 ? 0.0 : ((float) num_dropped) / ((float) num_entries))).wait();
+  auto msm_pct_dropped =
+      min_sum_max_reduce_one((float)(num_entries == 0 ? 0.0 : ((float)num_dropped) / ((float)num_entries))).wait();
   if (msm_num_dropped.max > 0)
-    SWARN("GPU dropped ", msm_pct_dropped.to_string(), " entries. dropped: ", msm_num_dropped.to_string(), " total: ", msm_num_entries.to_string(), " when compacting to output hash table\n");
+    SWARN("GPU dropped ", msm_pct_dropped.to_string(), " entries. dropped: ", msm_num_dropped.to_string(),
+          " total: ", msm_num_entries.to_string(), " when compacting to output hash table\n");
 
   auto all_capacity = reduce_one((uint64_t)state->ht_gpu_driver.get_final_capacity(), op_fast_add, 0).wait();
   auto all_num_purged = reduce_one((uint64_t)num_purged, op_fast_add, 0).wait();
@@ -362,6 +365,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
       invalid++;
       continue;
     }
+    if (count_exts->count >= KCOUNT_HIGH_KMER_COUNT) {
+      Kmer<MAX_K> kmer(kmer_array->longs);
+      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", count_exts->count, " kmer = ", kmer.to_string(), "\n");
+    }
+
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = static_cast<kmer_count_t>(min(count_exts->count, static_cast<count_t>(UINT16_MAX))),
                               .left = (char)count_exts->left,

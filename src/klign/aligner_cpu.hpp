@@ -58,17 +58,6 @@ using std::string;
 using std::string_view;
 using upcxx_utils::IntermittentTimer;
 
-struct AlnScoring {
-  int match, mismatch, gap_opening, gap_extending, ambiguity;
-
-  string to_string() {
-    std::ostringstream oss;
-    oss << "match " << match << " mismatch " << mismatch << " gap open " << gap_opening << " gap extend " << gap_extending
-        << " ambiguity " << ambiguity;
-    return oss.str();
-  }
-};
-
 // encapsulate the data for a kernel to run a block independently
 struct AlignBlockData {
   vector<Aln> kernel_alns;
@@ -78,10 +67,9 @@ struct AlignBlockData {
   int64_t max_clen;
   int64_t max_rlen;
   int read_group_id;
-  AlnScoring aln_scoring;
 
   AlignBlockData(vector<Aln> &_kernel_alns, vector<string> &_ctg_seqs, vector<string> &_read_seqs, int64_t max_clen,
-                 int64_t max_rlen, int read_group_id, AlnScoring &aln_scoring);
+                 int64_t max_rlen, int read_group_id);
 };
 
 int get_cigar_length(const string &cigar);
@@ -91,13 +79,11 @@ struct CPUAligner {
   // default aligner and filter
   StripedSmithWaterman::Aligner ssw_aligner;
   StripedSmithWaterman::Filter ssw_filter;
-  AlnScoring aln_scoring;
 
-  CPUAligner(bool compute_cigar);
+  CPUAligner(bool compute_cigar, bool use_blastn_scores);
 
   static void ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter, Alns *alns,
-                             AlnScoring &aln_scoring, Aln &aln, const string_view &cseq, const string_view &rseq,
-                             int read_group_id);
+                             Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id);
 
   void ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id);
 
