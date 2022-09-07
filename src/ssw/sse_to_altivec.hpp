@@ -42,8 +42,7 @@
  form.
 */
 
-//#include "vec128int.h"
-
+#include "vec128int.h"
 
 #ifdef __BIG_ENDIAN__
 #define _mm_slli_si128 vec_shiftrightbytes1q
