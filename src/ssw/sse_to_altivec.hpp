@@ -45,17 +45,20 @@
 #include "vec128int.h"
 
 #ifdef __BIG_ENDIAN__
+#warning BIG ENDIAN
 #define _mm_slli_si128 vec_shiftrightbytes1q
+#define _mm_srli_si128 vec_shiftleftbytes1q
 #else
 #define _mm_slli_si128 vec_shiftleftbytes1q
+#define _mm_srli_si128 vec_shiftrightbytes1q
 #endif
 
 #define _mm_max_epu8 vec_max16ub
 #define _mm_max_epi16 vec_max8sh
 
-#define _mm_set1_epi32 vec_splat4sw
-#define _mm_set1_epi16 vec_splat8sh
 #define _mm_set1_epi8 vec_splat16sb
+#define _mm_set1_epi16 vec_splat8sh
+#define _mm_set1_epi32 vec_splat4sw
 
 #define _mm_extract_epi16 vec_extract8sh
 
@@ -63,8 +66,14 @@
 #define _mm_store_si128 vec_store1q
 
 #define _mm_adds_epu8 vec_addsaturating16ub
+
 #define _mm_adds_epi16 vec_addsaturating8sh
+
 #define _mm_subs_epu8 vec_subtractsaturating16ub
+#define _mm_subs_epu16 vec_subtractsaturating8uh
 
 #define _mm_cmpeq_epi8 vec_compareeq16sb
+#define _mm_cmpeq_epi16 vec_compareeq8sh
+#define _mm_cmpgt_epi16 vec_comparegt8sh
+
 #define _mm_movemask_epi8 vec_extractupperbit16sb

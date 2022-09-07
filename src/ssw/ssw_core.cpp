@@ -72,7 +72,7 @@
 //#define __PPC64__
 
 #if defined(__PPC64__)
-#include "ssw_to_altivec.hpp"
+#include "sse_to_altivec.hpp"
 #elif defined(__x86_64__)
 #include <emmintrin.h>
 #else
