@@ -365,7 +365,9 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
   int best_trim_pos = seq.length();
   string best_adapter_seq;
   HASH_TABLE<string_view, bool> adapters_matching;
-  for (auto &kmer : kmers) {
+  // only need to check every 8th kmer, for speed
+  for (int i = 0; i < kmers.size(); i += 8) {
+    auto &kmer = kmers[i];
     auto it = adapters.find(kmer);
     if (it != adapters.end()) {
       for (auto &adapter_seq : it->second) {
@@ -373,6 +375,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
         time_ssw.start();
         adapters_matching[adapter_seq] = true;
         StripedSmithWaterman::Alignment ssw_aln;
+        // FIXME: this should be done on the GPU when available
         ssw_aligner.Align(adapter_seq.data(), adapter_seq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
                           max((int)(seq.length() / 2), 15));
         int max_match_len = min(adapter_seq.length(), seq.length() - ssw_aln.ref_begin);
