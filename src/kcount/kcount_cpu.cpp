@@ -251,7 +251,7 @@ class KmerMapExts {
       // reset variables for search
       slot = start_slot;
       for (size_t i = 1; i <= MAX_PROBE; i++) {
-        assert(kmer != keys[slot]); // FIXME? probe_lens[slot] != 0
+        assert(kmer != keys[slot]);  // FIXME? probe_lens[slot] != 0
         if (counts[slot].count == 1) {
           num_singleton_overrides++;
           keys[slot] = kmer;
@@ -310,7 +310,7 @@ static void get_kmers_and_exts(Supermer &supermer, vector<KmerAndExt<MAX_K>> &km
   quals.resize(supermer.seq.length());
   for (int i = 0; i < supermer.seq.length(); i++) {
     quals[i] = isupper(supermer.seq[i]);
-    supermer.seq[i] = toupper(supermer.seq[i]);
+    if (supermer.seq[i] >= 'a' && supermer.seq[i] <= 'z') supermer.seq[i] += ('A' - 'a');
   }
   auto kmer_len = Kmer<MAX_K>::get_k();
   vector<Kmer<MAX_K>> kmers;
@@ -453,7 +453,8 @@ void HashTableInserter<MAX_K>::insert_supermer(const std::string &supermer_seq, 
   Supermer supermer = {.seq = supermer_seq, .count = supermer_count};
   state->kernel_timer.start();
   for (int i = 0; i < supermer.seq.length(); i++) {
-    char base = toupper(supermer.seq[i]);
+    char base = supermer.seq[i];
+    if (base >= 'a' && base <= 'z') base += ('A' - 'a');
     if (base != 'A' && base != 'C' && base != 'G' && base != 'T' && base != 'N')
       DIE("bad char '", supermer.seq[i], "' in supermer seq int val ", (int)supermer.seq[i], " length ", supermer.seq.length(),
           " supermer ", supermer.seq);
@@ -514,6 +515,9 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     if (kmer_ext_counts->count < 2) {
       num_purged++;
       continue;
+    }
+    if (kmer_ext_counts->count >= KCOUNT_HIGH_KMER_COUNT) {
+      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
     }
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = kmer_ext_counts->count,

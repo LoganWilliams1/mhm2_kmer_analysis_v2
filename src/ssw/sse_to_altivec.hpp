@@ -42,50 +42,38 @@
  form.
 */
 
-#include <string_view>
-#include <algorithm>
-#include <iostream>
+#include "vec128int.h"
 
-#include <upcxx/upcxx.hpp>
+#ifdef __BIG_ENDIAN__
+#warning BIG ENDIAN
+#define _mm_slli_si128 vec_shiftrightbytes1q
+#define _mm_srli_si128 vec_shiftleftbytes1q
+#else
+#define _mm_slli_si128 vec_shiftleftbytes1q
+#define _mm_srli_si128 vec_shiftrightbytes1q
+#endif
 
-#include "upcxx_utils.hpp"
-#include "kmer.hpp"
-#include "ssw.hpp"
-#include "utils.hpp"
-#include "alignments.hpp"
+#define _mm_max_epu8 vec_max16ub
+#define _mm_max_epi16 vec_max8sh
 
-using std::string;
-using std::string_view;
-using upcxx_utils::IntermittentTimer;
+#define _mm_set1_epi8 vec_splat16sb
+#define _mm_set1_epi16 vec_splat8sh
+#define _mm_set1_epi32 vec_splat4sw
 
-// encapsulate the data for a kernel to run a block independently
-struct AlignBlockData {
-  vector<Aln> kernel_alns;
-  vector<string> ctg_seqs;
-  vector<string> read_seqs;
-  shared_ptr<Alns> alns;
-  int64_t max_clen;
-  int64_t max_rlen;
-  int read_group_id;
+#define _mm_extract_epi16 vec_extract8sh
 
-  AlignBlockData(vector<Aln> &_kernel_alns, vector<string> &_ctg_seqs, vector<string> &_read_seqs, int64_t max_clen,
-                 int64_t max_rlen, int read_group_id);
-};
+#define _mm_load_si128 vec_load1q
+#define _mm_store_si128 vec_store1q
 
-int get_cigar_length(const string &cigar);
-void set_sam_string(Aln &aln, string_view read_seq, string cigar);
+#define _mm_adds_epu8 vec_addsaturating16ub
 
-struct CPUAligner {
-  // default aligner and filter
-  StripedSmithWaterman::Aligner ssw_aligner;
-  StripedSmithWaterman::Filter ssw_filter;
+#define _mm_adds_epi16 vec_addsaturating8sh
 
-  CPUAligner(bool compute_cigar, bool use_blastn_scores);
+#define _mm_subs_epu8 vec_subtractsaturating16ub
+#define _mm_subs_epu16 vec_subtractsaturating8uh
 
-  static void ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter, Alns *alns,
-                             Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id);
+#define _mm_cmpeq_epi8 vec_compareeq16sb
+#define _mm_cmpeq_epi16 vec_compareeq8sh
+#define _mm_cmpgt_epi16 vec_comparegt8sh
 
-  void ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id);
-
-  upcxx::future<> ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, IntermittentTimer &aln_kernel_timer);
-};
+#define _mm_movemask_epi8 vec_extractupperbit16sb

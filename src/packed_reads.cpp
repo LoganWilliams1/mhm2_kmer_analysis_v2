@@ -94,13 +94,18 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
     bytes = new unsigned char[seq.length()];
   }
 
-  for (unsigned i = 0; i < seq.length(); i++) {
+  for (unsigned i = 0, len = seq.length(); i < len; i++) {
     switch (seq[i]) {
-      case 'A': bytes[i] = 0; break;
-      case 'C': bytes[i] = 1; break;
-      case 'G': bytes[i] = 2; break;
-      case 'T': bytes[i] = 3; break;
-      case 'N': bytes[i] = 4; break;
+      case 'A':
+      case 'a': bytes[i] = 0; break;
+      case 'C':
+      case 'c': bytes[i] = 1; break;
+      case 'G':
+      case 'g': bytes[i] = 2; break;
+      case 'T':
+      case 't': bytes[i] = 3; break;
+      case 'N':
+      case 'n': bytes[i] = 4; break;
       case 'U':
       case 'R':
       case 'Y':
@@ -399,9 +404,10 @@ void PackedReads::report_size() {
   auto all_num_names_fut = pr.reduce_one(name_bytes, upcxx::op_fast_add, 0);
   auto min_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
   auto max_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
-  auto fut_pr = pr.fulfill().then([](PromiseReduce::Vals ignore){});
+  auto fut_pr = pr.fulfill().then([](PromiseReduce::Vals ignore) {});
   auto fut =
-      when_all(fut_pr, Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut, max_rank_fut)
+      when_all(fut_pr, Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut,
+               max_rank_fut)
           .then([&self = *this](size_t all_num_records, size_t all_num_bases, size_t all_num_names, int min_rank, int max_rank) {
             auto num_ranks = max_rank - min_rank + 1;
             auto sz = all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names;

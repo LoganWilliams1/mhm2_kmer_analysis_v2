@@ -49,8 +49,8 @@ else
         rm -rf *
         rm -rf $INSTALL_PATH/cmake
         cmake $rootdir -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH \
-              -DMHM2_ENABLE_TESTING=1 $MHM2_CMAKE_EXTRAS $2
-        #-DENABLE_CUDA=0
+              $MHM2_CMAKE_EXTRAS $2
+        #-DENABLE_CUDA=0 -DMHM2_ENABLE_TESTING=0
     fi
     make -j ${MHM2_BUILD_THREADS} all install
     #make VERBOSE=1 -j ${MHM2_BUILD_THREADS} all install

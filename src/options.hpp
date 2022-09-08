@@ -84,11 +84,11 @@ class Options {
   vector<string> paired_fnames;
   vector<string> unpaired_fnames;
   string adapter_fname;
-  vector<unsigned> kmer_lens = {};
+  vector<unsigned> kmer_lens = {21, 33, 55, 77, 99};
   int min_kmer_len = -1;
   int max_kmer_len = 0;
   int prev_kmer_len = 0;
-  vector<unsigned> scaff_kmer_lens = {};
+  vector<unsigned> scaff_kmer_lens = {99, 33};
   int qual_offset = 33;
   bool verbose = false;
   int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
@@ -96,7 +96,7 @@ class Options {
   int dmin_thres = 2.0;
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
   bool checkpoint = true;
-  bool checkpoint_merged = false;
+  bool dump_merged = false;
   bool klign_kmer_cache = false;
   bool post_assm_aln = false;
   bool post_assm_abundances = false;
@@ -115,6 +115,7 @@ class Options {
   bool shuffle_reads = true;
   bool dump_kmers = false;
   bool use_qf = true;
+  string optimize_for = "default";
 
   Options();
   ~Options();
