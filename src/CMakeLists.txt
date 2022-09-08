@@ -309,12 +309,6 @@ install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(PROGRAMS mhm2_parse_run_log.pl DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 
-# # special spawning script for Summit
-# install(
-#   PROGRAMS upcxx-run-summit
-#   DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
-#   RENAME mhm2-upcxx-run-summit)
-
 # special spawning script for Perlmutter
 install(
   PROGRAMS mps-wrapper-perlmutter.sh

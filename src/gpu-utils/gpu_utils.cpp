@@ -147,12 +147,19 @@ vector<string> gpu_utils::get_gpu_uuids() {
   int num_devs = get_gpu_device_count();
   for (int i = 0; i < num_devs; ++i) {
     DeviceProp &prop = get_gpu_properties(i);
-#if (HIP_GPU | (CUDA_VERSION >= 10000))
+    bool set_dev = false;
+#ifdef CUDA_GPU
+#if CUDA_VERSION >= 10000)
     uuids.push_back(get_uuid_str(prop.uuid.bytes));
+    set_dev = true;
+#endif
 #else
-    ostringstream os;
-    os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;  // << ':' << prop.pciDomainID << prop.multiGpuBoardGroupID;
-    uuids.push_back(os.str());
+    if (!set_dev) {
+      ostringstream os;
+      os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;
+      uuids.push_back(os.str());
+      set_dev = true;
+    }
 #endif
   }
   return uuids;
@@ -185,6 +192,7 @@ string gpu_utils::get_gpu_device_descriptions() {
   int num_devs = get_gpu_device_count();
   ostringstream os;
   os << "Number of GPU devices visible: " << num_devs << "\n";
+  auto uuids = get_gpu_uuids();
   for (int i = 0; i < num_devs; ++i) {
     DeviceProp &prop = get_gpu_properties(i);
 
@@ -192,17 +200,15 @@ string gpu_utils::get_gpu_device_descriptions() {
     os << "  Device name: " << prop.name << "\n";
     os << "  PCI device ID: " << prop.pciDeviceID << "\n";
     os << "  PCI bus ID: " << prop.pciBusID << "\n";
-#if (HIP_GPU) | (CUDA_VERSION >= 10000)
+    os << "  UUID: " << uuids[i] << "\n";
     os << "  PCI domainID: " << prop.pciDomainID << "\n";
+#ifdef CUDA_GPU
     os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
-    os << "  UUID: " << get_uuid_str(prop.uuid.bytes) << "\n";
 #endif
     os << "  Compute capability: " << prop.major << "." << prop.minor << "\n";
     os << "  Clock Rate: " << prop.clockRate << "kHz\n";
     os << "  Total SMs: " << prop.multiProcessorCount << "\n";
-#ifdef HIP_GPU
     os << "  Max Shared Memory Per SM: " << prop.maxSharedMemoryPerMultiProcessor << " bytes\n";
-#endif
     os << "  Registers Per Block: " << prop.regsPerBlock << " 32-bit\n";
     os << "  Max threads per SM: " << prop.maxThreadsPerMultiProcessor << "\n";
     os << "  L2 Cache Size: " << prop.l2CacheSize << " bytes\n";

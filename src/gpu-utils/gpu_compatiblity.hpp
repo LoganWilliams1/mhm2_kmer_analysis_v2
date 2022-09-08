@@ -67,7 +67,7 @@
 #define MallocHost hipMallocHost
 
 #define GetDeviceCount hipGetDeviceCount
-#define DeviceProp hipDeviceProp
+#define DeviceProp hipDeviceProp_t
 #define GetDevice hipGetDevice
 #define GetDeviceProperties hipGetDeviceProperties
 #define SetDevice hipSetDevice
@@ -160,10 +160,3 @@
 #define FuncAttributeMaxDynamicSharedMemorySize cudaFuncAttributeMaxDynamicSharedMemorySize
 
 #endif
-
-// Functions that are common to all cuda code; not to be used by upcxx code
-
-#define ERROR_CHECK(ans) gpu_common::gpu_die((ans), __FILE__, __LINE__)
-
-// we are typecasting uint64_t into this, so we need to check them
-static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
