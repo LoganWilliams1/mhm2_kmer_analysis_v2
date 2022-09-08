@@ -479,10 +479,10 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   future<> fut_summary = summary_promise.get_future();
   int ri = 0;
   ProgressBar progbar(total_size / rank_n(), "Merging reads");
+  BaseTimer trim_timer("Adapter Trim overhead");
+  BaseTimer trim_timer_ssw("Adapter Trim SSW");
   for (auto const &reads_fname : reads_fname_list) {
     Timer merge_file_timer("merging " + get_basename(reads_fname));
-    BaseTimer trim_timer("Adapter Trim overhead");
-    BaseTimer trim_timer_ssw("Adapter Trim SSW");
     merge_file_timer.initiate_entrance_reduction();
 
     string out_fname = get_merged_reads_fname(reads_fname);
@@ -858,37 +858,28 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
     // start the collective reductions
     // delay the summary output for when they complete
-    auto fut_sh_ssw_timings = trim_timer_ssw.reduce_timings();
-    auto fut_sh_trim_overhead = trim_timer.reduce_timings();
-    auto fut_reductions =
-        when_all(pr.reduce_one(num_pairs, op_fast_add, 0), pr.reduce_one(num_merged, op_fast_add, 0),
-                 pr.reduce_one(num_ambiguous, op_fast_add, 0), pr.reduce_one(merged_len, op_fast_add, 0),
-                 pr.reduce_one(overlap_len, op_fast_add, 0), pr.reduce_one(max_read_len, op_fast_max, 0),
-                 pr.reduce_one(bases_trimmed, op_fast_add, 0), pr.reduce_one(reads_removed, op_fast_add, 0),
-                 pr.reduce_one(bases_read, op_fast_add, 0), pr.reduce_one(bytes_read, op_fast_add, 0),
-                 pr.reduce_one(missing_read1, op_fast_add, 0), pr.reduce_one(missing_read2, op_fast_add, 0), fut_sh_ssw_timings,
-                 fut_sh_trim_overhead, pr.reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0),
-                 pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
+    auto fut_reductions = when_all(pr.reduce_one(num_pairs, op_fast_add, 0), pr.reduce_one(num_merged, op_fast_add, 0),
+                                   pr.reduce_one(num_ambiguous, op_fast_add, 0), pr.reduce_one(merged_len, op_fast_add, 0),
+                                   pr.reduce_one(overlap_len, op_fast_add, 0), pr.reduce_one(max_read_len, op_fast_max, 0),
+                                   pr.reduce_one(bases_trimmed, op_fast_add, 0), pr.reduce_one(reads_removed, op_fast_add, 0),
+                                   pr.reduce_one(bases_read, op_fast_add, 0), pr.reduce_one(bytes_read, op_fast_add, 0),
+                                   pr.reduce_one(missing_read1, op_fast_add, 0), pr.reduce_one(missing_read2, op_fast_add, 0),
+                                   pr.reduce_one(bytes_read > 0 ? rank_me() : rank_n(), op_fast_min, 0),
+                                   pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
     fut_summary =
         when_all(fut_summary, fut_reductions)
-            .then([reads_fname, bytes_read, &adapters](
-                      int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
-                      int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
-                      int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1, int64_t all_missing_read2,
-                      ShTimings sh_ssw_timings, ShTimings sh_trim_overhead, int min_rank, int max_rank) {
+            .then([reads_fname, bytes_read, &adapters](int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous,
+                                                       int64_t all_merged_len, int64_t all_overlap_len, int all_max_read_len,
+                                                       int64_t all_bases_trimmed, int64_t all_reads_removed, int64_t all_bases_read,
+                                                       int64_t all_bytes_read, int64_t all_missing_read1, int64_t all_missing_read2,
+                                                       int min_rank, int max_rank) {
               SLOG_VERBOSE("Merged reads in file ", get_basename(reads_fname), " (ranks ", min_rank, "-", max_rank, "):\n");
               SLOG_VERBOSE("  merged ", perc_str(all_num_merged, all_num_pairs), " of ", all_num_pairs, " pairs\n");
               SLOG_VERBOSE("  ambiguous ", perc_str(all_num_ambiguous, all_num_pairs), " ambiguous pairs\n");
               SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
               SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
               SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
-              if (!adapters.empty()) {
-                SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
-                SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
-                SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
-                SLOG_VERBOSE("  adapter trim total overhead: ", sh_trim_overhead->to_string(), "\n");
-              }
               SLOG_VERBOSE("  max read length ", all_max_read_len, "\n");
               SLOG_VERBOSE("Rank0 bytes read ", bytes_read, " of ", all_bytes_read, "\n");
             });
@@ -905,6 +896,17 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);
+
+  auto fut_sh_ssw_timings = trim_timer_ssw.reduce_timings();
+  auto fut_sh_trim_overhead = trim_timer.reduce_timings();
+
+  fut_summary = when_all(fut_summary, fut_sh_ssw_timings, fut_sh_trim_overhead)
+                    .then([&adapters](ShTimings sh_ssw_timings, ShTimings sh_trim_overhead) {
+                      if (!adapters.empty()) {
+                        SLOG_VERBOSE("Adapter trim SSW timings: ", sh_ssw_timings->to_string(), "\n");
+                        SLOG_VERBOSE("Adapter trim total overhead: ", sh_trim_overhead->to_string(), "\n");
+                      }
+                    });
 
   DBG("last read_id=", read_id, " last should not be > ", start_read_id + read_id_block, "\n");
   if (read_id >= start_read_id + read_id_block)
