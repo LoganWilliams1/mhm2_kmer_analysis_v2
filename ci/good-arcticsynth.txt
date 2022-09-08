@@ -1,8 +1,8 @@
 All statistics are based on contigs of size >= 500 bp, unless otherwise noted (e.g., "# contigs (>= 0 bp)" and "Total length (>= 0 bp)" include all contigs).
 
 Assembly                     final_assembly
-# contigs (>= 0 bp)          8003          
-# contigs (>= 1000 bp)       5470          
+# contigs (>= 0 bp)          7816          
+# contigs (>= 1000 bp)       5353          
 # contigs (>= 5000 bp)       2183          
 # contigs (>= 10000 bp)      1340          
 # contigs (>= 25000 bp)      677           
@@ -13,7 +13,7 @@ Total length (>= 5000 bp)    85702125
 Total length (>= 10000 bp)   79851083      
 Total length (>= 25000 bp)   69447180      
 Total length (>= 50000 bp)   59853692      
-# contigs                    8003          
+# contigs                    7816          
 Largest contig               1244692
 Total length                 95066304      
 Reference length             102521842     
@@ -36,11 +36,11 @@ Duplication ratio            1.003
 # N's per 100 kbp            0.01          
 # mismatches per 100 kbp     19.0
 # indels per 100 kbp         1.1
-# predicted rRNA genes       47 + 22 part  
+# predicted rRNA genes       46 + 22 part  
 Largest alignment            1244692
 Total aligned length         95053234      
 NA50                         86480         
 NA90                         5028          
-auNA                         185961.9
+auNA                         181399
 LA50                         230           
 LA90                         2191          

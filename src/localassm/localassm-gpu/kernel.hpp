@@ -45,13 +45,18 @@
 #include <stdio.h>
 #include <iostream>
 
-//#include <cuda.h>
-//#define WARP_SIZE 32
-#include "hip/hip_runtime.h"
-#define WARP_SIZE 64
+#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_common.hpp"
 
 #define EMPTY 0xFFFFFFFF
 #define FULL_MASK 0xffffffff
+
+#ifdef CUDA_GPU
+#define WARP_SIZE 32
+#endif
+#ifdef HIP_GPU
+#define WARP_SIZE 64
+#endif
 
 struct cstr_type {
   char* start_ptr;

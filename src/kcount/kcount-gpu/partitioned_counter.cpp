@@ -8,7 +8,6 @@
  */
 
 //#define _GNU_SOURCE
-#include <hip/hip_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -19,6 +18,7 @@
 #include <errno.h>
 
 #include "partitioned_counter.hpp"
+#include "gpu-utils/gpu_compatiblity.hpp"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 

@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -46,10 +45,10 @@
 #include <sstream>
 #include <chrono>
 #include <tuple>
-#include <hip/hip_runtime_api.h>
-#include <hip/hip_runtime.h>
+
 
 #include "upcxx_utils/colors.h"
+#include "gpu-utils/gpu_compatiblity.hpp"
 #include "gpu-utils/gpu_common.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 #include "parse_and_pack.hpp"
@@ -66,7 +65,7 @@ __constant__ uint64_t GPU_0_MASK[32] = {
     0xFFFFFFFFFFFFFFF0, 0xFFFFFFFFFFFFFFFC};
 
 struct kcount_gpu::ParseAndPackDriverState {
-  hipEvent_t event;
+  Event_t event;
   int rank_me;
 };
 
@@ -248,13 +247,13 @@ kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int 
   gpu_utils::set_gpu_device(upcxx_rank_me);
   max_kmers = KCOUNT_SEQ_BLOCK_SIZE - kmer_len + 1;
 
-  ERROR_CHECK(hipMalloc((void **)&dev_seqs, KCOUNT_SEQ_BLOCK_SIZE));
-  ERROR_CHECK(hipMalloc((void **)&dev_kmer_targets, max_kmers * sizeof(int)));
+  ERROR_CHECK(Alloc((void **)&dev_seqs, KCOUNT_SEQ_BLOCK_SIZE));
+  ERROR_CHECK(Alloc((void **)&dev_kmer_targets, max_kmers * sizeof(int)));
 
-  ERROR_CHECK(hipMalloc((void **)&dev_supermers, max_kmers * sizeof(SupermerInfo)));
-  ERROR_CHECK(hipMalloc((void **)&dev_packed_seqs, halve_up(KCOUNT_SEQ_BLOCK_SIZE)));
-  ERROR_CHECK(hipMalloc((void **)&dev_num_supermers, sizeof(int)));
-  ERROR_CHECK(hipMalloc((void **)&dev_num_valid_kmers, sizeof(int)));
+  ERROR_CHECK(Alloc((void **)&dev_supermers, max_kmers * sizeof(SupermerInfo)));
+  ERROR_CHECK(Alloc((void **)&dev_packed_seqs, halve_up(KCOUNT_SEQ_BLOCK_SIZE)));
+  ERROR_CHECK(Alloc((void **)&dev_num_supermers, sizeof(int)));
+  ERROR_CHECK(Alloc((void **)&dev_num_valid_kmers, sizeof(int)));
 
   // total storage required is approx KCOUNT_SEQ_BLOCK_SIZE * (1 + num_kmers_longs * sizeof(uint64_t) + sizeof(int) + 1)
   dstate = new ParseAndPackDriverState();
@@ -264,13 +263,13 @@ kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int 
 }
 
 kcount_gpu::ParseAndPackGPUDriver::~ParseAndPackGPUDriver() {
-  ERROR_CHECK(hipFree(dev_seqs));
-  ERROR_CHECK(hipFree(dev_kmer_targets));
+  ERROR_CHECK(Free(dev_seqs));
+  ERROR_CHECK(Free(dev_kmer_targets));
 
-  ERROR_CHECK(hipFree(dev_supermers));
-  ERROR_CHECK(hipFree(dev_packed_seqs));
-  ERROR_CHECK(hipFree(dev_num_supermers));
-  ERROR_CHECK(hipFree(dev_num_valid_kmers));
+  ERROR_CHECK(Free(dev_supermers));
+  ERROR_CHECK(Free(dev_packed_seqs));
+  ERROR_CHECK(Free(dev_num_supermers));
+  ERROR_CHECK(Free(dev_num_valid_kmers));
 
   delete dstate;
 }
@@ -284,29 +283,29 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
 
   func_timer.start();
   gpu_utils::set_gpu_device(dstate->rank_me);
-  ERROR_CHECK(hipEventCreateWithFlags(&dstate->event, hipEventDisableTiming | hipEventBlockingSync));
+  ERROR_CHECK(EventCreateWithFlags(&dstate->event, EventDisableTiming | EventBlockingSync));
 
   int num_kmers = seqs.length() - kmer_len + 1;
-  ERROR_CHECK(hipMemcpy(dev_seqs, &seqs[0], seqs.length(), hipMemcpyHostToDevice));
+  ERROR_CHECK(Memcpy(dev_seqs, &seqs[0], seqs.length(), MemcpyHostToDevice));
 
   int gridsize, threadblocksize;
   get_kernel_config(seqs.length(), parse_and_pack, gridsize, threadblocksize);
   kernel_timer.start();
-  hipLaunchKernelGGL(parse_and_pack, gridsize, threadblocksize, 0, 0, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets,
+  LaunchKernel(parse_and_pack, gridsize, threadblocksize, 0, 0, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets,
                                                 upcxx_rank_n);
 
-  ERROR_CHECK(hipMemset(dev_num_supermers, 0, sizeof(int)));
-  ERROR_CHECK(hipMemset(dev_num_valid_kmers, 0, sizeof(int)));
+  ERROR_CHECK(Memset(dev_num_supermers, 0, sizeof(int)));
+  ERROR_CHECK(Memset(dev_num_valid_kmers, 0, sizeof(int)));
   get_kernel_config(num_kmers, build_supermers, gridsize, threadblocksize);
-  hipLaunchKernelGGL(build_supermers, gridsize, threadblocksize, 0, 0, dev_seqs, dev_kmer_targets, num_kmers, kmer_len, seqs.length(), dev_supermers,
+  LaunchKernel(build_supermers, gridsize, threadblocksize, 0, 0, dev_seqs, dev_kmer_targets, num_kmers, kmer_len, seqs.length(), dev_supermers,
                                                  dev_num_supermers, dev_num_valid_kmers, upcxx_rank_me);
-  ERROR_CHECK(hipMemcpy(&num_valid_kmers, dev_num_valid_kmers, sizeof(unsigned int), hipMemcpyDeviceToHost));
+  ERROR_CHECK(Memcpy(&num_valid_kmers, dev_num_valid_kmers, sizeof(unsigned int), MemcpyDeviceToHost));
   unsigned int num_supermers;
-  ERROR_CHECK(hipMemcpy(&num_supermers, dev_num_supermers, sizeof(unsigned int), hipMemcpyDeviceToHost));
+  ERROR_CHECK(Memcpy(&num_supermers, dev_num_supermers, sizeof(unsigned int), MemcpyDeviceToHost));
   supermers.resize(num_supermers);
-  ERROR_CHECK(hipMemcpy(&(supermers[0]), dev_supermers, num_supermers * sizeof(SupermerInfo), hipMemcpyDeviceToHost));
-  ERROR_CHECK(hipEventSynchronize(dstate->event));
-  ERROR_CHECK(hipEventDestroy(dstate->event));
+  ERROR_CHECK(Memcpy(&(supermers[0]), dev_supermers, num_supermers * sizeof(SupermerInfo), MemcpyDeviceToHost));
+  ERROR_CHECK(EventSynchronize(dstate->event));
+  ERROR_CHECK(EventDestroy(dstate->event));
   kernel_timer.stop();
   t_kernel += kernel_timer.get_elapsed();
   func_timer.stop();
@@ -317,18 +316,18 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
 void kcount_gpu::ParseAndPackGPUDriver::pack_seq_block(const string &seqs) {
   gpu_utils::set_gpu_device(dstate->rank_me);
   int packed_seqs_len = halve_up(seqs.length());
-  ERROR_CHECK(hipMemcpy(dev_seqs, &seqs[0], seqs.length(), hipMemcpyHostToDevice));
-  ERROR_CHECK(hipMemset(dev_packed_seqs, 0, packed_seqs_len));
+  ERROR_CHECK(Memcpy(dev_seqs, &seqs[0], seqs.length(), MemcpyHostToDevice));
+  ERROR_CHECK(Memset(dev_packed_seqs, 0, packed_seqs_len));
   int gridsize, threadblocksize;
   get_kernel_config(packed_seqs_len, pack_seqs, gridsize, threadblocksize);
   GPUTimer t;
   t.start();
-  hipLaunchKernelGGL(pack_seqs, gridsize, threadblocksize, 0, 0, dev_seqs, dev_packed_seqs, seqs.length());
+  LaunchKernel(pack_seqs, gridsize, threadblocksize, 0, 0, dev_seqs, dev_packed_seqs, seqs.length());
   // this GPUTimer forces a wait for the GPU kernel to complete
   t.stop();
   t_kernel += t.get_elapsed();
   packed_seqs.resize(packed_seqs_len);
-  ERROR_CHECK(hipMemcpy(&(packed_seqs[0]), dev_packed_seqs, packed_seqs_len, hipMemcpyDeviceToHost));
+  ERROR_CHECK(Memcpy(&(packed_seqs[0]), dev_packed_seqs, packed_seqs_len, MemcpyDeviceToHost));
 }
 
 tuple<double, double> kcount_gpu::ParseAndPackGPUDriver::get_elapsed_times() { return {t_func, t_kernel}; }

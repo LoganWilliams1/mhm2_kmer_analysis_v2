@@ -45,15 +45,21 @@ elif [ "$1" == "clean" ]; then
 else
     mkdir -p $rootdir/.build
     cd $rootdir/.build
+    testing=1
+    if [ "$1" == "Release" ] ; then
+      testing=0
+    fi
     if [ "$1" == "Debug" ] || [ "$1" == "Release" ] || [ "$1" == "RelWithDebInfo" ]; then
         rm -rf *
         rm -rf $INSTALL_PATH/cmake
         cmake $rootdir -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH \
-              -DMHM2_ENABLE_TESTING=0 -DENABLE_CUDA=1 -DMHM2_USE_QF=1 $MHM2_CMAKE_EXTRAS $2
+              -DMHM2_ENABLE_TESTING=$testing $MHM2_CMAKE_EXTRAS $2
     fi
-    make -j ${MHM2_BUILD_THREADS} all install
-    #make VERBOSE=1 -j ${MHM2_BUILD_THREADS} all install
-    # make -j ${MHM2_BUILD_THREADS} check
+    make -j ${MHM2_BUILD_THREADS} all || make VERBOSE=1 all
+    if [ "$testing" == "1" ] ; then
+       make check
+    fi
+    make -j ${MHM2_BUILD_THREADS} install
     if [ "$BINARY" != "mhm2" ]; then
         mv -f $INSTALL_PATH/bin/mhm2 $INSTALL_PATH/bin/${BINARY}
     fi

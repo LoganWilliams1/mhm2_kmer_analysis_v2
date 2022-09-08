@@ -251,7 +251,7 @@ class KmerMapExts {
       // reset variables for search
       slot = start_slot;
       for (size_t i = 1; i <= MAX_PROBE; i++) {
-        assert(kmer != keys[slot]); // FIXME? probe_lens[slot] != 0
+        assert(kmer != keys[slot]);  // FIXME? probe_lens[slot] != 0
         if (counts[slot].count == 1) {
           num_singleton_overrides++;
           keys[slot] = kmer;
@@ -310,7 +310,7 @@ static void get_kmers_and_exts(Supermer &supermer, vector<KmerAndExt<MAX_K>> &km
   quals.resize(supermer.seq.length());
   for (int i = 0; i < supermer.seq.length(); i++) {
     quals[i] = isupper(supermer.seq[i]);
-    supermer.seq[i] = toupper(supermer.seq[i]);
+    if (supermer.seq[i] >= 'a' && supermer.seq[i] <= 'z') supermer.seq[i] += ('A' - 'a');
   }
   auto kmer_len = Kmer<MAX_K>::get_k();
   vector<Kmer<MAX_K>> kmers;
@@ -427,7 +427,7 @@ template <int MAX_K>
 void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
   state = new HashTableInserterState();
   state->using_ctg_kmers = false;
-  double free_mem = get_free_mem();
+  double free_mem = get_free_mem(true);
   SLOG_CPU_HT("There is ", get_size_str(free_mem), " free memory\n");
   // set aside a fraction of free mem for everything else, including the final hash table we copy across to
   double avail_mem = KCOUNT_CPU_HT_MEM_FRACTION * free_mem / local_team().rank_n();
@@ -439,8 +439,8 @@ void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
   if (max_elems > 3 * num_elems) max_elems = 3 * num_elems;
   SLOG_CPU_HT("Allocating ", max_elems, " elements\n");
   state->kmers->reserve(max_elems);
-  double used_mem = free_mem - get_free_mem();
-  SLOG_CPU_HT("Memory available: ", get_size_str(get_free_mem()), ", used ", get_size_str(used_mem), "\n");
+  double used_mem = free_mem - get_free_mem(true);
+  SLOG_CPU_HT("Memory available: ", get_size_str(free_mem - used_mem), ", used ", get_size_str(used_mem), "\n");
 }
 
 template <int MAX_K>
@@ -453,7 +453,8 @@ void HashTableInserter<MAX_K>::insert_supermer(const std::string &supermer_seq, 
   Supermer supermer = {.seq = supermer_seq, .count = supermer_count};
   state->kernel_timer.start();
   for (int i = 0; i < supermer.seq.length(); i++) {
-    char base = toupper(supermer.seq[i]);
+    char base = supermer.seq[i];
+    if (base >= 'a' && base <= 'z') base += ('A' - 'a');
     if (base != 'A' && base != 'C' && base != 'G' && base != 'T' && base != 'N')
       DIE("bad char '", supermer.seq[i], "' in supermer seq int val ", (int)supermer.seq[i], " length ", supermer.seq.length(),
           " supermer ", supermer.seq);
@@ -502,8 +503,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     if ((kmer_ext_counts->count < 2) || (kmer_ext_counts->left_exts.is_zero() && kmer_ext_counts->right_exts.is_zero()))
       num_good_kmers--;
   }
+  LOG_MEM("Before inserting into local hashtable");
+  DBGLOG("Reserving ", num_good_kmers, " size is ", local_kmers->size(), "\n");
   local_kmers->reserve(num_good_kmers);
-  int64_t num_purged = 0;
+  LOG_MEM("After reserving for local hashtable");
+  int64_t num_purged = 0, num_inserted = 0;
   state->kmers->begin_iterate();
   while (true) {
     auto [kmer, kmer_ext_counts] = state->kmers->get_next();
@@ -511,6 +515,9 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     if (kmer_ext_counts->count < 2) {
       num_purged++;
       continue;
+    }
+    if (kmer_ext_counts->count >= KCOUNT_HIGH_KMER_COUNT) {
+      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
     }
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = kmer_ext_counts->count,
@@ -525,9 +532,12 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
       WARN("Found a duplicate kmer ", kmer->to_string(), " - shouldn't happen: existing count ", it->second.count, " new count ",
            kmer_counts.count);
     local_kmers->insert({*kmer, kmer_counts});
+    num_inserted++;
   }
   state->insert_timer.stop();
+  if (num_inserted > num_good_kmers) WARN("Inserted ", num_inserted, " but was expecting only ", num_good_kmers, "\n");
   barrier();
+  LOG_MEM("After inserting into local hashtable");
   auto tot_num_purged = reduce_one(num_purged, op_fast_add, 0).wait();
   auto tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
   SLOG_CPU_HT("Purged ", tot_num_purged, " kmers ( ", perc_str(tot_num_purged, tot_num_kmers), ")\n");

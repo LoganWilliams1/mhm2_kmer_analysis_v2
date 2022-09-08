@@ -90,7 +90,7 @@ class ReadsToCtgsDHT {
   upcxx_utils::ThreeTierAggrStore<ReadCtgInfo> rtc_store;
 
  public:
-  ReadsToCtgsDHT(int64_t initial_size);
+  ReadsToCtgsDHT(int64_t initial_size, int64_t num_alns);
 
   void clear();
 
@@ -147,7 +147,7 @@ class CtgsWithReadsDHT {
   upcxx_utils::ThreeTierAggrStore<CtgReadData> ctg_read_store;
 
  public:
-  CtgsWithReadsDHT(int64_t num_ctgs);
+  CtgsWithReadsDHT(int64_t num_ctgs, int64_t num_ctg_bases);
 
   void add_ctg(Contig &ctg);
 
@@ -158,6 +158,8 @@ class CtgsWithReadsDHT {
   void add_reads(vector<CtgReadData> &_ctg_read_datas);
 
   void flush_ctg_updates();
+
+  void prep_ctg_read_store(int64_t num_reads, int64_t num_read_bases);
 
   void flush_read_updates();
 
@@ -194,7 +196,7 @@ void extend_ctg(CtgWithReads *ctg, WalkMetrics &wm, int insert_avg, int insert_s
                 upcxx_utils::IntermittentTimer &walk_mers_timer);
 
 void add_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs);
-void process_reads(unsigned kmer_len, vector<PackedReads *> &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
+void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsToCtgsDHT &reads_to_ctgs,
                    CtgsWithReadsDHT &ctgs_dht);
 void process_alns(const Alns &alns, ReadsToCtgsDHT &reads_to_ctgs, int insert_avg, int insert_stddev);
 

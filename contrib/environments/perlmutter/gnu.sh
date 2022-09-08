@@ -4,9 +4,11 @@ module load cpe-cuda
 module load cudatoolkit
 #module swap PrgEnv-gnu/8.2.0
 module swap gcc/11.2.0
+module remove darshan
 
 module use /global/common/software/m2878/perlmutter/modulefiles
-module load upcxx
+# module load upcxx
+module load upcxx/bleeding-edge ; export GASNET_OFI_RECEIVE_BUFF_SIZE=single
 
 module list
 which cc

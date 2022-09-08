@@ -1,11 +1,19 @@
-if(ENABLE_CUDA)
 
-add_library(GPU_LOC_obj OBJECT kernel.cpp driver.cpp)
 
-set_source_files_properties(kernel.cpp driver.cpp
-                            PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)
+
 option(LOCALASSM_GPU_LIBRARY_shared "LOCALASSM_GPU shared library" OFF)
 option(LOCALASSM_GPU_LIBRARY_static "LOCALASSM_GPU static library" ON)
+
+file(GLOB SOURCE_FILES *.cpp)
+file(GLOB HEADER_FILES *.hpp)
+add_library(GPU_LOC_obj OBJECT ${SOURCE_FILES})
+
+if(ENABLE_CUDA)
+
+message(STATUS "building LocalAssembly using CUDA")
+
+set_source_files_properties(${SOURCE_FILES}
+                            PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)
 
 if(LOCALASSM_GPU_LIBRARY_shared)
   add_library(LOCALASSM_GPU_LIBRARY_shared SHARED $<TARGET_OBJECTS:GPU_LOC_obj>)
@@ -24,17 +32,10 @@ elseif(ENABLE_HIP)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-file(GLOB SOURCE_FILES *.cpp)
-set(HEADER_FILES "*kernel.hpp driver.hpp")
+message(STATUS "building LocalAssembly using HIP")
 
-add_library(GPU_LOC_obj OBJECT kernel.cpp driver.cpp)
-
-message("building LocalAssembly using HIP")
-
-set_source_files_properties(kernel.cpp driver.cpp
+set_source_files_properties(${SOURCE_FILES}
                             PROPERTIES LANGUAGE HIP LINKER_LANGUAGE HIP)
-option(LOCALASSM_GPU_LIBRARY_shared "LOCALASSM_GPU shared library" OFF)
-option(LOCALASSM_GPU_LIBRARY_static "LOCALASSM_GPU static library" ON)
 
 if(LOCALASSM_GPU_LIBRARY_shared)
   add_library(LOCALASSM_GPU_LIBRARY_shared SHARED $<TARGET_OBJECTS:GPU_LOC_obj>)

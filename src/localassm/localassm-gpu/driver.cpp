@@ -44,29 +44,12 @@
 #include <cassert>
 #include <memory>
 
-#include <hip/hip_runtime.h>
-#include <hip/hip_runtime_api.h>
-#define WARP_SIZE 64
-
-#include "driver.hpp"
-#include "kernel.hpp"
+#include "gpu-utils/gpu_compatiblity.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 #include "gpu-utils/gpu_common.hpp"
 
-#define cudaErrchk(ans)                                                                  \
-    {                                                                                    \
-        gpuAssert((ans), __FILE__, __LINE__);                                            \
-    }
-inline void
-gpuAssert(hipError_t code, const char* file, int line, bool abort = true)
-{
-    if(code != hipSuccess)
-    {
-        fprintf(stderr, "GPUassert: %s %s %d\n", hipGetErrorString(code), file, line);
-        if(abort)
-            exit(code);
-    }
-}
+#include "driver.hpp"
+#include "kernel.hpp"
 
 using namespace std;
 
@@ -74,11 +57,16 @@ static void revcomp(char *str, char *str_rc, int size) {
   int size_rc = 0;
   for (int i = size - 1; i >= 0; i--) {
     switch (str[i]) {
-      case 'A': str_rc[size_rc] = 'T'; break;
-      case 'C': str_rc[size_rc] = 'G'; break;
-      case 'G': str_rc[size_rc] = 'C'; break;
-      case 'T': str_rc[size_rc] = 'A'; break;
-      case 'N': str_rc[size_rc] = 'N'; break;
+      case 'A':
+      case 'a': str_rc[size_rc] = 'T'; break;
+      case 'C':
+      case 'c': str_rc[size_rc] = 'G'; break;
+      case 'G':
+      case 'g': str_rc[size_rc] = 'C'; break;
+      case 'T':
+      case 't': str_rc[size_rc] = 'A'; break;
+      case 'N':
+      case 'n': str_rc[size_rc] = 'N'; break;
       case 'U':
       case 'R':
       case 'Y':
@@ -100,11 +88,16 @@ static std::string revcomp(std::string instr) {
   std::string str_rc;
   for (int i = instr.size() - 1; i >= 0; i--) {
     switch (instr[i]) {
-      case 'A': str_rc += 'T'; break;
-      case 'C': str_rc += 'G'; break;
-      case 'G': str_rc += 'C'; break;
-      case 'T': str_rc += 'A'; break;
-      case 'N': str_rc += 'N'; break;
+      case 'A':
+      case 'a': str_rc += 'T'; break;
+      case 'C':
+      case 'c': str_rc += 'G'; break;
+      case 'G':
+      case 'g': str_rc += 'C'; break;
+      case 'T':
+      case 't': str_rc += 'A'; break;
+      case 'N':
+      case 'n': str_rc += 'N'; break;
       case 'U':
       case 'R':
       case 'Y':
@@ -228,26 +221,26 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   loc_ht_bool *d_ht_bool;
   uint32_t *final_walk_lens_d;
   // allocate GPU  memory
-  cudaErrchk(hipMalloc(&prefix_ht_size_d, sizeof(uint32_t) * slice_size));
-  cudaErrchk(hipMalloc(&cid_d, sizeof(uint64_t) * slice_size));
-  cudaErrchk(hipMalloc(&ctg_seq_offsets_d, sizeof(uint32_t) * slice_size));
-  cudaErrchk(hipMalloc(&reads_l_offset_d, sizeof(uint32_t) * max_l_rds_its));
-  cudaErrchk(hipMalloc(&reads_r_offset_d, sizeof(uint32_t) * max_r_rds_its));
-  cudaErrchk(hipMalloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * slice_size));
-  cudaErrchk(hipMalloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * slice_size));
-  cudaErrchk(hipMalloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_it));
-  cudaErrchk(hipMalloc(&reads_left_d, sizeof(char) * max_read_size * max_l_rds_its));
-  cudaErrchk(hipMalloc(&reads_right_d, sizeof(char) * max_read_size * max_r_rds_its));
-  cudaErrchk(hipMalloc(&depth_d, sizeof(double) * slice_size));
-  cudaErrchk(hipMalloc(&quals_right_d, sizeof(char) * max_read_size * max_r_rds_its));
-  cudaErrchk(hipMalloc(&quals_left_d, sizeof(char) * max_read_size * max_l_rds_its));
-  cudaErrchk(hipMalloc(&term_counts_d, sizeof(uint32_t) * 3));
+  ERROR_CHECK(Alloc(&prefix_ht_size_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Alloc(&cid_d, sizeof(uint64_t) * slice_size));
+  ERROR_CHECK(Alloc(&ctg_seq_offsets_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Alloc(&reads_l_offset_d, sizeof(uint32_t) * max_l_rds_its));
+  ERROR_CHECK(Alloc(&reads_r_offset_d, sizeof(uint32_t) * max_r_rds_its));
+  ERROR_CHECK(Alloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Alloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Alloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_it));
+  ERROR_CHECK(Alloc(&reads_left_d, sizeof(char) * max_read_size * max_l_rds_its));
+  ERROR_CHECK(Alloc(&reads_right_d, sizeof(char) * max_read_size * max_r_rds_its));
+  ERROR_CHECK(Alloc(&depth_d, sizeof(double) * slice_size));
+  ERROR_CHECK(Alloc(&quals_right_d, sizeof(char) * max_read_size * max_r_rds_its));
+  ERROR_CHECK(Alloc(&quals_left_d, sizeof(char) * max_read_size * max_l_rds_its));
+  ERROR_CHECK(Alloc(&term_counts_d, sizeof(uint32_t) * 3));
   // one local hashtable for each thread, so total hash_tables equal to vec_size i.e. total contigs
-  cudaErrchk(hipMalloc(&d_ht, sizeof(loc_ht) * max_ht));
-  cudaErrchk(hipMalloc(&longest_walks_d, sizeof(char) * slice_size * max_walk_len));
-  cudaErrchk(hipMalloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * slice_size));
-  cudaErrchk(hipMalloc(&d_ht_bool, sizeof(loc_ht_bool) * slice_size * max_walk_len));
-  cudaErrchk(hipMalloc(&final_walk_lens_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Alloc(&d_ht, sizeof(loc_ht) * max_ht));
+  ERROR_CHECK(Alloc(&longest_walks_d, sizeof(char) * slice_size * max_walk_len));
+  ERROR_CHECK(Alloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * slice_size));
+  ERROR_CHECK(Alloc(&d_ht_bool, sizeof(loc_ht_bool) * slice_size * max_walk_len));
+  ERROR_CHECK(Alloc(&final_walk_lens_d, sizeof(uint32_t) * slice_size));
 
   slice_size = tot_extensions / iterations;
 
@@ -310,22 +303,22 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       term_counts_h[i] = 0;
     }
 
-    cudaErrchk(hipMemcpy(prefix_ht_size_d, prefix_ht_size_h.get(), sizeof(uint32_t) * vec_size, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(cid_d, cid_h.get(), sizeof(uint64_t) * vec_size, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(ctg_seq_offsets_d, ctg_seq_offsets_h.get(), sizeof(uint32_t) * vec_size, hipMemcpyHostToDevice));
-    cudaErrchk(
-        hipMemcpy(reads_l_offset_d, reads_l_offset_h.get(), sizeof(uint32_t) * total_l_reads_slice, hipMemcpyHostToDevice));
-    cudaErrchk(
-        hipMemcpy(reads_r_offset_d, reads_r_offset_h.get(), sizeof(uint32_t) * total_r_reads_slice, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(rds_l_cnt_offset_d, rds_l_cnt_offset_h.get(), sizeof(uint32_t) * vec_size, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(rds_r_cnt_offset_d, rds_r_cnt_offset_h.get(), sizeof(uint32_t) * vec_size, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(ctg_seqs_d, ctg_seqs_h.get(), sizeof(char) * ctgs_offset_sum, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(reads_left_d, reads_left_h.get(), sizeof(char) * reads_l_offset_sum, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(reads_right_d, reads_right_h.get(), sizeof(char) * reads_r_offset_sum, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(depth_d, depth_h.get(), sizeof(double) * vec_size, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(quals_right_d, quals_right_h.get(), sizeof(char) * reads_r_offset_sum, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(quals_left_d, quals_left_h.get(), sizeof(char) * reads_l_offset_sum, hipMemcpyHostToDevice));
-    cudaErrchk(hipMemcpy(term_counts_d, term_counts_h.get(), sizeof(uint32_t) * 3, hipMemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(prefix_ht_size_d, prefix_ht_size_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(cid_d, cid_h.get(), sizeof(uint64_t) * vec_size, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(ctg_seq_offsets_d, ctg_seq_offsets_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
+    ERROR_CHECK(
+        Memcpy(reads_l_offset_d, reads_l_offset_h.get(), sizeof(uint32_t) * total_l_reads_slice, MemcpyHostToDevice));
+    ERROR_CHECK(
+        Memcpy(reads_r_offset_d, reads_r_offset_h.get(), sizeof(uint32_t) * total_r_reads_slice, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(rds_l_cnt_offset_d, rds_l_cnt_offset_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(rds_r_cnt_offset_d, rds_r_cnt_offset_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(ctg_seqs_d, ctg_seqs_h.get(), sizeof(char) * ctgs_offset_sum, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(reads_left_d, reads_left_h.get(), sizeof(char) * reads_l_offset_sum, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(reads_right_d, reads_right_h.get(), sizeof(char) * reads_r_offset_sum, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(depth_d, depth_h.get(), sizeof(double) * vec_size, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(quals_right_d, quals_right_h.get(), sizeof(char) * reads_r_offset_sum, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(quals_left_d, quals_left_h.get(), sizeof(char) * reads_l_offset_sum, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(term_counts_d, term_counts_h.get(), sizeof(uint32_t) * 3, MemcpyHostToDevice));
     // call kernel here, one thread per contig
     unsigned total_threads = vec_size * WARP_SIZE;  // we need one warp (32/64 threads) per extension, vec_size = extensions
     unsigned thread_per_blk = 512;
@@ -333,7 +326,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
 
     int64_t sum_ext = 0, num_walks = 0;
     uint32_t qual_offset_ = qual_offset;
-    hipLaunchKernelGGL(iterative_walks_kernel, blocks, thread_per_blk, 0, 0, 
+    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, 0, 0, 
         cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_right_d, quals_right_d, reads_r_offset_d, rds_r_cnt_offset_d, depth_d, d_ht,
         prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len, term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size,
         max_read_count, qual_offset_, longest_walks_d, mer_walk_temp_d, final_walk_lens_d, vec_size);
@@ -355,23 +348,23 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       }
       revcomp(curr_seq, curr_seq_rc, size_lst);
     }
-    cudaErrchk(hipMemcpy(longest_walks_r_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
-                          sizeof(char) * vec_size * max_walk_len, hipMemcpyDeviceToHost));
-    cudaErrchk(hipMemcpy(final_walk_lens_r_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size,
-                          hipMemcpyDeviceToHost));
+    ERROR_CHECK(Memcpy(longest_walks_r_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
+                          sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));
+    ERROR_CHECK(Memcpy(final_walk_lens_r_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size,
+                          MemcpyDeviceToHost));
 
     // cpying rev comped ctgs to device on same memory as previous ctgs
-    cudaErrchk(hipMemcpy(ctg_seqs_d, ctgs_seqs_rc_h.get(), sizeof(char) * ctgs_offset_sum, hipMemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(ctg_seqs_d, ctgs_seqs_rc_h.get(), sizeof(char) * ctgs_offset_sum, MemcpyHostToDevice));
 
-    hipLaunchKernelGGL(iterative_walks_kernel, blocks, thread_per_blk, 0, 0, 
+    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, 0, 0, 
         cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_left_d, quals_left_d, reads_l_offset_d, rds_l_cnt_offset_d, depth_d, d_ht,
         prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len, term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size,
         max_read_count, qual_offset_, longest_walks_d, mer_walk_temp_d, final_walk_lens_d, vec_size);
 
-    cudaErrchk(hipMemcpy(longest_walks_l_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
-                          sizeof(char) * vec_size * max_walk_len, hipMemcpyDeviceToHost));  // copy back left walks
-    cudaErrchk(hipMemcpy(final_walk_lens_l_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size,
-                          hipMemcpyDeviceToHost));
+    ERROR_CHECK(Memcpy(longest_walks_l_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
+                          sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));  // copy back left walks
+    ERROR_CHECK(Memcpy(final_walk_lens_l_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size,
+                          MemcpyDeviceToHost));
   }  // the for loop over all slices ends here
 
   // once all the alignments are on cpu, then go through them and stitch them with contigs in front and back.
@@ -394,23 +387,23 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     }
   }
 
-  cudaErrchk(hipFree(prefix_ht_size_d));
-  cudaErrchk(hipFree(term_counts_d));
-  cudaErrchk(hipFree(cid_d));
-  cudaErrchk(hipFree(ctg_seq_offsets_d));
-  cudaErrchk(hipFree(reads_l_offset_d));
-  cudaErrchk(hipFree(reads_r_offset_d));
-  cudaErrchk(hipFree(rds_l_cnt_offset_d));
-  cudaErrchk(hipFree(rds_r_cnt_offset_d));
-  cudaErrchk(hipFree(ctg_seqs_d));
-  cudaErrchk(hipFree(reads_left_d));
-  cudaErrchk(hipFree(reads_right_d));
-  cudaErrchk(hipFree(depth_d));
-  cudaErrchk(hipFree(quals_right_d));
-  cudaErrchk(hipFree(quals_left_d));
-  cudaErrchk(hipFree(d_ht));
-  cudaErrchk(hipFree(longest_walks_d));
-  cudaErrchk(hipFree(mer_walk_temp_d));
-  cudaErrchk(hipFree(d_ht_bool));
-  cudaErrchk(hipFree(final_walk_lens_d));
+  ERROR_CHECK(Free(prefix_ht_size_d));
+  ERROR_CHECK(Free(term_counts_d));
+  ERROR_CHECK(Free(cid_d));
+  ERROR_CHECK(Free(ctg_seq_offsets_d));
+  ERROR_CHECK(Free(reads_l_offset_d));
+  ERROR_CHECK(Free(reads_r_offset_d));
+  ERROR_CHECK(Free(rds_l_cnt_offset_d));
+  ERROR_CHECK(Free(rds_r_cnt_offset_d));
+  ERROR_CHECK(Free(ctg_seqs_d));
+  ERROR_CHECK(Free(reads_left_d));
+  ERROR_CHECK(Free(reads_right_d));
+  ERROR_CHECK(Free(depth_d));
+  ERROR_CHECK(Free(quals_right_d));
+  ERROR_CHECK(Free(quals_left_d));
+  ERROR_CHECK(Free(d_ht));
+  ERROR_CHECK(Free(longest_walks_d));
+  ERROR_CHECK(Free(mer_walk_temp_d));
+  ERROR_CHECK(Free(d_ht_bool));
+  ERROR_CHECK(Free(final_walk_lens_d));
 }

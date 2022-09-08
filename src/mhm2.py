@@ -69,8 +69,7 @@ _err_thread = None
 _stop_thread = False
 
 def print_red(*args):
-    print("\033[91m", *args, sep='',  end='', file=sys.stderr)
-    print("\033[00m", file=sys.stderr)
+    print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
 
 _defaultCores = None
 def get_hdw_cores_per_node():
@@ -421,6 +420,7 @@ def main():
     argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument("--procs", default=0, type=int, help="Total numer of processes")
+    argparser.add_argument("--nodes", default=0, type=int, help="Override the default number of nodes as detected in job or scheduler")
     argparser.add_argument("--gasnet-stats", action="store_true", help="Collect GASNet communication statistics")
     argparser.add_argument("--gasnet-trace", action="store_true", help="Collect GASNet trace in separate files")
     argparser.add_argument("--preproc", default=None, help="Comma separated preprocesses and options like (valgrind,--leak-check=full) or options to upcxx-run before binary")
@@ -444,6 +444,10 @@ def main():
     if options.procs == 0:
         options.procs = num_nodes * get_job_cores_per_node()
 
+    if options.nodes != 0 and options.nodes != num_nodes:
+        print("Overriding to use", options.nodes, "nodes, instead of the detected", num_nodes)
+        num_nodes = options.nodes
+
     cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
 
     # special spawner for summit that auto-detects the job size and calls jsrun to properly bind cpus, gpus and hca network devices
@@ -461,12 +465,12 @@ def main():
     if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
         cmd.extend(['-shared-heap', options.shared_heap])
 
-    # special spawning for perlmutter that requires srun, not upcxx-run for now
-    if 'NERSC_HOST' in os.environ and os.environ['NERSC_HOST'] == 'perlmutter':
+    # special spawning for perlmutter GPU nodes that requires srun, not upcxx-run for now
+    if 'NERSC_HOST' in os.environ and os.environ['NERSC_HOST'] == 'perlmutter' and 'SLURM_JOB_PARTITION' in os.environ and 'gpu' in os.environ['SLURM_JOB_PARTITION']:
         cmd = ['srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
-        print("This is Perlmutter - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        print("This is Perlmutter GPU partition - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
         
 
     if options.preproc:

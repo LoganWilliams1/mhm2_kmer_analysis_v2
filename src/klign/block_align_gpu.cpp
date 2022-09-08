@@ -95,15 +95,16 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
   return fut;
 }
 
-void init_aligner(AlnScoring &aln_scoring, int rlen_limit) {
+void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
+                  int rlen_limit) {
   if (!gpu_utils::gpus_present()) {
     // CPU only
     SWARN("No GPU will be used for alignments");
   } else {
     double init_time;
-    gpu_driver = new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)aln_scoring.match,
-                                         (short)-aln_scoring.mismatch, (short)-aln_scoring.gap_opening,
-                                         (short)-aln_scoring.gap_extending, rlen_limit, init_time);
+    gpu_driver =
+        new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)match_score, (short)-mismatch_penalty,
+                                (short)-gap_opening_penalty, (short)-gap_extending_penalty, rlen_limit, init_time);
     SLOG_VERBOSE("Initialized GPU adept_sw driver in ", init_time, " s\n");
   }
 }
@@ -146,7 +147,7 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     assert(active_kernel_fut.ready() && "active_kernel_fut should already be ready");
     active_kernel_fut.wait();  // should be ready already
     shared_ptr<AlignBlockData> aln_block_data =
-        make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id, cpu_aligner.aln_scoring);
+        make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id);
     assert(kernel_alns.empty());
     // for now, the GPU alignment doesn't support cigars
     if (!cpu_aligner.ssw_filter.report_cigar && gpu_utils::gpus_present()) {

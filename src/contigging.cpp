@@ -61,18 +61,19 @@ using std::vector;
 
 template <int MAX_K>
 void traverse_debruijn_graph(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer_dht, Contigs &my_uutigs);
-void localassm(int max_kmer_len, int kmer_len, vector<PackedReads *> &packed_reads_list, int insert_avg, int insert_stddev,
+void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_list, int insert_avg, int insert_stddev,
                int qual_offset, Contigs &ctgs, const Alns &alns);
-// void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Alns &alns, Contigs &ctgs);
-void shuffle_reads(int qual_offset, vector<PackedReads *> &packed_reads_list, Contigs &ctgs);
+
+void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs &ctgs);
 
 template <int MAX_K>
-void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedReads *> &packed_reads_list, Contigs &ctgs,
+void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
                 int &max_expected_ins_size, int &ins_avg, int &ins_stddev, shared_ptr<Options> options) {
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Contig generation k = ", kmer_len, KNORM, "\n");
   SLOG("\n");
+  LOG_MEM("Starting contigging k=" + to_string(kmer_len));
   bool is_debug = false;
 #ifdef DEBUG
   is_debug = true;
@@ -88,19 +89,22 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedR
     int64_t my_num_kmers = PackedReads::estimate_num_kmers(kmer_len, packed_reads_list);
     // use the max among all ranks
     my_num_kmers = reduce_all(my_num_kmers, op_fast_max).wait();
-    dist_object<KmerDHT<MAX_K>> kmer_dht(world(), my_num_kmers, max_kmer_store, options->max_rpcs_in_flight,
-                                         options->use_heavy_hitters, options->use_qf);
+    dist_object<KmerDHT<MAX_K>> kmer_dht(world(), my_num_kmers, max_kmer_store, options->max_rpcs_in_flight, options->use_qf);
+    LOG_MEM("Allocated kmer_dht");
     barrier();
     begin_gasnet_stats("kmer_analysis k = " + to_string(kmer_len));
     analyze_kmers(kmer_len, prev_kmer_len, options->qual_offset, packed_reads_list, options->dmin_thres, ctgs, kmer_dht,
                   options->dump_kmers);
+    LOG_MEM("Analyzed kmers");
     end_gasnet_stats();
     stage_timers.analyze_kmers->stop();
     barrier();
+    LOG_MEM("Analyzed kmers");
     stage_timers.dbjg_traversal->start();
     begin_gasnet_stats("dbjg_traversal k = " + to_string(kmer_len));
     traverse_debruijn_graph(kmer_len, kmer_dht, ctgs);
     end_gasnet_stats();
+    LOG_MEM("Traversed dbg");
     stage_timers.dbjg_traversal->stop();
     if (is_debug) {
       stage_timers.dump_ctgs->start();
@@ -108,6 +112,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedR
       stage_timers.dump_ctgs->stop();
     }
   }
+  LOG_MEM("Generated contigs k=" + to_string(kmer_len));
 
   if (kmer_len < options->kmer_lens.back()) {
     if (kmer_len == options->kmer_lens.front()) {
@@ -122,6 +127,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedR
         shuffle_reads(options->qual_offset, packed_reads_list, ctgs);
         end_gasnet_stats();
         stage_timers.shuffle_reads->stop();
+        LOG_MEM("Shuffled reads");
         num_reads = 0;
         for (auto packed_reads : packed_reads_list) {
           num_reads += packed_reads->get_local_num_reads();
@@ -142,13 +148,14 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedR
     stage_timers.alignments->start();
     begin_gasnet_stats("alignment k = " + to_string(kmer_len));
     bool first_ctg_round = (kmer_len == options->kmer_lens[0]);
-    double kernel_elapsed =
-        find_alignments<MAX_K>(kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
-                               KLIGN_SEED_SPACE, rlen_limit, (options->klign_kmer_cache & !first_ctg_round), false, 0);
+    double kernel_elapsed = find_alignments<MAX_K>(
+        kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns, KLIGN_SEED_SPACE, rlen_limit,
+        (options->klign_kmer_cache & !first_ctg_round), false, options->optimize_for == "contiguity", 0);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.alignments->stop();
     barrier();
+    LOG_MEM("Aligned reads to contigs");
     /*
     if (kmer_len == options->kmer_lens.front()) {
       size_t num_reads = 0;
@@ -186,7 +193,9 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedR
     localassm(LASSM_MAX_KMER_LEN, kmer_len, packed_reads_list, ins_avg, ins_stddev, options->qual_offset, ctgs, alns);
     end_gasnet_stats();
     stage_timers.localassm->stop();
+    LOG_MEM("Local assembly completed");
   }
+  Timings::wait_pending();
   barrier();
   if (is_debug || options->checkpoint) {
     stage_timers.dump_ctgs->start();
@@ -200,5 +209,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, vector<PackedR
   SLOG("\n");
   SLOG(KBLUE, "Completed contig round k = ", kmer_len, " in ", setprecision(2), fixed, loop_t_elapsed.count(), " s at ",
        get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)", KNORM, "\n");
+  LOG_MEM("Completed contigging");
+  Timings::wait_pending();
   barrier();
 }

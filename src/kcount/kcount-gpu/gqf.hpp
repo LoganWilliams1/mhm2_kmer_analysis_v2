@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 #pragma once
 
 /*
@@ -10,7 +9,6 @@
  * ============================================================================
  */
 
-#include <hip/hip_runtime.h>
 #include <inttypes.h>
 #include <stdbool.h>
 

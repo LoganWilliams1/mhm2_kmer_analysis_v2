@@ -61,13 +61,13 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
-  vector<PackedReads *> packed_reads_list;
+  PackedReadsList packed_reads_list;
   FastqReaders::open_all_global_blocking(options->reads_fnames);
   for (auto const &reads_fname : options->reads_fnames) {
     packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
   }
+  LOG_MEM("Opened Post Assembly fastq");
   stage_timers.cache_reads->start();
-  double free_mem = (!rank_me() ? get_free_mem() : 0);
   {
     BarrierTimer bt("Load post-assembly reads");
     future<> fut_chain = make_future();
@@ -78,7 +78,10 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     }
     fut_chain.wait();
   }
+  LOG_MEM("Read Post Assembly Reads");
   stage_timers.cache_reads->stop();
+  LOG_MEM("After loading post-assembly reads");
+
   unsigned rlen_limit = 0;
   for (auto packed_reads : packed_reads_list) {
     rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
@@ -89,28 +92,35 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   bool compute_cigar = true;
   int kmer_len = POST_ASM_ALN_K;
   const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
-  double kernel_elapsed =
-      find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns, 4,
-                             rlen_limit, options->klign_kmer_cache, compute_cigar, options->min_ctg_print_len);
+  double kernel_elapsed = find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight,
+                                                 ctgs, alns, 4, rlen_limit, options->klign_kmer_cache, compute_cigar,
+                                                 options->optimize_for == "contiguity", options->min_ctg_print_len);
   stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
   stage_timers.alignments->stop();
+  LOG_MEM("Aligned Post Assembly Reads");
   for (auto packed_reads : packed_reads_list) {
     delete packed_reads;
   }
   packed_reads_list.clear();
+  LOG_MEM("Purged Post Assembly Reads");
   calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
   if (options->post_assm_aln) {
 #ifdef PAF_OUTPUT_FORMAT
     alns.dump_single_file("final_assembly.paf");
+    SLOG("\n", KBLUE, "PAF alignments can be found at ", options->output_dir, "/final_assembly.paf", KNORM, "\n");
 #elif BLAST6_OUTPUT_FORMAT
     alns.dump_single_file("final_assembly.b6");
+    SLOG("\n", KBLUE, "Blast alignments can be found at ", options->output_dir, "/final_assembly.b6", KNORM, "\n");
 #endif
+    LOG_MEM("After Post Assembly Alignments Saved");
     alns.dump_sam_file("final_assembly.sam", options->reads_fnames, ctgs, options->min_ctg_print_len);
     SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options->output_dir,
          "/final_assembly.sam", KNORM, "\n");
+    LOG_MEM("After Post Assembly SAM Saved");
   }
   if (options->post_assm_abundances) {
     compute_aln_depths("final_assembly_depths.txt", ctgs, alns, kmer_len, options->min_ctg_print_len, options->reads_fnames, false);
+    LOG_MEM("After Post Assembly Depths Saved");
     SLOG(KBLUE, "Contig depths (abundances) can be found at ", options->output_dir, "/final_assembly_depths.txt", KNORM, "\n");
   }
   SLOG(KBLUE, "_________________________", KNORM, "\n");

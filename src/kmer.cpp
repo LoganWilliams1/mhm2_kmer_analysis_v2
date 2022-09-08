@@ -156,7 +156,11 @@ template <int MAX_K>
 void Kmer<MAX_K>::get_kmers(unsigned kmer_len, string seq, vector<Kmer> &kmers, bool check_n) {
   // converts lowercases to upper case
   if (seq.size() < Kmer::k) return;
-  for (auto &c : seq) c = toupper(c);  // this might be slow
+  // for (auto &c : seq) c = toupper(c);  // this might be slow
+  // more efficient version
+  for (int pos = 0, len = seq.length(); pos < len; pos++) {
+    if (seq[pos] >= 'a' && seq[pos] <= 'z') seq[pos] += ('A' - 'a');
+  }
   get_kmers(kmer_len, std::string_view(seq.data(), seq.size()), kmers, check_n);
 }
 
@@ -634,7 +638,7 @@ ostream &operator<<(ostream &out, const Kmer<MAX_K> &k) {
   return out << k.to_string();
 }
 
-#define KMER_K(KMER_LEN) template ostream &operator<<<KMER_LEN>(ostream &out, const Kmer<KMER_LEN> &k);
+#define KMER_K(KMER_LEN) template ostream &operator<< <KMER_LEN>(ostream &out, const Kmer<KMER_LEN> &k);
 
 KMER_K(32);
 #if MAX_BUILD_KMER >= 64

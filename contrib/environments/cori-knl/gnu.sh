@@ -6,6 +6,7 @@ module rm PrgEnv-cray
 module load PrgEnv-gnu
 module rm craype-haswell
 module load craype-mic-knl
+module rm darshan
 
 module load cmake
 module load git

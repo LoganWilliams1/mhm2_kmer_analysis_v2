@@ -1,4 +1,5 @@
-#include "hip/hip_runtime.h"
+#pragma once
+
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -41,19 +42,10 @@
  form.
 */
 
-#pragma once
-
 #include <iostream>
 #include <chrono>
-#include <hip/hip_runtime_api.h>
-#include <hip/hip_runtime.h>
 
-// Functions that are common to all cuda code; not to be used by upcxx code
-
-#define ERROR_CHECK(ans) gpu_common::gpu_die((ans), __FILE__, __LINE__)
-
-// we are typecasting uint64_t into this, so we need to check them
-static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
+#include "gpu_compatiblity.hpp"
 
 namespace gpu_common {
 
@@ -72,7 +64,7 @@ static __constant__ uint64_t GPU_TWINS[256] = {
     0xC8, 0x88, 0x48, 0x08, 0xF4, 0xB4, 0x74, 0x34, 0xE4, 0xA4, 0x64, 0x24, 0xD4, 0x94, 0x54, 0x14, 0xC4, 0x84, 0x44, 0x04,
     0xF0, 0xB0, 0x70, 0x30, 0xE0, 0xA0, 0x60, 0x20, 0xD0, 0x90, 0x50, 0x10, 0xC0, 0x80, 0x40, 0x00};
 
-void gpu_die(hipError_t code, const char *file, int line, bool abort = true);
+void gpu_die(Error_t code, const char *file, int line, bool abort = true);
 
 using timepoint_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
@@ -89,7 +81,7 @@ class QuickTimer {
 };
 
 class GPUTimer {
-  hipEvent_t start_event, stop_event;
+  Event_t start_event, stop_event;
   float elapsed_t_ms = 0;
 
  public:
@@ -102,8 +94,13 @@ class GPUTimer {
 
 inline __device__ int warpReduceSum(int val, int n) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
-  // unsigned mask = __ballot_sync(0xffffffff, threadid < n);
+#ifdef HIP_GPU
   for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
+#endif
+#ifdef CUDA_GPU
+  unsigned mask = __ballot_sync(0xffffffff, threadid < n);
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down_sync(mask, val, offset);
+#endif
   return val;
 }
 
@@ -135,7 +132,7 @@ template <class T>
 inline void get_kernel_config(unsigned max_val, T func, int &gridsize, int &threadblocksize) {
   int mingridsize = 0;
   threadblocksize = 0;  // 1024
-  ERROR_CHECK(hipOccupancyMaxPotentialBlockSize(&mingridsize, &threadblocksize, func, 0, 0));
+  ERROR_CHECK(OccupancyMaxPotentialBlockSize(&mingridsize, &threadblocksize, func, 0, 0));
   gridsize = (max_val + threadblocksize - 1) / threadblocksize;
 }
 

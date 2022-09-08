@@ -4,9 +4,11 @@ module load cmake
 module load cuda
 module load cudatoolkit
 module swap gcc/11.2.0
+module remove darshan
 
 module use /global/common/software/m2878/perlmutter/modulefiles
-module load upcxx
+# module load upcxx
+module load upcxx/bleeding-edge ; export GASNET_OFI_RECEIVE_BUFF_SIZE=single
 
 export FI_PROVIDER='verbs;ofi_rxm'
 export UCX_TLS=dc

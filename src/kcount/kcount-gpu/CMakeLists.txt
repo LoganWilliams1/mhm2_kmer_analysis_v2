@@ -6,6 +6,7 @@ if(MHM2_USE_QF)
 endif()
 
 if(ENABLE_CUDA)
+  message(STATUS "Building for CUDA")
   add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
     target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
@@ -44,6 +45,7 @@ if(ENABLE_CUDA)
   endif()
 
 elseif(ENABLE_HIP)
+  message(STATUS "Building for HIP")
   add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
 
   foreach(_SRC ${SRCS})
@@ -85,4 +87,14 @@ elseif(ENABLE_HIP)
 #     set_property(TARGET KCOUNT_GPU_LIBRARY_static PROPERTY HIP_SEPARABLE_COMPILATION ON)   
     install(TARGETS KCOUNT_GPU_LIBRARY_static ARCHIVE DESTINATION lib)
   endif()
+endif() # CUDA or HIP
+
+if(KCOUNT_GPU_STATIC)
+  add_library(KCOUNT_GPU_LIBRARY_static STATIC
+              $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
+  target_link_libraries(KCOUNT_GPU_LIBRARY_static INTERFACE)
+  set_property(TARGET KCOUNT_GPU_LIBRARY_static
+               PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+  install(TARGETS KCOUNT_GPU_LIBRARY_static ARCHIVE DESTINATION lib)
+
 endif()

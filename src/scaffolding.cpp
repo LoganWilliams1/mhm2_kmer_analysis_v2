@@ -59,12 +59,14 @@ using std::tie;
 using std::vector;
 
 void traverse_ctg_graph(int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len, int min_ctg_print_len,
-                        vector<PackedReads *> &packed_reads_list, int break_scaffolds, Contigs &ctgs, Alns &alns,
-                        const string &graph_fname);
+                        PackedReadsList &packed_reads_list, int break_scaffolds, Contigs &ctgs, Alns &alns,
+                        const string &graph_fname, bool use_blastn_scores);
 
 template <int MAX_K>
-void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedReads *> packed_reads_list, Contigs &ctgs,
+void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
                  int &max_expected_ins_size, int &ins_avg, int &ins_stddev, shared_ptr<Options> options) {
+  BarrierTimer(string("Scaffolding ") + to_string(max_kmer_len));
+  LOG_MEM("Scaffolding started");
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   unsigned scaff_kmer_len = options->scaff_kmer_lens[scaff_i];
   bool gfa_iter = (options->dump_gfa && scaff_i == options->scaff_kmer_lens.size() - 1) ? true : false;
@@ -81,6 +83,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedRea
   if ((options->restart || is_debug) && file_exists(scaff_contigs_fname)) {
     SLOG_VERBOSE("(Re)loading scaffold contigs ", scaff_contigs_fname, "\n");
     ctgs.load_contigs(scaff_contigs_fname);
+    LOG_MEM("Loaded contigs");
   } else {
     Alns alns;
     stage_timers.alignments->start();
@@ -88,21 +91,24 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedRea
     int seed_space = KLIGN_SEED_SPACE;
     if (options->dump_gfa && scaff_i == options->scaff_kmer_lens.size() - 1) seed_space = 1;
     begin_gasnet_stats("alignment sk = " + to_string(scaff_kmer_len));
-    double kernel_elapsed = find_alignments<MAX_K>(scaff_kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight,
-                                                   ctgs, alns, seed_space, rlen_limit, false, false, 0);
+    double kernel_elapsed =
+        find_alignments<MAX_K>(scaff_kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
+                               seed_space, rlen_limit, false, false, options->optimize_for == "contiguity", 0);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.alignments->stop();
+    LOG_MEM("Found alignments");
 #ifdef DEBUG
     alns.dump_rank_file("scaff-" + to_string(scaff_kmer_len) + ".alns.gz");
 #endif
     begin_gasnet_stats("alignment_depths sk = " + to_string(scaff_kmer_len));
     vector<string> read_group_names;
-    for(auto pr : packed_reads_list) {
+    for (auto pr : packed_reads_list) {
       read_group_names.push_back(pr->get_fname());
     }
     compute_aln_depths("", ctgs, alns, max_kmer_len, 0, read_group_names, true);
     end_gasnet_stats();
+    LOG_MEM("Compute alignments");
     // always recalculate the insert size because we may need it for resumes of failed runs
     tie(ins_avg, ins_stddev) = calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
     // insert size should never be larger than this; if it is that signals some
@@ -112,9 +118,10 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedRea
     stage_timers.cgraph->start();
     begin_gasnet_stats("traverse_ctg_graph sk = " + to_string(scaff_kmer_len));
     traverse_ctg_graph(ins_avg, ins_stddev, max_kmer_len, scaff_kmer_len, options->min_ctg_print_len, packed_reads_list,
-                       break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""));
+                       break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""), options->optimize_for == "contiguity");
     end_gasnet_stats();
     stage_timers.cgraph->stop();
+    LOG_MEM("Traverse ctg graph");
     ctgs.print_stats(options->min_ctg_print_len);
     int max_scaff_i = (options->dump_gfa ? options->scaff_kmer_lens.size() - 2 : options->scaff_kmer_lens.size() - 1);
     if ((is_debug || options->checkpoint) && scaff_i < max_scaff_i) {
@@ -130,5 +137,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, vector<PackedRea
   SLOG(KBLUE, "Completed ", (gfa_iter ? "GFA output" : "scaffolding"), " round k = ", scaff_kmer_len, " in ", setprecision(2),
        fixed, loop_t_elapsed.count(), " s at ", get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)",
        KNORM, "\n");
+  LOG_MEM("Scaffolding completed");
+  Timings::wait_pending();
   barrier();
 }

@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 /*
  * ============================================================================
  *
@@ -8,8 +7,7 @@
  * ============================================================================
  */
 
-#include <hip/hip_runtime.h>
-#include <hip/hip_runtime_api.h>
+#include "gpu-utils/gpu_compatiblity.hpp"
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
@@ -27,17 +25,13 @@
 #include <iostream>
 #include <cmath>
 
-// how fast is a thrust sort?
-#include <thrust/sort.h>
-#include <thrust/execution_policy.h>
-
 #include "hashutil.hpp"
 #include "gqf.hpp"
 #include "gqf_int.hpp"
+#include "gpu-utils/gpu_compatiblity.hpp"
 #include "gpu-utils/gpu_common.hpp"
 #include "upcxx_utils/colors.h"
 
-#include <hip/hip_profile.h>
 
 /******************************************************************
  * Code for managing the metadata bits and slots w/o interpreting *
@@ -72,13 +66,6 @@ namespace quotient_filter {
 
 #define DISTANCE_FROM_HOME_SLOT_CUTOFF 1000
 #define BILLION 1000000000L
-#define CUDA_CHECK(ans) gpuAssert((ans), __FILE__, __LINE__);
-inline void gpuAssert(hipError_t code, const char *file, int line, bool abort = true) {
-  if (code != hipSuccess) {
-    printf("GPUassert: %s %s %d\n", hipGetErrorString(code), file, line);
-    if (abort) exit(code);
-  }
-}
 
 #ifdef DEBUG
 #define PRINT_DEBUG 1
@@ -666,9 +653,9 @@ __host__ __device__ static inline uint64_t shift_into_b(const uint64_t a, const 
 // 	void* temp_buffer = malloc(n);
 // 	//maybe stack allocation?
 // 	//void* temp_buffer = void* char[n];
-// 	// hipMemcpyAsync(temp_buffer, src, n, hipMemcpyDeviceToDevice);
-// 	// hipMemcpyAsync(dst, temp_buffer, n, hipMemcpyDeviceToDevice);
-// 	// //hipFree(temp_buffer);
+// 	// MemcpyAsync(temp_buffer, src, n, MemcpyDeviceToDevice);
+// 	// MemcpyAsync(dst, temp_buffer, n, MemcpyDeviceToDevice);
+// 	// //MemFree(temp_buffer);
 // 	// return dst;
 //   memcpy(temp_buffer, src, n);
 //   memcpy(dst, temp_buffer, n);
@@ -1816,15 +1803,15 @@ __host__ bool qf_free(QF *qf) {
 __host__ void qf_free_gpu(QF *qf) {
   QF hostQF;
 
-  // hipMallocHost((void **)&hostQF, sizeof(QF));
+  // MallocHost((void **)&hostQF, sizeof(QF));
 
-  hipMemcpy(&hostQF, qf, sizeof(QF), hipMemcpyDeviceToHost);
+  Memcpy(&hostQF, qf, sizeof(QF), MemcpyDeviceToHost);
 
-  hipFree(hostQF.runtimedata);
-  hipFree(hostQF.metadata);
-  hipFree(hostQF.blocks);
+  MemFree(hostQF.runtimedata);
+  MemFree(hostQF.metadata);
+  MemFree(hostQF.blocks);
 
-  hipFree(qf);
+  MemFree(qf);
 }
 
 __host__ void qf_copy(QF *dest, const QF *src) {
@@ -2086,21 +2073,21 @@ __host__ void qf_malloc_device(QF **qf, int nbits) {
 
   uint16_t *dev_locks;
 
-  hipMalloc((void **)&dev_locks, host_qf.runtimedata->num_locks * sizeof(uint16_t));
+  Malloc((void **)&dev_locks, host_qf.runtimedata->num_locks * sizeof(uint16_t));
 
-  hipMemset(dev_locks, 0, host_qf.runtimedata->num_locks * sizeof(uint16_t));
+  Memset(dev_locks, 0, host_qf.runtimedata->num_locks * sizeof(uint16_t));
 
   // wipe and replace
   free(host_qf.runtimedata->locks);
   host_qf.runtimedata->locks = dev_locks;
 
-  hipMalloc((void **)&_runtime, sizeof(qfruntime));
-  hipMalloc((void **)&_metadata, sizeof(qfmetadata));
-  hipMalloc((void **)&_blocks, qf_get_total_size_in_bytes(&host_qf));
+  Malloc((void **)&_runtime, sizeof(qfruntime));
+  Malloc((void **)&_metadata, sizeof(qfmetadata));
+  Malloc((void **)&_blocks, qf_get_total_size_in_bytes(&host_qf));
 
-  hipMemcpy(_runtime, host_qf.runtimedata, sizeof(qfruntime), hipMemcpyHostToDevice);
-  hipMemcpy(_metadata, host_qf.metadata, sizeof(qfmetadata), hipMemcpyHostToDevice);
-  hipMemcpy(_blocks, host_qf.blocks, qf_get_total_size_in_bytes(&host_qf), hipMemcpyHostToDevice);
+  Memcpy(_runtime, host_qf.runtimedata, sizeof(qfruntime), MemcpyHostToDevice);
+  Memcpy(_metadata, host_qf.metadata, sizeof(qfmetadata), MemcpyHostToDevice);
+  Memcpy(_blocks, host_qf.blocks, qf_get_total_size_in_bytes(&host_qf), MemcpyHostToDevice);
 
   temp_device_qf.runtimedata = _runtime;
   temp_device_qf.metadata = _metadata;
@@ -2108,42 +2095,42 @@ __host__ void qf_malloc_device(QF **qf, int nbits) {
 
   // this might be buggy
   // request to fill the dev ptr with a QF, then copy over, then copy that to qf
-  hipMalloc((void **)&temp_dev_ptr, sizeof(QF));
+  Malloc((void **)&temp_dev_ptr, sizeof(QF));
 
-  hipMemcpy(temp_dev_ptr, &temp_device_qf, sizeof(QF), hipMemcpyHostToDevice);
+  Memcpy(temp_dev_ptr, &temp_device_qf, sizeof(QF), MemcpyHostToDevice);
 
   *qf = temp_dev_ptr;
 }
 
 __host__ void qf_destroy_device(QF *qf) {
   QF *host_qf;
-  hipMallocHost((void **)&host_qf, sizeof(QF));
+  MallocHost((void **)&host_qf, sizeof(QF));
 
-  hipMemcpy(host_qf, qf, sizeof(QF), hipMemcpyDeviceToHost);
+  Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost);
 
   qfruntime *_runtime;
 
-  hipMallocHost((void **)&_runtime, sizeof(qfruntime));
+  MallocHost((void **)&_runtime, sizeof(qfruntime));
 
-  hipMemcpy(_runtime, host_qf->runtimedata, sizeof(qfruntime), hipMemcpyDeviceToHost);
+  Memcpy(_runtime, host_qf->runtimedata, sizeof(qfruntime), MemcpyDeviceToHost);
 
   // may need to have _runtimedata shunted into another host object
   // ill synchronize before this to double check
   assert(_runtime != NULL);
-  if (_runtime->locks != NULL) hipFree(_runtime->locks);
+  if (_runtime->locks != NULL) MemFree(_runtime->locks);
 
-  if (_runtime->wait_times != NULL) hipFree(_runtime->wait_times);
+  if (_runtime->wait_times != NULL) MemFree(_runtime->wait_times);
 
   // this one may break
-  if (_runtime->f_info.filepath != NULL) hipFree(host_qf->runtimedata->f_info.filepath);
+  if (_runtime->f_info.filepath != NULL) MemFree(host_qf->runtimedata->f_info.filepath);
 
-  hipFree(host_qf->runtimedata);
+  MemFree(host_qf->runtimedata);
 
-  hipFree(host_qf->metadata);
-  hipFree(host_qf->blocks);
+  MemFree(host_qf->metadata);
+  MemFree(host_qf->blocks);
 
-  hipHostFree(host_qf);
-  hipHostFree(_runtime);
+  FreeHost(host_qf);
+  FreeHost(_runtime);
 }
 
 // __host__ void init_device_locks(uint16_t ** locks, uint64_t nbits){
@@ -2154,9 +2141,9 @@ __host__ void qf_destroy_device(QF *qf) {
 
 // 	uint64_t xnslots = nslots+10*sqrt((double)nslots);
 
-// 	hipMalloc((void **)&temp_locks, (((xnslots-1)/NUM_SLOTS_TO_LOCK+1)+10)*sizeof(uint16_t));
+// 	Malloc((void **)&temp_locks, (((xnslots-1)/NUM_SLOTS_TO_LOCK+1)+10)*sizeof(uint16_t));
 
-// 	hipMemset(temp_locks, 0, (((xnslots-1)/NUM_SLOTS_TO_LOCK+1)+10)*sizeof(uint16_t));
+// 	Memset(temp_locks, 0, (((xnslots-1)/NUM_SLOTS_TO_LOCK+1)+10)*sizeof(uint16_t));
 
 // 	*locks = temp_locks;
 
@@ -2557,40 +2544,40 @@ uint64_t qf_get_num_occupied_slots(const QF *qf) {
 // need to pull metadata from qf, and nslots from metadata
 __host__ uint64_t host_qf_get_nslots(const QF *qf) {
   QF *host_qf;
-  CUDA_CHECK(hipMallocHost((void **)&host_qf, sizeof(QF)));
-  CUDA_CHECK(hipMemcpy(host_qf, qf, sizeof(QF), hipMemcpyDeviceToHost));
+  GPU_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
+  GPU_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
   qfmetadata *_metadata;
-  CUDA_CHECK(hipMallocHost((void **)&_metadata, sizeof(qfmetadata)));
-  CUDA_CHECK(hipMemcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), hipMemcpyDeviceToHost));
+  GPU_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
+  GPU_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
   uint64_t toReturn = _metadata->nslots;
-  CUDA_CHECK(hipHostFree(_metadata));
-  CUDA_CHECK(hipHostFree(host_qf));
+  GPU_CHECK(FreeHost(_metadata));
+  GPU_CHECK(FreeHost(host_qf));
   return toReturn;
 }
 
 __host__ uint64_t host_qf_get_num_occupied_slots(const QF *qf) {
   QF *host_qf;
-  CUDA_CHECK(hipMallocHost((void **)&host_qf, sizeof(QF)));
-  CUDA_CHECK(hipMemcpy(host_qf, qf, sizeof(QF), hipMemcpyDeviceToHost));
+  GPU_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
+  GPU_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
   qfmetadata *_metadata;
-  CUDA_CHECK(hipMallocHost((void **)&_metadata, sizeof(qfmetadata)));
-  CUDA_CHECK(hipMemcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), hipMemcpyDeviceToHost));
+  GPU_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
+  GPU_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
   uint64_t toReturn = _metadata->noccupied_slots;
-  CUDA_CHECK(hipHostFree(_metadata));
-  CUDA_CHECK(hipHostFree(host_qf));
+  GPU_CHECK(FreeHost(_metadata));
+  GPU_CHECK(FreeHost(host_qf));
   return toReturn;
 }
 
 __host__ uint64_t host_qf_get_failures(const QF *qf) {
   QF *host_qf;
-  CUDA_CHECK(hipMallocHost((void **)&host_qf, sizeof(QF)));
-  CUDA_CHECK(hipMemcpy(host_qf, qf, sizeof(QF), hipMemcpyDeviceToHost));
+  GPU_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
+  GPU_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
   qfmetadata *_metadata;
-  CUDA_CHECK(hipMallocHost((void **)&_metadata, sizeof(qfmetadata)));
-  CUDA_CHECK(hipMemcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), hipMemcpyDeviceToHost));
+  GPU_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
+  GPU_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
   uint64_t toReturn = _metadata->failed_inserts;
-  CUDA_CHECK(hipHostFree(_metadata));
-  CUDA_CHECK(hipHostFree(host_qf));
+  GPU_CHECK(FreeHost(_metadata));
+  GPU_CHECK(FreeHost(host_qf));
   return toReturn;
 }
 
