@@ -46,7 +46,6 @@
 #include <chrono>
 #include <tuple>
 
-
 #include "upcxx_utils/colors.h"
 #include "gpu-utils/gpu_compatiblity.hpp"
 #include "gpu-utils/gpu_common.hpp"
@@ -206,26 +205,28 @@ inline __device__ uint8_t get_packed_val(char base) {
     case 'n': return 9;
     case '_':
     case 0: return 0;
-    default: return 11;//printf("Invalid value encountered when packing: %d\n", (int)base);
+    default: return 11;  // printf("Invalid value encountered when packing: %d\n", (int)base);
   };
   return 0;
 }
 
 __global__ void pack_seqs(char *dev_seqs, char *dev_packed_seqs, int seqs_len) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
-  int packed_seqs_len = seqs_len / 2;// + seqs_len % 2;
+  int packed_seqs_len = seqs_len / 2;  // + seqs_len % 2;
   if (threadid < packed_seqs_len) {
     int seqs_i = threadid * 2;
     char packed = get_packed_val(dev_seqs[seqs_i]);
-    if((int)packed == 11){
-      printf("dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs[seqs_i], packed << 4, packed, seqs_len, packed_seqs_len);
+    if ((int)packed == 11) {
+      printf("dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs[seqs_i],
+             packed << 4, packed, seqs_len, packed_seqs_len);
     }
     packed = packed << 4;
     char packed_ = get_packed_val(dev_seqs[seqs_i + 1]);
-    if((int)packed_ == 11){
-      printf("dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs[seqs_i], seqs_i + 1, dev_seqs[seqs_i + 1], packed_ << 4, packed_, seqs_len, packed_seqs_len);
+    if ((int)packed_ == 11) {
+      printf("dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
+             dev_seqs[seqs_i], seqs_i + 1, dev_seqs[seqs_i + 1], packed_ << 4, packed_, seqs_len, packed_seqs_len);
     }
-    packed |= packed_;//get_packed_val(dev_seqs[seqs_i + 1]);
+    packed |= packed_;  // get_packed_val(dev_seqs[seqs_i + 1]);
     dev_packed_seqs[threadid] = packed;
   }
 }
@@ -291,14 +292,14 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
   int gridsize, threadblocksize;
   get_kernel_config(seqs.length(), parse_and_pack, gridsize, threadblocksize);
   kernel_timer.start();
-  LaunchKernel(parse_and_pack, gridsize, threadblocksize, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets,
-                                                upcxx_rank_n);
+  LaunchKernel(parse_and_pack, gridsize, threadblocksize, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(),
+               dev_kmer_targets, upcxx_rank_n);
 
   ERROR_CHECK(Memset(dev_num_supermers, 0, sizeof(int)));
   ERROR_CHECK(Memset(dev_num_valid_kmers, 0, sizeof(int)));
   get_kernel_config(num_kmers, build_supermers, gridsize, threadblocksize);
-  LaunchKernel(build_supermers, gridsize, threadblocksize, dev_seqs, dev_kmer_targets, num_kmers, kmer_len, seqs.length(), dev_supermers,
-                                                 dev_num_supermers, dev_num_valid_kmers, upcxx_rank_me);
+  LaunchKernel(build_supermers, gridsize, threadblocksize, dev_seqs, dev_kmer_targets, num_kmers, kmer_len, seqs.length(),
+               dev_supermers, dev_num_supermers, dev_num_valid_kmers, upcxx_rank_me);
   ERROR_CHECK(Memcpy(&num_valid_kmers, dev_num_valid_kmers, sizeof(unsigned int), MemcpyDeviceToHost));
   unsigned int num_supermers;
   ERROR_CHECK(Memcpy(&num_supermers, dev_num_supermers, sizeof(unsigned int), MemcpyDeviceToHost));

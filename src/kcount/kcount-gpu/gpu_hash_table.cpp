@@ -55,7 +55,7 @@
 #include "gpu_hash_table.hpp"
 #include "prime.hpp"
 #ifdef USE_GQF
-  #include "gqf.hpp"
+#include "gqf.hpp"
 #else
 // quotient filter calls stubbed out
 namespace quotient_filter {
@@ -65,9 +65,7 @@ __device__ qf_returns insert_kmer(QF *qf, uint64_t hash, char forward, char back
   return QF_FULL;
 }
 void qf_malloc_device(QF **qf, int nbits) {}
-uint64_t qf_estimate_memory(int nbits) {
-  return 0;
-}
+uint64_t qf_estimate_memory(int nbits) { return 0; }
 void qf_destroy_device(QF *qf) {}
 uint64_t host_qf_get_nslots(const QF *qf) { return 0; }
 uint64_t host_qf_get_num_occupied_slots(const QF *qf) { return 0; }
@@ -629,8 +627,8 @@ void HashTableGPUDriver<MAX_K>::insert_supermer_block() {
   get_kernel_config(buff_len * 2, gpu_insert_supermer_block<MAX_K>, gridsize, threadblocksize);
   // gridsize = gridsize * threadblocksize;
   // threadblocksize = 1;
-  LaunchKernel(gpu_insert_supermer_block, gridsize, threadblocksize, is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev, unpacked_elem_buff_dev,
-                                                           buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats, dstate->qf);
+  LaunchKernel(gpu_insert_supermer_block, gridsize, threadblocksize, is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev,
+               unpacked_elem_buff_dev, buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats, dstate->qf);
   // the kernel time is not going to be accurate, because we are not waiting for the kernel to complete
   // need to uncomment the line below, which will decrease performance by preventing the overlap of GPU and CPU execution
   DeviceSynchronize();
@@ -692,7 +690,7 @@ void HashTableGPUDriver<MAX_K>::flush_inserts() {
     buff_len = 0;
   }
   ERROR_CHECK(Memcpy(pass_type == READ_KMERS_PASS ? &read_kmers_stats : &ctg_kmers_stats, gpu_insert_stats, sizeof(InsertStats),
-                        MemcpyDeviceToHost));
+                     MemcpyDeviceToHost));
 }
 
 template <int MAX_K>
@@ -741,9 +739,9 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   output_vals.resize(num_entries);
   output_index = 0;
   ERROR_CHECK(Memcpy(output_keys.data(), (void *)compact_read_kmers_dev.keys,
-                        compact_read_kmers_dev.capacity * sizeof(KmerArray<MAX_K>), MemcpyDeviceToHost));
+                     compact_read_kmers_dev.capacity * sizeof(KmerArray<MAX_K>), MemcpyDeviceToHost));
   ERROR_CHECK(Memcpy(output_vals.data(), compact_read_kmers_dev.vals, compact_read_kmers_dev.capacity * sizeof(CountExts),
-                        MemcpyDeviceToHost));
+                     MemcpyDeviceToHost));
   compact_read_kmers_dev.clear();
 }
 

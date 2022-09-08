@@ -235,8 +235,8 @@ __global__ void gpu_bsw::dna_kernel(char* seqA_array, char* seqB_array, unsigned
       short hfVal = _prev_H + startGap;
 
 #ifdef CUDA_GPU
-      unsigned mask  = __ballot_sync(__activemask(), (is_valid[thread_Id] &&( thread_Id < minSize)));
-      short valeShfl = __shfl_sync(mask, _prev_E, laneId- 1, 32);
+      unsigned mask = __ballot_sync(__activemask(), (is_valid[thread_Id] && (thread_Id < minSize)));
+      short valeShfl = __shfl_sync(mask, _prev_E, laneId - 1, 32);
       short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
 #endif
 #ifdef HIP_GPU

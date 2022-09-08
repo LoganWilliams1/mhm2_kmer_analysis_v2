@@ -42,7 +42,6 @@
  form.
 */
 
-
 #include <sys/time.h>
 
 #include <cstdlib>

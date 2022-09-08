@@ -34,7 +34,6 @@
 #include "gpu-utils/gpu_common.hpp"
 #include "upcxx_utils/colors.h"
 
-
 /******************************************************************
  * Code for managing the metadata bits and slots w/o interpreting *
  * the content of the slots.

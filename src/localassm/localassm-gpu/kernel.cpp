@@ -217,9 +217,9 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
       // printf("key found, returning\n");// keep this for debugging
       return thread_ht[hash_val];
     }
-    hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
-    if(hash_val == orig_hash){ // loop till you reach the same starting positions and then return error
-       printf("*****end reached, hashtable full*****\n");  // for debugging
+    hash_val = (hash_val + 1) % max_size;                 // hash_val = (hash_val + 1) & (HT_SIZE -1);
+    if (hash_val == orig_hash) {                          // loop till you reach the same starting positions and then return error
+      printf("*****end reached, hashtable full*****\n");  // for debugging
     }
   }
 }
@@ -236,9 +236,9 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
       // printf("key found, returning\n");// keep this for debugging
       return thread_ht[hash_val];
     }
-    hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
-    if(hash_val == orig_hash){ // loop till you reach the same starting positions and then return error
-        printf("*****end reached, hashtable full*****\n"); // for debugging
+    hash_val = (hash_val + 1) % max_size;                 // hash_val = (hash_val + 1) & (HT_SIZE -1);
+    if (hash_val == orig_hash) {                          // loop till you reach the same starting positions and then return error
+      printf("*****end reached, hashtable full*****\n");  // for debugging
     }
   }
 }
@@ -271,8 +271,8 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
       prev = atomicCAS(&thread_ht[hash_val].key.length, EMPTY, kmer_key.length);
 
 #ifdef CUDA_GPU
-      mask = __match_any_sync(__activemask(), (unsigned long long)&thread_ht[hash_val]); // all the threads in the warp which
-      // have same address
+      mask = __match_any_sync(__activemask(), (unsigned long long)&thread_ht[hash_val]);  // all the threads in the warp which
+                                                                                          // have same address
 #endif
 
       if (prev == EMPTY) {

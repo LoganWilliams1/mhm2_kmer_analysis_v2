@@ -90,7 +90,7 @@ static DeviceProp &get_gpu_properties(int device_id = -1) {
   if (_.empty()) {
     _.resize(get_gpu_device_count());
     for (int i = 0; i < num_devs; ++i) {
-      auto idx = (1+i+_rank_me)%num_devs; // stagger access to devices, end on delegated device
+      auto idx = (1 + i + _rank_me) % num_devs;  // stagger access to devices, end on delegated device
       ERROR_CHECK(GetDeviceProperties(&_[idx], idx));
     }
   }
@@ -151,7 +151,7 @@ vector<string> gpu_utils::get_gpu_uuids() {
     uuids.push_back(get_uuid_str(prop.uuid.bytes));
 #else
     ostringstream os;
-    os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;// << ':' << prop.pciDomainID << prop.multiGpuBoardGroupID;
+    os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;  // << ':' << prop.pciDomainID << prop.multiGpuBoardGroupID;
     uuids.push_back(os.str());
 #endif
   }
@@ -168,7 +168,7 @@ string gpu_utils::get_gpu_uuid() {
 
 bool gpu_utils::gpus_present() { return get_gpu_device_count(); }
 
-void gpu_utils::initialize_gpu(double& time_to_initialize, int rank_me) {
+void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me) {
   using timepoint_t = chrono::time_point<chrono::high_resolution_clock>;
   timepoint_t t = chrono::high_resolution_clock::now();
   chrono::duration<double> elapsed;
@@ -182,7 +182,6 @@ void gpu_utils::initialize_gpu(double& time_to_initialize, int rank_me) {
 }
 
 string gpu_utils::get_gpu_device_descriptions() {
-  
   int num_devs = get_gpu_device_count();
   ostringstream os;
   os << "Number of GPU devices visible: " << num_devs << "\n";

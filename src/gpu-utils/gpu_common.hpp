@@ -66,7 +66,7 @@ static __constant__ uint64_t GPU_TWINS[256] = {
 
 #define GPU_CHECK(ans) gpuAssert((ans), __FILE__, __LINE__);
 
-void gpuAssert(Error_t code, const char* file, int line, bool abort = true);
+void gpuAssert(Error_t code, const char *file, int line, bool abort = true);
 
 void gpu_die(Error_t code, const char *file, int line, bool abort = true);
 

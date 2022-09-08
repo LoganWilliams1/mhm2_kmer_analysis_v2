@@ -306,10 +306,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     ERROR_CHECK(Memcpy(prefix_ht_size_d, prefix_ht_size_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
     ERROR_CHECK(Memcpy(cid_d, cid_h.get(), sizeof(uint64_t) * vec_size, MemcpyHostToDevice));
     ERROR_CHECK(Memcpy(ctg_seq_offsets_d, ctg_seq_offsets_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
-    ERROR_CHECK(
-        Memcpy(reads_l_offset_d, reads_l_offset_h.get(), sizeof(uint32_t) * total_l_reads_slice, MemcpyHostToDevice));
-    ERROR_CHECK(
-        Memcpy(reads_r_offset_d, reads_r_offset_h.get(), sizeof(uint32_t) * total_r_reads_slice, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(reads_l_offset_d, reads_l_offset_h.get(), sizeof(uint32_t) * total_l_reads_slice, MemcpyHostToDevice));
+    ERROR_CHECK(Memcpy(reads_r_offset_d, reads_r_offset_h.get(), sizeof(uint32_t) * total_r_reads_slice, MemcpyHostToDevice));
     ERROR_CHECK(Memcpy(rds_l_cnt_offset_d, rds_l_cnt_offset_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
     ERROR_CHECK(Memcpy(rds_r_cnt_offset_d, rds_r_cnt_offset_h.get(), sizeof(uint32_t) * vec_size, MemcpyHostToDevice));
     ERROR_CHECK(Memcpy(ctg_seqs_d, ctg_seqs_h.get(), sizeof(char) * ctgs_offset_sum, MemcpyHostToDevice));
@@ -326,10 +324,10 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
 
     int64_t sum_ext = 0, num_walks = 0;
     uint32_t qual_offset_ = qual_offset;
-    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, 
-        cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_right_d, quals_right_d, reads_r_offset_d, rds_r_cnt_offset_d, depth_d, d_ht,
-        prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len, term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size,
-        max_read_count, qual_offset_, longest_walks_d, mer_walk_temp_d, final_walk_lens_d, vec_size);
+    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_right_d, quals_right_d,
+                 reads_r_offset_d, rds_r_cnt_offset_d, depth_d, d_ht, prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len,
+                 term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size, max_read_count, qual_offset_, longest_walks_d,
+                 mer_walk_temp_d, final_walk_lens_d, vec_size);
 
     // perform revcomp of contig sequences and launch kernel with left reads,
 
@@ -349,22 +347,22 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       revcomp(curr_seq, curr_seq_rc, size_lst);
     }
     ERROR_CHECK(Memcpy(longest_walks_r_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
-                          sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));
-    ERROR_CHECK(Memcpy(final_walk_lens_r_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size,
-                          MemcpyDeviceToHost));
+                       sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));
+    ERROR_CHECK(
+        Memcpy(final_walk_lens_r_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size, MemcpyDeviceToHost));
 
     // cpying rev comped ctgs to device on same memory as previous ctgs
     ERROR_CHECK(Memcpy(ctg_seqs_d, ctgs_seqs_rc_h.get(), sizeof(char) * ctgs_offset_sum, MemcpyHostToDevice));
 
-    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk,
-        cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_left_d, quals_left_d, reads_l_offset_d, rds_l_cnt_offset_d, depth_d, d_ht,
-        prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len, term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size,
-        max_read_count, qual_offset_, longest_walks_d, mer_walk_temp_d, final_walk_lens_d, vec_size);
+    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_left_d, quals_left_d,
+                 reads_l_offset_d, rds_l_cnt_offset_d, depth_d, d_ht, prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len,
+                 term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size, max_read_count, qual_offset_, longest_walks_d,
+                 mer_walk_temp_d, final_walk_lens_d, vec_size);
 
     ERROR_CHECK(Memcpy(longest_walks_l_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
-                          sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));  // copy back left walks
-    ERROR_CHECK(Memcpy(final_walk_lens_l_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size,
-                          MemcpyDeviceToHost));
+                       sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));  // copy back left walks
+    ERROR_CHECK(
+        Memcpy(final_walk_lens_l_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size, MemcpyDeviceToHost));
   }  // the for loop over all slices ends here
 
   // once all the alignments are on cpu, then go through them and stitch them with contigs in front and back.

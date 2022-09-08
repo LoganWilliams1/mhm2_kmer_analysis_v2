@@ -49,8 +49,9 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_profile.h>
 
-#define LaunchKernel(func, blocks, threads_per_block, args...) hipLaunchKernelGGL(func, blocks, threads_per_block, 0,0, args)
-#define LaunchKernelGGL(func, blocks, threads_per_block, x, y, args...) hipLaunchKernelGGL(func, blocks, threads_per_block, x, y, args)
+#define LaunchKernel(func, blocks, threads_per_block, args...) hipLaunchKernelGGL(func, blocks, threads_per_block, 0, 0, args)
+#define LaunchKernelGGL(func, blocks, threads_per_block, x, y, args...) \
+  hipLaunchKernelGGL(func, blocks, threads_per_block, x, y, args)
 
 #define Success hipSuccess
 #define GetErrorString hipGetErrorString
@@ -108,8 +109,8 @@
 #include <cuda_profiler_api.h>
 #define MHM2_GPU cuda
 #define FreeHost cudaFreeHost
-#define LaunchKernel(func, blocks, threads_per_block, args...) func<<<blocks,threads_per_block>>>(args)
-#define LaunchKernelGGL(func, blocks, threads_per_block, x, y, args...) func<<<blocks,threads_per_block,x,y>>>(args)
+#define LaunchKernel(func, blocks, threads_per_block, args...) func<<<blocks, threads_per_block>>>(args)
+#define LaunchKernelGGL(func, blocks, threads_per_block, x, y, args...) func<<<blocks, threads_per_block, x, y>>>(args)
 #define Success cudaSuccess
 #define GetErrorString cudaGetErrorString
 #define Error_t cudaError_t
