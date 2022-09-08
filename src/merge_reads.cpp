@@ -266,6 +266,7 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
     string line;
     string name;
     int num = 0;
+    int num_short = 0;
     while (getline(f, line)) {
       if (line[0] == '>') {
         name = line;
@@ -273,13 +274,15 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
       }
       num++;
       if (line.length() < adapter_k) {
-        SWARN("adapter seq for ", name, " is too short ", line.length(), " < ", adapter_k);
+        num_short++;
         continue;
       }
       new_seqs.push_back(line);
       sizes.push_back(line.size());
     }
+    if (num_short) SLOG_VERBOSE("Ignoring ", num_short, " adapters of length less than ", adapter_k, "\n");
   }
+
   //
   // broadcast the new sequences
   // non trivial broadcasts are not allowed (yet), so send a series of fixed-size broadcasts
