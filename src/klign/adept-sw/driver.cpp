@@ -282,16 +282,12 @@ void adept_sw::GPUDriver::kernel_block_fwd() {
   int count, my_id;
   ERROR_CHECK(EventSynchronize(driver_state->event_fwd_0));
   ERROR_CHECK(EventSynchronize(driver_state->event_fwd_1));
-  ERROR_CHECK(EventDestroy(driver_state->event_fwd_0));
-  ERROR_CHECK(EventDestroy(driver_state->event_fwd_1));
 }
 
 void adept_sw::GPUDriver::kernel_block_rev() {
   int count, my_id;
   ERROR_CHECK(EventSynchronize(driver_state->event_rev_0));
   ERROR_CHECK(EventSynchronize(driver_state->event_rev_1));
-  ERROR_CHECK(EventDestroy(driver_state->event_rev_0));
-  ERROR_CHECK(EventDestroy(driver_state->event_rev_1));
 }
 
 void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, std::vector<std::string>& contigs,
