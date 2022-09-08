@@ -19,7 +19,7 @@ __inline__ __device__ short gpu_bsw::warpReduceMax_with_index(short val, short& 
     newInd = __shfl_down(ind, offset);
     newInd2 = __shfl_down(ind2, offset);
 #endif
-#ifdef CUDA_CPU
+#ifdef CUDA_GPU
     short tempVal = __shfl_down_sync(mask, val, offset);
     val = max(val, tempVal);
     newInd = __shfl_down_sync(mask, ind, offset);
@@ -234,14 +234,15 @@ __global__ void gpu_bsw::dna_kernel(char* seqA_array, char* seqB_array, unsigned
       short fVal = _prev_F + extendGap;
       short hfVal = _prev_H + startGap;
 
-      // #ifndef PLATFORM_AMD
-      //   unsigned mask  = __ballot_sync(__activemask(), (is_valid[thread_Id] &&( thread_Id < minSize)));
-      //   short valeShfl = __shfl_sync(mask, _prev_E, laneId- 1, 32);
-      //   short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
-      // #else
+#ifdef CUDA_GPU
+      unsigned mask  = __ballot_sync(__activemask(), (is_valid[thread_Id] &&( thread_Id < minSize)));
+      short valeShfl = __shfl_sync(mask, _prev_E, laneId- 1, 32);
+      short valheShfl = __shfl_sync(mask, _prev_H, laneId - 1, 32);
+#endif
+#ifdef HIP_GPU
       short valeShfl = __shfl(_prev_E, laneId - 1, 32);
       short valheShfl = __shfl(_prev_H, laneId - 1, 32);
-      // #endif
+#endif
       short eVal = 0, heVal = 0;
       // when the previous thread has phased out, get value from shmem
       if (diag >= maxSize) {
@@ -494,7 +495,6 @@ __global__ void gpu_bsw::aa_kernel(char* seqA_array, char* seqB_array, unsigned*
 #ifdef HIP_GPU
       short testShufll = __shfl(_prev_prev_H, laneId - 1, 32);
 #endif
-      // #endif
       short final_prev_prev_H = 0;
 
       if (diag >= maxSize) {

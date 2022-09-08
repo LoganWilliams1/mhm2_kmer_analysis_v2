@@ -269,7 +269,7 @@ void HashTableInserter<MAX_K>::flush_inserts() {
                "\n");
   }
   if (use_qf && state->ht_gpu_driver.pass_type == kcount_gpu::READ_KMERS_PASS) {
-    uint64_t num_unique_qf = reduce_all((uint64_t)insert_stats.num_unique_qf, op_fast_add, 0).wait();
+    uint64_t num_unique_qf = reduce_all((uint64_t)insert_stats.num_unique_qf, op_fast_add).wait();
     if (num_unique_qf) {
       // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
       SLOG_GPU("  QF filtered out ", perc_str(num_unique_qf - num_inserts, num_unique_qf), " singletons\n");

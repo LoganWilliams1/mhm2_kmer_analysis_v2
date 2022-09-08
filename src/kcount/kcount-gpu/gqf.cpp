@@ -25,6 +25,8 @@
 #include <iostream>
 #include <cmath>
 
+#include <array>
+
 #include "hashutil.hpp"
 #include "gqf.hpp"
 #include "gqf_int.hpp"
@@ -655,7 +657,7 @@ __host__ __device__ static inline uint64_t shift_into_b(const uint64_t a, const 
 // 	//void* temp_buffer = void* char[n];
 // 	// MemcpyAsync(temp_buffer, src, n, MemcpyDeviceToDevice);
 // 	// MemcpyAsync(dst, temp_buffer, n, MemcpyDeviceToDevice);
-// 	// //MemFree(temp_buffer);
+// 	// //Free(temp_buffer);
 // 	// return dst;
 //   memcpy(temp_buffer, src, n);
 //   memcpy(dst, temp_buffer, n);
@@ -1807,11 +1809,11 @@ __host__ void qf_free_gpu(QF *qf) {
 
   Memcpy(&hostQF, qf, sizeof(QF), MemcpyDeviceToHost);
 
-  MemFree(hostQF.runtimedata);
-  MemFree(hostQF.metadata);
-  MemFree(hostQF.blocks);
+  Free(hostQF.runtimedata);
+  Free(hostQF.metadata);
+  Free(hostQF.blocks);
 
-  MemFree(qf);
+  Free(qf);
 }
 
 __host__ void qf_copy(QF *dest, const QF *src) {
@@ -2117,17 +2119,17 @@ __host__ void qf_destroy_device(QF *qf) {
   // may need to have _runtimedata shunted into another host object
   // ill synchronize before this to double check
   assert(_runtime != NULL);
-  if (_runtime->locks != NULL) MemFree(_runtime->locks);
+  if (_runtime->locks != NULL) Free(_runtime->locks);
 
-  if (_runtime->wait_times != NULL) MemFree(_runtime->wait_times);
+  if (_runtime->wait_times != NULL) Free(_runtime->wait_times);
 
   // this one may break
-  if (_runtime->f_info.filepath != NULL) MemFree(host_qf->runtimedata->f_info.filepath);
+  if (_runtime->f_info.filepath != NULL) Free(host_qf->runtimedata->f_info.filepath);
 
-  MemFree(host_qf->runtimedata);
+  Free(host_qf->runtimedata);
 
-  MemFree(host_qf->metadata);
-  MemFree(host_qf->blocks);
+  Free(host_qf->metadata);
+  Free(host_qf->blocks);
 
   FreeHost(host_qf);
   FreeHost(_runtime);
@@ -2544,40 +2546,40 @@ uint64_t qf_get_num_occupied_slots(const QF *qf) {
 // need to pull metadata from qf, and nslots from metadata
 __host__ uint64_t host_qf_get_nslots(const QF *qf) {
   QF *host_qf;
-  GPU_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
-  GPU_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
+  ERROR_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
+  ERROR_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
   qfmetadata *_metadata;
-  GPU_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
-  GPU_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
+  ERROR_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
+  ERROR_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
   uint64_t toReturn = _metadata->nslots;
-  GPU_CHECK(FreeHost(_metadata));
-  GPU_CHECK(FreeHost(host_qf));
+  ERROR_CHECK(FreeHost(_metadata));
+  ERROR_CHECK(FreeHost(host_qf));
   return toReturn;
 }
 
 __host__ uint64_t host_qf_get_num_occupied_slots(const QF *qf) {
   QF *host_qf;
-  GPU_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
-  GPU_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
+  ERROR_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
+  ERROR_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
   qfmetadata *_metadata;
-  GPU_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
-  GPU_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
+  ERROR_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
+  ERROR_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
   uint64_t toReturn = _metadata->noccupied_slots;
-  GPU_CHECK(FreeHost(_metadata));
-  GPU_CHECK(FreeHost(host_qf));
+  ERROR_CHECK(FreeHost(_metadata));
+  ERROR_CHECK(FreeHost(host_qf));
   return toReturn;
 }
 
 __host__ uint64_t host_qf_get_failures(const QF *qf) {
   QF *host_qf;
-  GPU_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
-  GPU_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
+  ERROR_CHECK(MallocHost((void **)&host_qf, sizeof(QF)));
+  ERROR_CHECK(Memcpy(host_qf, qf, sizeof(QF), MemcpyDeviceToHost));
   qfmetadata *_metadata;
-  GPU_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
-  GPU_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
+  ERROR_CHECK(MallocHost((void **)&_metadata, sizeof(qfmetadata)));
+  ERROR_CHECK(Memcpy(_metadata, host_qf->metadata, sizeof(qfmetadata), MemcpyDeviceToHost));
   uint64_t toReturn = _metadata->failed_inserts;
-  GPU_CHECK(FreeHost(_metadata));
-  GPU_CHECK(FreeHost(host_qf));
+  ERROR_CHECK(FreeHost(_metadata));
+  ERROR_CHECK(FreeHost(host_qf));
   return toReturn;
 }
 

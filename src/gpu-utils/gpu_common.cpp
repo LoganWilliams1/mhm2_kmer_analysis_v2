@@ -49,6 +49,15 @@
 
 namespace gpu_common {
 
+void gpuAssert(Error_t code, const char* file, int line, bool abort)
+{
+  if(code != Success) {
+    fprintf(stderr, "GPUassert: %s %s %d\n", GetErrorString(code), file, line);
+    if(abort) exit(code);
+  }
+}
+
+
 void gpu_die(Error_t code, const char *file, int line, bool abort) {
   if (code != Success) {
     std::cerr << KLRED << "<" << file << ":" << line << "> ERROR:" << KNORM << GetErrorString(code) << "\n";

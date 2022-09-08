@@ -25,7 +25,7 @@ if(ENABLE_HIP)
     add_library(ADEPT_SW_LIBRARY_static STATIC $<TARGET_OBJECTS:ADEPT_SW_LIBRARY_obj>)
     target_link_libraries(ADEPT_SW_LIBRARY_static INTERFACE)
     install(TARGETS ADEPT_SW_LIBRARY_static ARCHIVE DESTINATION lib)
-  endif
+  endif()
   if(ADEPT_SW_SHARED)
     add_library(ADEPT_SW_LIBRARY_shared SHARED $<TARGET_OBJECTS:ADEPT_SW_LIBRARY_obj>)
     target_link_libraries(ADEPT_SW_LIBRARY_shared INTERFACE)

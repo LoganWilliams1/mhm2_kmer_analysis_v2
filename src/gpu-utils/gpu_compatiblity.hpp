@@ -45,88 +45,124 @@
 /* Compatibility between HIP and Cuda Libraries from AMD_HIP_Supported_CUDA_API_Reference_Guide.pdf */
 
 #ifdef HIP_GPU
-  #include <hip/hip_runtime_api.h>
-  #include <hip/hip_runtime.h>
-  #include <hip/hip_profile.h>
-  #define MHM2_GPU hip
-  #define LaunchKernel(func,blocks,threads_per_block) hipLaunchKernelGGL(func, blocks, threads_per_block, 0,0,
-  #define FreeHost hipHostFree
+#include <hip/hip_runtime_api.h>
+#include <hip/hip_runtime.h>
+#include <hip/hip_profile.h>
+
+#define LaunchKernel(func, blocks, threads_per_block, args...) hipLaunchKernelGGL(func, blocks, threads_per_block, 0,0, args)
+#define LaunchKernelGGL(func, blocks, threads_per_block, x, y, args...) hipLaunchKernelGGL(func, blocks, threads_per_block, x, y, args)
+
+#define Success hipSuccess
+#define GetErrorString hipGetErrorString
+#define Error_t hipError_t
+#define Event_t hipEvent_t
+#define Stream_t hipStream_t
+
+#define Malloc hipMalloc
+#define Free hipFree
+#define HostAlloc hipHostAlloc
+#define HostFree hipHostFree
+#define FreeHost hipHostFree
+#define MallocHost hipMallocHost
+
+#define GetDeviceCount hipGetDeviceCount
+#define DeviceProp hipDeviceProp
+#define GetDevice hipGetDevice
+#define GetDeviceProperties hipGetDeviceProperties
+#define SetDevice hipSetDevice
+#define DeviceReset hipDeviceReset
+#define DeviceSynchronize hipDeviceSynchronize
+
+#define MemGetInfo hipMemGetInfo
+#define Memcpy hipMemcpy
+#define MemcpyAsync hipMemcpyAsync
+#define MemcpyHostToDevice hipMemcpyHostToDevice
+#define MemcpyDeviceToHost hipMemcpyDeviceToHost
+#define Memset hipMemset
+
+#define HostAlloc hipHostAlloc
+
+#define StreamCreate hipStreamCreate
+#define StreamDestroy hipStreamDestroy
+#define StreamSynchronize hipStreamSynchronize
+
+#define EventCreate hipEventCreate
+#define EventCreateWithFlags hipEventCreateWithFlags
+#define EventDestroy hipEventDestroy
+#define EventRecord hipEventRecord
+#define EventQuery hipEventQuery
+#define EventSynchronize hipEventSynchronize
+#define EventElapsedTime hipEventElapsedTime
+#define EventDisableTiming hipEventDisableTiming
+#define EventBlockingSync hipEventBlockingSync
+
+#define OccupancyMaxPotentialBlockSize hipOccupancyMaxPotentialBlockSize)
+
+#define FuncSetAttribute hipFuncSetAttribute
+#define FuncAttributeMaxDynamicSharedMemorySize hipFuncAttributeMaxDynamicSharedMemorySize
+
 #endif
 #ifdef CUDA_GPU
-  #include <cuda_runtime_api.h>
-  #include <cuda.h>
-  #include <cuda_profiler_api.h>
-  #define MHM2_GPU cuda
-  #define FreeHost cudaFreeHost
-  #define LaunchKernel(func,blocks,threads_per_block) func<<<blocks,threads_per_block>>>(
+#include <cuda_runtime_api.h>
+#include <cuda.h>
+#include <cuda_profiler_api.h>
+#define MHM2_GPU cuda
+#define FreeHost cudaFreeHost
+#define LaunchKernel(func, blocks, threads_per_block, args...) func<<<blocks,threads_per_block>>>(args)
+#define LaunchKernelGGL(func, blocks, threads_per_block, x, y, args...) func<<<blocks,threads_per_block,x,y>>>(args)
+#define Success cudaSuccess
+#define GetErrorString cudaGetErrorString
+#define Error_t cudaError_t
+#define Event_t cudaEvent_t
+#define Stream_t cudaStream_t
+
+#define Malloc cudaMalloc
+#define Free cudaFree
+#define HostAlloc cudaHostAlloc
+#define HostFree cudaHostFree
+#define MallocHost cudaMallocHost
+
+#define GetDeviceCount cudaGetDeviceCount
+#define DeviceProp cudaDeviceProp
+#define GetDevice cudaGetDevice
+#define GetDeviceProperties cudaGetDeviceProperties
+#define SetDevice cudaSetDevice
+#define DeviceReset cudaDeviceReset
+#define DeviceSynchronize cudaDeviceSynchronize
+
+#define MemGetInfo cudaMemGetInfo
+#define Memcpy cudaMemcpy
+#define MemcpyAsync cudaMemcpyAsync
+#define MemcpyHostToDevice cudaMemcpyHostToDevice
+#define MemcpyDeviceToHost cudaMemcpyDeviceToHost
+#define Memset cudaMemset
+
+#define HostAlloc cudaHostAlloc
+
+#define StreamCreate cudaStreamCreate
+#define StreamDestroy cudaStreamDestroy
+#define StreamSynchronize cudaStreamSynchronize
+
+#define EventCreate cudaEventCreate
+#define EventCreateWithFlags cudaEventCreateWithFlags
+#define EventDestroy cudaEventDestroy
+#define EventRecord cudaEventRecord
+#define EventQuery cudaEventQuery
+#define EventSynchronize cudaEventSynchronize
+#define EventElapsedTime cudaEventElapsedTime
+#define EventDisableTiming cudaEventDisableTiming
+#define EventBlockingSync cudaEventBlockingSync
+
+#define OccupancyMaxPotentialBlockSize cudaOccupancyMaxPotentialBlockSize
+
+#define FuncSetAttribute cudaFuncSetAttribute
+#define FuncAttributeMaxDynamicSharedMemorySize cudaFuncAttributeMaxDynamicSharedMemorySize
+
 #endif
-
-#define concat(a,b) a##b
-
-#define Success                concat(MHM2_GPU, Success)
-#define Error_t                concat(MHM2_GPU, Error_t)
-#define GetErrorString         concat(MHM2_GPU, GetErrorString)
-#define Stream_t               concat(MHM2_GPU, Stream_t)
-
-#define Alloc                  concat(MHM2_GPU, Alloc)
-#define Free                   concat(MHM2_GPU, Free)
-#define HostAlloc              concat(MHM2_GPU, HostAlloc)
-#define HostFree               concat(MHM2_GPU, HostFree)
-#define MallocHost             concat(MHM2_GPU, MallocHost)
-
-#define GetDeviceCount         concat(MHM2_GPU, GetDeviceCount)
-#define DeviceProp             concat(MHM2_GPU, DeviceProp)
-#define GetDevice              concat(MHM2_GPU, GetDevice)
-#define GetDeviceProperties    concat(MHM2_GPU, GetDeviceProperties)
-#define SetDevice              concat(MHM2_GPU, SetDevice)
-#define DeviceReset            concat(MHM2_GPU, DeviceReset)
-#define DeviceSynchronize      concat(MHM2_GPU, DeviceSynchronize)
-
-#define MemGetInfo             concat(MHM2_GPU, MemGetInfo)
-#define Memcpy                 concat(MHM2_GPU, Memcpy)
-#define MemcpyAsync            concat(MHM2_GPU, MemcpyAsync)
-#define MemcpyHostToDevice     concat(MHM2_GPU, MemcpyHostToDevice)
-#define MemcpyDeviceToHost     concat(MHM2_GPU, MemcpyDeviceToHost)
-#define Memset                 concat(MHM2_GPU, Memset)
-
-#define HostAlloc              concat(MHM2_GPU, HostAlloc)
-
-#define StreamCreate           concat(MHM2_GPU, StreamCreate)
-#define StreamDestroy          concat(MHM2_GPU, StreamDestroy)
-#define StreamSynchronize      concat(MHM2_GPU, StreamSynchronize)
-
-
-#define EventCreate            concat(MHM2_GPU, EventCreate)
-#define EventCreateWithFlags   concat(MHM2_GPU, EventCreateWithFlags)
-#define EventDestroy           concat(MHM2_GPU, EventDestroy)
-#define EventRecord            concat(MHM2_GPU, EventRecord)
-#define EventQuery             concat(MHM2_GPU, EventQuery)
-#define EventSynchronize       concat(MHM2_GPU, EventSynchronize)
-#define EventElapsedTime       concat(MHM2_GPU, EventElapsedTime)
-#define EventDisableTiming     concat(MHM2_GPU, EventDisableTiming)
-#define EventBlockingSync      concat(MHM2_GPU, EventBlockingSync)
-
-#define OccupancyMaxPotentialBlockSize concat(MHM2_GPU, OccupancyMaxPotentialBlockSize)
-
-
-#undef concat
 
 // Functions that are common to all cuda code; not to be used by upcxx code
 
 #define ERROR_CHECK(ans) gpu_common::gpu_die((ans), __FILE__, __LINE__)
-
-inline void
-gpuAssert(Error_t code, const char* file, int line, bool abort = true)
-{
-    if(code != Success)
-    {
-        fprintf(stderr, "GPUassert: %s %s %d\n", GetErrorString(code), file, line);
-        if(abort)
-            exit(code);
-    }
-}
-
-#define GPU_ASSERT(ans) gpuAssert((ans), __FILE__, __LINE__);
 
 // we are typecasting uint64_t into this, so we need to check them
 static_assert(sizeof(unsigned long long) == sizeof(uint64_t));

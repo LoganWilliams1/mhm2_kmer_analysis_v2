@@ -471,9 +471,9 @@ void KmerArray<MAX_K>::set(const uint64_t *kmer) {
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
-  ERROR_CHECK(Alloc(&keys, capacity * sizeof(KmerArray<MAX_K>)));
+  ERROR_CHECK(Malloc(&keys, capacity * sizeof(KmerArray<MAX_K>)));
   ERROR_CHECK(Memset((void *)keys, KEY_EMPTY_BYTE, capacity * sizeof(KmerArray<MAX_K>)));
-  ERROR_CHECK(Alloc(&vals, capacity * sizeof(CountsArray)));
+  ERROR_CHECK(Malloc(&vals, capacity * sizeof(CountsArray)));
   ERROR_CHECK(Memset(vals, 0, capacity * sizeof(CountsArray)));
 }
 
@@ -486,9 +486,9 @@ void KmerCountsMap<MAX_K>::clear() {
 template <int MAX_K>
 void KmerExtsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
-  ERROR_CHECK(Alloc(&keys, capacity * sizeof(KmerArray<MAX_K>)));
+  ERROR_CHECK(Malloc(&keys, capacity * sizeof(KmerArray<MAX_K>)));
   ERROR_CHECK(Memset((void *)keys, KEY_EMPTY_BYTE, capacity * sizeof(KmerArray<MAX_K>)));
-  ERROR_CHECK(Alloc(&vals, capacity * sizeof(CountExts)));
+  ERROR_CHECK(Malloc(&vals, capacity * sizeof(CountExts)));
   ERROR_CHECK(Memset(vals, 0, capacity * sizeof(CountExts)));
 }
 
@@ -573,12 +573,12 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // these are not used for kmers from reads
   elem_buff_host.counts = nullptr;
   // buffer on the device
-  ERROR_CHECK(Alloc(&packed_elem_buff_dev.seqs, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE));
-  ERROR_CHECK(Alloc(&unpacked_elem_buff_dev.seqs, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * 2));
+  ERROR_CHECK(Malloc(&packed_elem_buff_dev.seqs, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE));
+  ERROR_CHECK(Malloc(&unpacked_elem_buff_dev.seqs, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * 2));
   packed_elem_buff_dev.counts = nullptr;
   unpacked_elem_buff_dev.counts = nullptr;
 
-  ERROR_CHECK(Alloc(&gpu_insert_stats, sizeof(InsertStats)));
+  ERROR_CHECK(Malloc(&gpu_insert_stats, sizeof(InsertStats)));
   ERROR_CHECK(Memset(gpu_insert_stats, 0, sizeof(InsertStats)));
 
   init_timer.stop();
@@ -599,8 +599,8 @@ void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_m
   auto ht_capacity = prime.get();
   ctg_kmers_dev.init(ht_capacity);
   elem_buff_host.counts = new count_t[KCOUNT_GPU_HASHTABLE_BLOCK_SIZE];
-  ERROR_CHECK(Alloc(&packed_elem_buff_dev.counts, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * sizeof(count_t)));
-  ERROR_CHECK(Alloc(&unpacked_elem_buff_dev.counts, 2 * KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * sizeof(count_t)));
+  ERROR_CHECK(Malloc(&packed_elem_buff_dev.counts, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * sizeof(count_t)));
+  ERROR_CHECK(Malloc(&unpacked_elem_buff_dev.counts, 2 * KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * sizeof(count_t)));
   ERROR_CHECK(Memset(gpu_insert_stats, 0, sizeof(InsertStats)));
 }
 
@@ -625,11 +625,11 @@ void HashTableGPUDriver<MAX_K>::insert_supermer_block() {
   int gridsize, threadblocksize;
   dstate->kernel_timer.start();
   get_kernel_config(buff_len, gpu_unpack_supermer_block, gridsize, threadblocksize);
-  LaunchKernel(gpu_unpack_supermer_block, gridsize, threadblocksize, 0, 0, unpacked_elem_buff_dev, packed_elem_buff_dev, buff_len);
+  LaunchKernel(gpu_unpack_supermer_block, gridsize, threadblocksize, unpacked_elem_buff_dev, packed_elem_buff_dev, buff_len);
   get_kernel_config(buff_len * 2, gpu_insert_supermer_block<MAX_K>, gridsize, threadblocksize);
   // gridsize = gridsize * threadblocksize;
   // threadblocksize = 1;
-  LaunchKernel(gpu_insert_supermer_block, gridsize, threadblocksize, 0, 0, is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev, unpacked_elem_buff_dev,
+  LaunchKernel(gpu_insert_supermer_block, gridsize, threadblocksize, is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev, unpacked_elem_buff_dev,
                                                            buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats, dstate->qf);
   // the kernel time is not going to be accurate, because we are not waiting for the kernel to complete
   // need to uncomment the line below, which will decrease performance by preventing the overlap of GPU and CPU execution
@@ -660,14 +660,14 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries)
   num_purged = num_entries = 0;
   unsigned int *counts_gpu;
   int NUM_COUNTS = 2;
-  ERROR_CHECK(Alloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
+  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
   ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(unsigned int)));
   GPUTimer t;
   int gridsize, threadblocksize;
   get_kernel_config(read_kmers_dev.capacity, gpu_purge_invalid<MAX_K>, gridsize, threadblocksize);
   t.start();
   // now purge all invalid kmers (do it on the gpu)
-  LaunchKernel(gpu_purge_invalid, gridsize, threadblocksize, 0, 0, read_kmers_dev, counts_gpu);
+  LaunchKernel(gpu_purge_invalid, gridsize, threadblocksize, read_kmers_dev, counts_gpu);
   t.stop();
   dstate->kernel_timer.inc(t.get_elapsed());
 
@@ -712,7 +712,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   // now compact the hash table entries
   unsigned int *counts_gpu;
   int NUM_COUNTS = 2;
-  ERROR_CHECK(Alloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
+  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
   ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(unsigned int)));
   KmerExtsMap<MAX_K> compact_read_kmers_dev;
   compact_read_kmers_dev.init(num_entries);
@@ -720,7 +720,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   int gridsize, threadblocksize;
   get_kernel_config(read_kmers_dev.capacity, gpu_compact_ht<MAX_K>, gridsize, threadblocksize);
   t.start();
-  LaunchKernel(gpu_compact_ht, gridsize, threadblocksize, 0, 0, read_kmers_dev, compact_read_kmers_dev, counts_gpu);
+  LaunchKernel(gpu_compact_ht, gridsize, threadblocksize, read_kmers_dev, compact_read_kmers_dev, counts_gpu);
   t.stop();
   dstate->kernel_timer.inc(t.get_elapsed());
   read_kmers_dev.clear();
@@ -751,13 +751,13 @@ template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::done_ctg_kmer_inserts(int &attempted_inserts, int &dropped_inserts, int &new_inserts) {
   unsigned int *counts_gpu;
   int NUM_COUNTS = 3;
-  ERROR_CHECK(Alloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
+  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
   ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(unsigned int)));
   GPUTimer t;
   int gridsize, threadblocksize;
   get_kernel_config(ctg_kmers_dev.capacity, gpu_merge_ctg_kmers<MAX_K>, gridsize, threadblocksize);
   t.start();
-  LaunchKernel(gpu_merge_ctg_kmers, gridsize, threadblocksize, 0, 0, read_kmers_dev, ctg_kmers_dev, counts_gpu);
+  LaunchKernel(gpu_merge_ctg_kmers, gridsize, threadblocksize, read_kmers_dev, ctg_kmers_dev, counts_gpu);
   t.stop();
   dstate->kernel_timer.inc(t.get_elapsed());
   ctg_kmers_dev.clear();

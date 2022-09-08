@@ -67,13 +67,13 @@ struct gpu_alignments {
   unsigned* offset_query_gpu;
 
   gpu_alignments(int max_alignments) {
-    ERROR_CHECK(Alloc(&offset_query_gpu, (max_alignments) * sizeof(int)));
-    ERROR_CHECK(Alloc(&offset_ref_gpu, (max_alignments) * sizeof(int)));
-    ERROR_CHECK(Alloc(&ref_start_gpu, (max_alignments) * sizeof(short)));
-    ERROR_CHECK(Alloc(&ref_end_gpu, (max_alignments) * sizeof(short)));
-    ERROR_CHECK(Alloc(&query_end_gpu, (max_alignments) * sizeof(short)));
-    ERROR_CHECK(Alloc(&query_start_gpu, (max_alignments) * sizeof(short)));
-    ERROR_CHECK(Alloc(&scores_gpu, (max_alignments) * sizeof(short)));
+    ERROR_CHECK(Malloc(&offset_query_gpu, (max_alignments) * sizeof(int)));
+    ERROR_CHECK(Malloc(&offset_ref_gpu, (max_alignments) * sizeof(int)));
+    ERROR_CHECK(Malloc(&ref_start_gpu, (max_alignments) * sizeof(short)));
+    ERROR_CHECK(Malloc(&ref_end_gpu, (max_alignments) * sizeof(short)));
+    ERROR_CHECK(Malloc(&query_end_gpu, (max_alignments) * sizeof(short)));
+    ERROR_CHECK(Malloc(&query_start_gpu, (max_alignments) * sizeof(short)));
+    ERROR_CHECK(Malloc(&scores_gpu, (max_alignments) * sizeof(short)));
   }
 
   ~gpu_alignments() {
@@ -186,6 +186,7 @@ struct adept_sw::DriverState {
   gpu_alignments* gpu_data;
   unsigned half_length_A = 0;
   unsigned half_length_B = 0;
+  int max_rlen = 0;
 };
 
 adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score,
@@ -200,14 +201,15 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   driver_state->misMatchScore = mismatch_score;
   driver_state->startGap = gap_opening_score;
   driver_state->extendGap = gap_extending_score;
+  driver_state->max_rlen = max_rlen;
 
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " get_num_gpus=" << elapsed.count();
 
-  ERROR_CHECK(HostAlloc(&(alignments.ref_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(HostAlloc(&(alignments.ref_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(HostAlloc(&(alignments.query_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(HostAlloc(&(alignments.query_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(HostAlloc(&(alignments.top_scores), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&(alignments.ref_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&(alignments.ref_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&(alignments.query_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&(alignments.query_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&(alignments.top_scores), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocHost=" << elapsed.count();
 
   gpu_utils::set_gpu_device(driver_state->rank_me);
@@ -218,17 +220,17 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   }
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " streamcreate=" << elapsed.count();
 
-  ERROR_CHECK(HostAlloc(&driver_state->offsetA_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(HostAlloc(&driver_state->offsetB_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&driver_state->offsetA_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&driver_state->offsetB_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocHost2=" << elapsed.count();
 
   // FIXME: hack for max contig and read size -> multiplying max_rlen by 2 for contigs
-  ERROR_CHECK(Alloc(&driver_state->strA_d, 2 * max_rlen * KLIGN_GPU_BLOCK_SIZE * sizeof(char)));
-  ERROR_CHECK(Alloc(&driver_state->strB_d, max_rlen * KLIGN_GPU_BLOCK_SIZE * sizeof(char)));
+  ERROR_CHECK(Malloc(&driver_state->strA_d, 2 * max_rlen * KLIGN_GPU_BLOCK_SIZE * sizeof(char)));
+  ERROR_CHECK(Malloc(&driver_state->strB_d, max_rlen * KLIGN_GPU_BLOCK_SIZE * sizeof(char)));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocs=" << elapsed.count();
 
-  ERROR_CHECK(HostAlloc(&driver_state->strA, 2 * sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(HostAlloc(&driver_state->strB, sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&driver_state->strA, 2 * sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost(&driver_state->strB, sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocHost3=" << elapsed.count();
 
   driver_state->gpu_data = new gpu_alignments(KLIGN_GPU_BLOCK_SIZE);  // gpu mallocs
@@ -248,18 +250,18 @@ adept_sw::GPUDriver::~GPUDriver() {
   // won't have been allocated if there was no GPU present
   if (!alignments.ref_begin) return;
   gpu_utils::set_gpu_device(driver_state->rank_me);
-  ERROR_CHECK(HostFree(alignments.ref_begin));
-  ERROR_CHECK(HostFree(alignments.ref_end));
-  ERROR_CHECK(HostFree(alignments.query_begin));
-  ERROR_CHECK(HostFree(alignments.query_end));
-  ERROR_CHECK(HostFree(alignments.top_scores));
+  ERROR_CHECK(FreeHost(alignments.ref_begin));
+  ERROR_CHECK(FreeHost(alignments.ref_end));
+  ERROR_CHECK(FreeHost(alignments.query_begin));
+  ERROR_CHECK(FreeHost(alignments.query_end));
+  ERROR_CHECK(FreeHost(alignments.top_scores));
 
   ERROR_CHECK(Free(driver_state->strA_d));
   ERROR_CHECK(Free(driver_state->strB_d));
-  ERROR_CHECK(HostFree(driver_state->offsetA_h));
-  ERROR_CHECK(HostFree(driver_state->offsetB_h));
-  ERROR_CHECK(HostFree(driver_state->strA));
-  ERROR_CHECK(HostFree(driver_state->strB));
+  ERROR_CHECK(FreeHost(driver_state->offsetA_h));
+  ERROR_CHECK(FreeHost(driver_state->offsetB_h));
+  ERROR_CHECK(FreeHost(driver_state->strA));
+  ERROR_CHECK(FreeHost(driver_state->strB));
 
   ERROR_CHECK(EventDestroy(driver_state->event_rev_0));
   ERROR_CHECK(EventDestroy(driver_state->event_rev_1));
@@ -357,22 +359,24 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   asynch_mem_copies_htd(driver_state->gpu_data, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,
                         driver_state->half_length_B, totalLengthA, totalLengthB, sequences_per_stream, sequences_stream_leftover,
-                        driver_state->streams_cuda);
+                        driver_state->streams_cuda, driver_state->max_rlen);
   unsigned minSize = (maxReadSize < maxContigSize) ? maxReadSize : maxContigSize;
   unsigned totShmem = 3 * (minSize + 1) * sizeof(short);
   unsigned alignmentPad = 4 + (4 - totShmem % 4);
   size_t ShmemBytes = totShmem + alignmentPad;
-  // if (ShmemBytes > 48000)
-  //   ERROR_CHECK(FuncSetAttribute(gpu_bsw::sequence_dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
+#ifdef CUDA_GPU
+  if (ShmemBytes > 48000)
+    ERROR_CHECK(FuncSetAttribute(gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
+#endif
 
-  LaunchKernel(gpu_bsw::dna_kernel, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0], 
+  LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0], 
       driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu, driver_state->gpu_data->offset_query_gpu,
       driver_state->gpu_data->ref_start_gpu, driver_state->gpu_data->ref_end_gpu, driver_state->gpu_data->query_start_gpu,
       driver_state->gpu_data->query_end_gpu, driver_state->gpu_data->scores_gpu, driver_state->matchScore,
       driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap, false);
 
 
-  LaunchKernel(gpu_bsw::dna_kernel, sequences_per_stream + sequences_stream_leftover, minSize, ShmemBytes, driver_state->streams_cuda[1], 
+  LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream + sequences_stream_leftover, minSize, ShmemBytes, driver_state->streams_cuda[1], 
           driver_state->strA_d + driver_state->half_length_A, driver_state->strB_d + driver_state->half_length_B,
           driver_state->gpu_data->offset_ref_gpu + sequences_per_stream,
           driver_state->gpu_data->offset_query_gpu + sequences_per_stream,
@@ -414,13 +418,13 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
   int newMin = get_new_min_length(alAend, alBend, blocksLaunched);  // find the new largest of smaller lengths
 
   // ERROR_CHECK(EventCreateWithFlags(&driver_state->event_rev, EventDisableTiming | EventBlockingSync));
-  LaunchKernel(gpu_bsw::dna_kernel, sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0], 
+  LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0], 
       driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu, driver_state->gpu_data->offset_query_gpu,
       driver_state->gpu_data->ref_start_gpu, driver_state->gpu_data->ref_end_gpu, driver_state->gpu_data->query_start_gpu,
       driver_state->gpu_data->query_end_gpu, driver_state->gpu_data->scores_gpu, driver_state->matchScore,
       driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap, true);
 
-  LaunchKernel(gpu_bsw::dna_kernel, sequences_per_stream + sequences_stream_leftover, newMin, ShmemBytes, driver_state->streams_cuda[1], 
+  LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream + sequences_stream_leftover, newMin, ShmemBytes, driver_state->streams_cuda[1], 
           driver_state->strA_d + driver_state->half_length_A, driver_state->strB_d + driver_state->half_length_B,
           driver_state->gpu_data->offset_ref_gpu + sequences_per_stream,
           driver_state->gpu_data->offset_query_gpu + sequences_per_stream,

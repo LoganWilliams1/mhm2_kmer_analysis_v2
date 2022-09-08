@@ -247,13 +247,13 @@ kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int 
   gpu_utils::set_gpu_device(upcxx_rank_me);
   max_kmers = KCOUNT_SEQ_BLOCK_SIZE - kmer_len + 1;
 
-  ERROR_CHECK(Alloc((void **)&dev_seqs, KCOUNT_SEQ_BLOCK_SIZE));
-  ERROR_CHECK(Alloc((void **)&dev_kmer_targets, max_kmers * sizeof(int)));
+  ERROR_CHECK(Malloc((void **)&dev_seqs, KCOUNT_SEQ_BLOCK_SIZE));
+  ERROR_CHECK(Malloc((void **)&dev_kmer_targets, max_kmers * sizeof(int)));
 
-  ERROR_CHECK(Alloc((void **)&dev_supermers, max_kmers * sizeof(SupermerInfo)));
-  ERROR_CHECK(Alloc((void **)&dev_packed_seqs, halve_up(KCOUNT_SEQ_BLOCK_SIZE)));
-  ERROR_CHECK(Alloc((void **)&dev_num_supermers, sizeof(int)));
-  ERROR_CHECK(Alloc((void **)&dev_num_valid_kmers, sizeof(int)));
+  ERROR_CHECK(Malloc((void **)&dev_supermers, max_kmers * sizeof(SupermerInfo)));
+  ERROR_CHECK(Malloc((void **)&dev_packed_seqs, halve_up(KCOUNT_SEQ_BLOCK_SIZE)));
+  ERROR_CHECK(Malloc((void **)&dev_num_supermers, sizeof(int)));
+  ERROR_CHECK(Malloc((void **)&dev_num_valid_kmers, sizeof(int)));
 
   // total storage required is approx KCOUNT_SEQ_BLOCK_SIZE * (1 + num_kmers_longs * sizeof(uint64_t) + sizeof(int) + 1)
   dstate = new ParseAndPackDriverState();
@@ -291,13 +291,13 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
   int gridsize, threadblocksize;
   get_kernel_config(seqs.length(), parse_and_pack, gridsize, threadblocksize);
   kernel_timer.start();
-  LaunchKernel(parse_and_pack, gridsize, threadblocksize, 0, 0, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets,
+  LaunchKernel(parse_and_pack, gridsize, threadblocksize, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets,
                                                 upcxx_rank_n);
 
   ERROR_CHECK(Memset(dev_num_supermers, 0, sizeof(int)));
   ERROR_CHECK(Memset(dev_num_valid_kmers, 0, sizeof(int)));
   get_kernel_config(num_kmers, build_supermers, gridsize, threadblocksize);
-  LaunchKernel(build_supermers, gridsize, threadblocksize, 0, 0, dev_seqs, dev_kmer_targets, num_kmers, kmer_len, seqs.length(), dev_supermers,
+  LaunchKernel(build_supermers, gridsize, threadblocksize, dev_seqs, dev_kmer_targets, num_kmers, kmer_len, seqs.length(), dev_supermers,
                                                  dev_num_supermers, dev_num_valid_kmers, upcxx_rank_me);
   ERROR_CHECK(Memcpy(&num_valid_kmers, dev_num_valid_kmers, sizeof(unsigned int), MemcpyDeviceToHost));
   unsigned int num_supermers;
@@ -322,7 +322,7 @@ void kcount_gpu::ParseAndPackGPUDriver::pack_seq_block(const string &seqs) {
   get_kernel_config(packed_seqs_len, pack_seqs, gridsize, threadblocksize);
   GPUTimer t;
   t.start();
-  LaunchKernel(pack_seqs, gridsize, threadblocksize, 0, 0, dev_seqs, dev_packed_seqs, seqs.length());
+  LaunchKernel(pack_seqs, gridsize, threadblocksize, dev_seqs, dev_packed_seqs, seqs.length());
   // this GPUTimer forces a wait for the GPU kernel to complete
   t.stop();
   t_kernel += t.get_elapsed();

@@ -220,7 +220,6 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if(hash_val == orig_hash){ // loop till you reach the same starting positions and then return error
        printf("*****end reached, hashtable full*****\n");  // for debugging
-       exit(99);
     }
   }
 }
@@ -240,7 +239,6 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if(hash_val == orig_hash){ // loop till you reach the same starting positions and then return error
         printf("*****end reached, hashtable full*****\n"); // for debugging
-        exit(99);
     }
   }
 }
@@ -259,15 +257,21 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
   unsigned orig_hash = hash_val;
   int done = 0;
   int prev;
+  int mask;
 
   while (true) {
+#ifdef CUDA_GPU
+    if (__all_sync(done, __activemask())) return thread_ht[hash_val];
+#endif
+#ifdef HIP_GPU
     if (__all(done)) return thread_ht[hash_val];
+#endif
 
     if (!done) {
       prev = atomicCAS(&thread_ht[hash_val].key.length, EMPTY, kmer_key.length);
 
 #ifdef CUDA_GPU
-      int mask = __match_any_sync(__activemask(), (unsigned long long)&thread_ht[hash_val]); // all the threads in the warp which
+      mask = __match_any_sync(__activemask(), (unsigned long long)&thread_ht[hash_val]); // all the threads in the warp which
       // have same address
 #endif
 
@@ -291,12 +295,10 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
         // return thread_ht[hash_val];
       }
     }
-    if (__all(done)) return thread_ht[hash_val];
     if (!done) {
       hash_val = (hash_val + 1) % max_size;                 // hash_val = (hash_val + 1) & (HT_SIZE -1);
       if (hash_val == orig_hash) {                          // loop till you reach the same starting positions and then return error
         printf("*****end reached, hashtable full*****\n");  // for debugging
-        exit(99);
       }
     }
   }

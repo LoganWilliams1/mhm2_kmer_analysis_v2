@@ -221,26 +221,26 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   loc_ht_bool *d_ht_bool;
   uint32_t *final_walk_lens_d;
   // allocate GPU  memory
-  ERROR_CHECK(Alloc(&prefix_ht_size_d, sizeof(uint32_t) * slice_size));
-  ERROR_CHECK(Alloc(&cid_d, sizeof(uint64_t) * slice_size));
-  ERROR_CHECK(Alloc(&ctg_seq_offsets_d, sizeof(uint32_t) * slice_size));
-  ERROR_CHECK(Alloc(&reads_l_offset_d, sizeof(uint32_t) * max_l_rds_its));
-  ERROR_CHECK(Alloc(&reads_r_offset_d, sizeof(uint32_t) * max_r_rds_its));
-  ERROR_CHECK(Alloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * slice_size));
-  ERROR_CHECK(Alloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * slice_size));
-  ERROR_CHECK(Alloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_it));
-  ERROR_CHECK(Alloc(&reads_left_d, sizeof(char) * max_read_size * max_l_rds_its));
-  ERROR_CHECK(Alloc(&reads_right_d, sizeof(char) * max_read_size * max_r_rds_its));
-  ERROR_CHECK(Alloc(&depth_d, sizeof(double) * slice_size));
-  ERROR_CHECK(Alloc(&quals_right_d, sizeof(char) * max_read_size * max_r_rds_its));
-  ERROR_CHECK(Alloc(&quals_left_d, sizeof(char) * max_read_size * max_l_rds_its));
-  ERROR_CHECK(Alloc(&term_counts_d, sizeof(uint32_t) * 3));
+  ERROR_CHECK(Malloc(&prefix_ht_size_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&cid_d, sizeof(uint64_t) * slice_size));
+  ERROR_CHECK(Malloc(&ctg_seq_offsets_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&reads_l_offset_d, sizeof(uint32_t) * max_l_rds_its));
+  ERROR_CHECK(Malloc(&reads_r_offset_d, sizeof(uint32_t) * max_r_rds_its));
+  ERROR_CHECK(Malloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_it));
+  ERROR_CHECK(Malloc(&reads_left_d, sizeof(char) * max_read_size * max_l_rds_its));
+  ERROR_CHECK(Malloc(&reads_right_d, sizeof(char) * max_read_size * max_r_rds_its));
+  ERROR_CHECK(Malloc(&depth_d, sizeof(double) * slice_size));
+  ERROR_CHECK(Malloc(&quals_right_d, sizeof(char) * max_read_size * max_r_rds_its));
+  ERROR_CHECK(Malloc(&quals_left_d, sizeof(char) * max_read_size * max_l_rds_its));
+  ERROR_CHECK(Malloc(&term_counts_d, sizeof(uint32_t) * 3));
   // one local hashtable for each thread, so total hash_tables equal to vec_size i.e. total contigs
-  ERROR_CHECK(Alloc(&d_ht, sizeof(loc_ht) * max_ht));
-  ERROR_CHECK(Alloc(&longest_walks_d, sizeof(char) * slice_size * max_walk_len));
-  ERROR_CHECK(Alloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * slice_size));
-  ERROR_CHECK(Alloc(&d_ht_bool, sizeof(loc_ht_bool) * slice_size * max_walk_len));
-  ERROR_CHECK(Alloc(&final_walk_lens_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&d_ht, sizeof(loc_ht) * max_ht));
+  ERROR_CHECK(Malloc(&longest_walks_d, sizeof(char) * slice_size * max_walk_len));
+  ERROR_CHECK(Malloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * slice_size));
+  ERROR_CHECK(Malloc(&d_ht_bool, sizeof(loc_ht_bool) * slice_size * max_walk_len));
+  ERROR_CHECK(Malloc(&final_walk_lens_d, sizeof(uint32_t) * slice_size));
 
   slice_size = tot_extensions / iterations;
 
@@ -326,7 +326,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
 
     int64_t sum_ext = 0, num_walks = 0;
     uint32_t qual_offset_ = qual_offset;
-    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, 0, 0, 
+    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, 
         cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_right_d, quals_right_d, reads_r_offset_d, rds_r_cnt_offset_d, depth_d, d_ht,
         prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len, term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size,
         max_read_count, qual_offset_, longest_walks_d, mer_walk_temp_d, final_walk_lens_d, vec_size);
@@ -356,7 +356,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     // cpying rev comped ctgs to device on same memory as previous ctgs
     ERROR_CHECK(Memcpy(ctg_seqs_d, ctgs_seqs_rc_h.get(), sizeof(char) * ctgs_offset_sum, MemcpyHostToDevice));
 
-    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk, 0, 0, 
+    LaunchKernel(iterative_walks_kernel, blocks, thread_per_blk,
         cid_d, ctg_seq_offsets_d, ctg_seqs_d, reads_left_d, quals_left_d, reads_l_offset_d, rds_l_cnt_offset_d, depth_d, d_ht,
         prefix_ht_size_d, d_ht_bool, mer_len, max_mer_len, term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size,
         max_read_count, qual_offset_, longest_walks_d, mer_walk_temp_d, final_walk_lens_d, vec_size);

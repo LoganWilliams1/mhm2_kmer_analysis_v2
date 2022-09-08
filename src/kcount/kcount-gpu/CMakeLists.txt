@@ -9,7 +9,7 @@ if(ENABLE_CUDA)
   message(STATUS "Building for CUDA")
   add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
-    target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
+	  target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
     # unsuccessful attempt to suppress warning about recursion
     target_link_options(
       KCOUNT_GPU_LIBRARY_obj PRIVATE $<DEVICE_LINK:--nvlink-options
@@ -25,7 +25,7 @@ if(ENABLE_CUDA)
 
   if(KCOUNT_GPU_SHARED)
     add_library(KCOUNT_GPU_LIBRARY_shared SHARED
-                $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
+	    $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
     set_property(TARGET KCOUNT_GPU_LIBRARY_shared
                 PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
     target_link_libraries(KCOUNT_GPU_LIBRARY_shared INTERFACE)
@@ -33,7 +33,7 @@ if(ENABLE_CUDA)
   endif()
   if(KCOUNT_GPU_STATIC)
     add_library(KCOUNT_GPU_LIBRARY_static STATIC
-                $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
+	    $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
     target_link_libraries(KCOUNT_GPU_LIBRARY_static INTERFACE)
     # unsuccessful attempt to suppress warning about recursion
     target_link_options(
@@ -87,14 +87,7 @@ elseif(ENABLE_HIP)
 #     set_property(TARGET KCOUNT_GPU_LIBRARY_static PROPERTY HIP_SEPARABLE_COMPILATION ON)   
     install(TARGETS KCOUNT_GPU_LIBRARY_static ARCHIVE DESTINATION lib)
   endif()
+else()
+  message(FATAL_ERROR "Trying to build kcount-gpu but neither CUDA nor HIP is not enabled")
 endif() # CUDA or HIP
 
-if(KCOUNT_GPU_STATIC)
-  add_library(KCOUNT_GPU_LIBRARY_static STATIC
-              $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
-  target_link_libraries(KCOUNT_GPU_LIBRARY_static INTERFACE)
-  set_property(TARGET KCOUNT_GPU_LIBRARY_static
-               PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-  install(TARGETS KCOUNT_GPU_LIBRARY_static ARCHIVE DESTINATION lib)
-
-endif()

@@ -200,7 +200,9 @@ string gpu_utils::get_gpu_device_descriptions() {
     os << "  Compute capability: " << prop.major << "." << prop.minor << "\n";
     os << "  Clock Rate: " << prop.clockRate << "kHz\n";
     os << "  Total SMs: " << prop.multiProcessorCount << "\n";
+#ifdef HIP_GPU
     os << "  Max Shared Memory Per SM: " << prop.maxSharedMemoryPerMultiProcessor << " bytes\n";
+#endif
     os << "  Registers Per Block: " << prop.regsPerBlock << " 32-bit\n";
     os << "  Max threads per SM: " << prop.maxThreadsPerMultiProcessor << "\n";
     os << "  L2 Cache Size: " << prop.l2CacheSize << " bytes\n";
