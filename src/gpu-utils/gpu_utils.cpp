@@ -182,6 +182,7 @@ void gpu_utils::initialize_gpu(double& time_to_initialize, int rank_me) {
 }
 
 string gpu_utils::get_gpu_device_descriptions() {
+  
   int num_devs = get_gpu_device_count();
   ostringstream os;
   os << "Number of GPU devices visible: " << num_devs << "\n";

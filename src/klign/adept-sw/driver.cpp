@@ -350,8 +350,6 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
     offsetSumB += sequencesB[i].size();
   }
 
-  // ERROR_CHECK(EventCreateWithFlags(&driver_state->event_fwd, EventDisableTiming | EventBlockingSync));
-
   asynch_mem_copies_htd(driver_state->gpu_data, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,
                         driver_state->half_length_B, totalLengthA, totalLengthB, sequences_per_stream, sequences_stream_leftover,
@@ -435,6 +433,10 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
 //does not work without the below stream synchs on AMDGPUs
   StreamSynchronize(driver_state->streams_cuda[0]);
   StreamSynchronize(driver_state->streams_cuda[1]);
+
+//does not work without the below stream synchs on AMDGPUs
+  cudaStreamSynchronize(driver_state->streams_cuda[0]);
+  cudaStreamSynchronize(driver_state->streams_cuda[1]);
 
   asynch_mem_copies_dth(driver_state->gpu_data, alAbeg, alBbeg, top_scores_cpu, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda);

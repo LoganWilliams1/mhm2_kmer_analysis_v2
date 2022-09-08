@@ -90,4 +90,3 @@ elseif(ENABLE_HIP)
 else()
   message(FATAL_ERROR "Trying to build kcount-gpu but neither CUDA nor HIP is not enabled")
 endif() # CUDA or HIP
-
