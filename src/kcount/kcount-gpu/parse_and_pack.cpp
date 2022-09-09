@@ -212,11 +212,9 @@ inline __device__ uint8_t get_packed_val(char base) {
   return 0;
 }
 
-inline int halve_up(int x) { return (x + 1) / 2; }
-
 __global__ void pack_seqs(char *dev_seqs, char *dev_packed_seqs, int seqs_len) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
-  int packed_seqs_len = halve_up(seqs_len);
+  int packed_seqs_len = (seqs_len + 1) / 2;
   if (threadid < packed_seqs_len) {
     int seqs_i = threadid * 2;
     char packed = get_packed_val(dev_seqs[seqs_i]);
@@ -257,7 +255,7 @@ kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int 
   ERROR_CHECK(Malloc((void **)&dev_kmer_targets, max_kmers * sizeof(int)));
 
   ERROR_CHECK(Malloc((void **)&dev_supermers, max_kmers * sizeof(SupermerInfo)));
-  ERROR_CHECK(Malloc((void **)&dev_packed_seqs, halve_up(KCOUNT_SEQ_BLOCK_SIZE)));
+  ERROR_CHECK(Malloc((void **)&dev_packed_seqs, (KCOUNT_SEQ_BLOCK_SIZE + 1) / 2));
   ERROR_CHECK(Malloc((void **)&dev_num_supermers, sizeof(int)));
   ERROR_CHECK(Malloc((void **)&dev_num_valid_kmers, sizeof(int)));
 
@@ -321,7 +319,7 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
 
 void kcount_gpu::ParseAndPackGPUDriver::pack_seq_block(const string &seqs) {
   gpu_utils::set_gpu_device(dstate->rank_me);
-  int packed_seqs_len = halve_up(seqs.length());
+  int packed_seqs_len = (seqs.length() + 1) / 2;
   ERROR_CHECK(Memcpy(dev_seqs, &seqs[0], seqs.length(), MemcpyHostToDevice));
   ERROR_CHECK(Memset(dev_packed_seqs, 0, packed_seqs_len));
   int gridsize, threadblocksize;

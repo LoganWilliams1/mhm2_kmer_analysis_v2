@@ -211,36 +211,30 @@ struct MerFreqs {
 struct loc_ht {
   cstr_type key;
   gpu_loc_assem::MerFreqs val;
+  __device__ loc_ht() : key{}, val{} {}
   __device__ loc_ht(cstr_type in_key, gpu_loc_assem::MerFreqs in_val) {
     key = in_key;
     val = in_val;
   }
-  __device__ static loc_ht& INVALID() {
-    static loc_ht _ = {};
-    return _;
-  }
-  __device__ static bool is_valid(loc_ht& x) { return &x != &INVALID(); }
+  __device__ static bool is_valid(const loc_ht& x) { x.key.length > 0; }
 };
 
 struct loc_ht_bool {
   cstr_type key;
   bool val;
+  __device__ loc_ht_bool() : key{}, val{} {}
   __device__ loc_ht_bool(cstr_type in_key, bool in_val) {
     key = in_key;
     val = in_val;
   }
-  __device__ static loc_ht_bool& INVALID() {
-    static loc_ht _ = {};
-    return _;
-  }
-  __device__ static bool is_valid(loc_ht_bool& x) { return &x != &INVALID(); }
+  __device__ static bool is_valid(const loc_ht_bool& x) { return x.key.length > 0; }
 };
 
 __device__ void print_mer(cstr_type& mer);
 __global__ void ht_kernel(loc_ht* ht, char* contigs, int* offset_sum, int kmer_size);
 __device__ bool ht_insert(loc_ht* thread_ht, cstr_type kmer_key, cstr_type ctg_val, uint32_t max_size);
-__device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_val, uint32_t max_size) __device__
-    void ht_delete(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
+__device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_val, uint32_t max_size);
+__device__ void ht_delete(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
 __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
 __device__ unsigned hash_func(cstr_type key, uint32_t max_size);
 __device__ void count_mers(loc_ht* thrd_loc_ht, char* loc_r_reads, uint32_t max_ht_size, char* loc_r_quals, int32_t* reads_r_offset,

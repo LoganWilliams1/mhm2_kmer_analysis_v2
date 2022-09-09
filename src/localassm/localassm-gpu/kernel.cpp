@@ -245,7 +245,7 @@ __device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_
     if (if_empty == EMPTY) {                        // the case where there is a key but no val, will not happen
       thread_ht[hash_val].key = kmer_key;
       thread_ht[hash_val].val = bool_val;
-      return;
+      return true;
     }
     hash_val = (hash_val + 1) % max_size;  //(hash_val + 1) & (HT_SIZE-1);
     // count++; //for debugging
@@ -266,7 +266,7 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      return loc_ht::INVALID();
+      return thread_ht[max_size]; // last extra bucket is INVALID
     }
   }
 }
@@ -285,7 +285,7 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      return loc_ht_bool::INVALID();
+      return thread_ht[max_size]; // last extra bucket is INVALID
     }
   }
 }
@@ -309,10 +309,10 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
 
   while (true) {
 #ifdef CUDA_GPU
-    if (__all_sync(done, __activemask())) return valid ? thread_ht[hash_val] : loc_ht::INVALID();
+    if (__all_sync(done, __activemask())) return valid ? thread_ht[hash_val] : thread_ht[max_size]; // last extra bucket is INVALID
 #endif
 #ifdef HIP_GPU
-    if (__all(done)) return valid ? thread_ht[hash_val] : loc_ht::INVALID();
+    if (__all(done)) return valid ? thread_ht[hash_val] : thread_ht[max_size]; // last extra bucket is INVALID
 #endif
 
     if (!done) {
@@ -345,7 +345,7 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
       hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
       if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
         valid = false;
-        done = 1
+        done = 1;
       }
     }
   }

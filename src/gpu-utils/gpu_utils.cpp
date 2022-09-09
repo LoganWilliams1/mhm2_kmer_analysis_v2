@@ -149,7 +149,7 @@ vector<string> gpu_utils::get_gpu_uuids() {
     DeviceProp &prop = get_gpu_properties(i);
     bool set_dev = false;
 #ifdef CUDA_GPU
-#if CUDA_VERSION >= 10000)
+#if (CUDA_VERSION >= 10000)
     uuids.push_back(get_uuid_str(prop.uuid.bytes));
     set_dev = true;
 #endif
@@ -202,14 +202,18 @@ string gpu_utils::get_gpu_device_descriptions() {
     os << "  PCI bus ID: " << prop.pciBusID << "\n";
     os << "  UUID: " << uuids[i] << "\n";
     os << "  PCI domainID: " << prop.pciDomainID << "\n";
-#ifdef CUDA_GPU
-    os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
-#endif
     os << "  Compute capability: " << prop.major << "." << prop.minor << "\n";
     os << "  Clock Rate: " << prop.clockRate << "kHz\n";
     os << "  Total SMs: " << prop.multiProcessorCount << "\n";
+#ifdef CUDA_GPU
+    os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
+    os << "  Shared Memory Per SM: " << prop.sharedMemPerMultiprocessor << " bytes\n";
+    os << "  Registers Per SM: " << prop.regsPerMultiprocessor << " 32-bit\n";
+#endif
+#ifdef HIP_GPU
     os << "  Max Shared Memory Per SM: " << prop.maxSharedMemoryPerMultiProcessor << " bytes\n";
     os << "  Registers Per Block: " << prop.regsPerBlock << " 32-bit\n";
+#endif
     os << "  Max threads per SM: " << prop.maxThreadsPerMultiProcessor << "\n";
     os << "  L2 Cache Size: " << prop.l2CacheSize << " bytes\n";
     os << "  Total Global Memory: " << prop.totalGlobalMem << " bytes\n";

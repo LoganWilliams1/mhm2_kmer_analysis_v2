@@ -236,10 +236,12 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   ERROR_CHECK(Malloc(&quals_left_d, sizeof(char) * max_read_size * max_l_rds_its));
   ERROR_CHECK(Malloc(&term_counts_d, sizeof(uint32_t) * 3));
   // one local hashtable for each thread, so total hash_tables equal to vec_size i.e. total contigs
-  ERROR_CHECK(Malloc(&d_ht, sizeof(loc_ht) * max_ht));
+  ERROR_CHECK(Malloc(&d_ht, sizeof(loc_ht) * (max_ht+1))); // one more for invalid last
+  ERROR_CHECK(Memset(d_ht + max_ht, 0, sizeof(loc_ht))); // set the invalid record
   ERROR_CHECK(Malloc(&longest_walks_d, sizeof(char) * slice_size * max_walk_len));
   ERROR_CHECK(Malloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * slice_size));
-  ERROR_CHECK(Malloc(&d_ht_bool, sizeof(loc_ht_bool) * slice_size * max_walk_len));
+  ERROR_CHECK(Malloc(&d_ht_bool, sizeof(loc_ht_bool) * (slice_size * max_walk_len + 1))); // one more for invalid last
+  ERROR_CHECK(Memset(d_ht_bool + (slice_size * max_walk_len), 0, sizeof(loc_ht_bool))); // set the invalid record
   ERROR_CHECK(Malloc(&final_walk_lens_d, sizeof(uint32_t) * slice_size));
 
   slice_size = tot_extensions / iterations;
