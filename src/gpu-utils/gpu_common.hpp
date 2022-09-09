@@ -145,7 +145,7 @@ inline void get_kernel_config(unsigned max_val, T func, int &gridsize, int &thre
   threadblocksize = 0;  // 1024
   ERROR_CHECK(OccupancyMaxPotentialBlockSize(&mingridsize, &threadblocksize, func, 0, 0));
   gridsize = (max_val + threadblocksize - 1) / threadblocksize;
-}
+};
 
 inline __device__ char comp_nucleotide(char ch) {
   switch (ch) {

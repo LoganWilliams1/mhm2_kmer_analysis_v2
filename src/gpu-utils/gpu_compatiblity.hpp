@@ -97,7 +97,7 @@
 #define EventDisableTiming hipEventDisableTiming
 #define EventBlockingSync hipEventBlockingSync
 
-#define OccupancyMaxPotentialBlockSize hipOccupancyMaxPotentialBlockSize)
+#define OccupancyMaxPotentialBlockSize hipOccupancyMaxPotentialBlockSize
 
 #define FuncSetAttribute hipFuncSetAttribute
 #define FuncGetAttribute hipFuncGetAttribute

@@ -194,11 +194,11 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
 
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " get_num_gpus=" << elapsed.count();
 
-  ERROR_CHECK(MallocHost(&(alignments.ref_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost(&(alignments.ref_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost(&(alignments.query_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost(&(alignments.query_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost(&(alignments.top_scores), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &(alignments.ref_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &(alignments.ref_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &(alignments.query_begin), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &(alignments.query_end), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &(alignments.top_scores), sizeof(short) * KLIGN_GPU_BLOCK_SIZE));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocHost=" << elapsed.count();
 
   gpu_utils::set_gpu_device(driver_state->rank_me);
@@ -209,8 +209,8 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   }
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " streamcreate=" << elapsed.count();
 
-  ERROR_CHECK(MallocHost(&driver_state->offsetA_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost(&driver_state->offsetB_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &driver_state->offsetA_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &driver_state->offsetB_h, sizeof(int) * KLIGN_GPU_BLOCK_SIZE));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocHost2=" << elapsed.count();
 
   // FIXME: hack for max contig and read size -> multiplying max_rlen by 2 for contigs
@@ -218,8 +218,8 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   ERROR_CHECK(Malloc(&driver_state->strB_d, max_rlen * KLIGN_GPU_BLOCK_SIZE * sizeof(char)));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocs=" << elapsed.count();
 
-  ERROR_CHECK(MallocHost(&driver_state->strA, 2 * sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost(&driver_state->strB, sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &driver_state->strA, 2 * sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
+  ERROR_CHECK(MallocHost((void**) &driver_state->strB, sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " mallocHost3=" << elapsed.count();
 
   driver_state->gpu_data = new gpu_alignments(KLIGN_GPU_BLOCK_SIZE);  // gpu mallocs
@@ -342,7 +342,7 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   unsigned alignmentPad = 4 + (4 - totShmem % 4);
   size_t ShmemBytes = totShmem + alignmentPad;
 
-  if (ShmemBytes > 48000) ERROR_CHECK(FuncSetAttribute(gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
+  if (ShmemBytes > 48000) ERROR_CHECK(FuncSetAttribute((const void *) gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
@@ -361,14 +361,14 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
       driver_state->matchScore, driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap, false);
 
   // does not work without the below stream synchs on AMDGPUs
-  StreamSynchronize(driver_state->streams_cuda[0]);
-  StreamSynchronize(driver_state->streams_cuda[1]);
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
 
   // copyin back end index so that we can find new min
   asynch_mem_copies_dth_mid(driver_state->gpu_data, alAend, alBend, sequences_per_stream, sequences_stream_leftover,
                             driver_state->streams_cuda);
-  StreamSynchronize(driver_state->streams_cuda[0]);
-  StreamSynchronize(driver_state->streams_cuda[1]);
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
 
   ERROR_CHECK(EventRecord(driver_state->event_fwd_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_fwd_1, driver_state->streams_cuda[1]));
@@ -394,7 +394,7 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
 
   int newMin = get_new_min_length(alAend, alBend, blocksLaunched);  // find the new largest of smaller lengths
 
-  if (ShmemBytes > 48000) ERROR_CHECK(FuncSetAttribute(gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
+  if (ShmemBytes > 48000) ERROR_CHECK(FuncSetAttribute((const void *) gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
@@ -413,14 +413,14 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
       driver_state->matchScore, driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap, true);
 
   // does not work without the below stream synchs on AMDGPUs
-  StreamSynchronize(driver_state->streams_cuda[0]);
-  StreamSynchronize(driver_state->streams_cuda[1]);
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
 
   // copyin back end index so that we can find new min
   asynch_mem_copies_dth(driver_state->gpu_data, alAbeg, alBbeg, top_scores_cpu, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda);
-  StreamSynchronize(driver_state->streams_cuda[0]);
-  StreamSynchronize(driver_state->streams_cuda[1]);
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
+  ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
 
   ERROR_CHECK(EventRecord(driver_state->event_rev_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_rev_1, driver_state->streams_cuda[1]));

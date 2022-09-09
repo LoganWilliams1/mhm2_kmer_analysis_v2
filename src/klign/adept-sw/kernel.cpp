@@ -72,7 +72,7 @@ __inline__ __device__ short gpu_bsw::warpReduceMax_with_index(short val, short& 
       ind = newInd;
       ind2 = newInd2;
       myMax = val;
-    } else if ((val == tempVal)) {
+    } else if (val == tempVal) {
       // this is kind of redundant and has been done purely to match the results
       // with SSW to get the smallest alignment with highest score. Theoreticaly
       // all the alignmnts with same score are same.

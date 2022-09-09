@@ -61,7 +61,7 @@ __device__ int bcast_warp(int arg) {
 #ifdef HIP_GPU
   value = __shfl(value, 0);  // Get "value" from lane 0
 #endif
-  if (value != arg && laneId == 0) printf("Thread %d failed. with val:%d, arg:%d \n", threadIdx.x, value, arg);
+  if (value != arg && laneId == 0) printf("failed to bcast_warp\n");
   return value;
 }
 
@@ -264,8 +264,7 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      printf("*****end reached, ht_get hashtable full on %d max_size=%d orig_hash=%d*****\n", threadIdx.x, max_size,
-             orig_hash);           // for debugging
+      printf("*****end reached, ht_get hashtable full*****\n");           // for debugging
       return thread_ht[max_size];  // last extra bucket is FULL
     }
   }
@@ -285,8 +284,7 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      printf("*****end reached, ht_get bool hashtable full on %d max_size=%d orig_hash=%d*****\n", threadIdx.x, max_size,
-             orig_hash);           // for debugging
+      printf("*****end reached, ht_get bool hashtable full*****\n");           // for debugging
       return thread_ht[max_size];  // last extra bucket is FULL
     }
   }
@@ -369,8 +367,7 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     if (!done) {
       hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
       if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-        printf("*****end reached, ht_get_atomic hashtable full(atomic) from: thread:%d max_size=%d orig_hash=%d *****\n",
-               threadIdx.x, max_size, orig_hash);  // for debugging
+        printf("*****end reached, ht_get_atomic hashtable full(atomic)*****\n");  // for debugging
         valid = false;
         done = 1;
       }
@@ -389,7 +386,7 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
     // check if there is a cycle in graph
     loc_ht_bool& temp_mer_loop = ht_get(thrd_ht_bool, mer_walk_temp, max_walk_len);
     if (!loc_ht_bool::is_valid(temp_mer_loop)) {
-      printf("*****end reached, bool hashtable full***** on %d max_walk_len=%d\n", threadIdx.x, max_walk_len);  // for debugging
+      printf("*****end reached, bool hashtable full*****\n");  // for debugging
       break;
     }
     if (temp_mer_loop.key.length == EMPTY) {  // if the mer has not been visited, add it to the table and mark visited
@@ -407,7 +404,7 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
     if (!loc_ht::is_valid(temp_mer) ||
         temp_mer.key.length == EMPTY) {  // if mer is not found then dead end reached, terminate the walk
       if (!loc_ht_bool::is_valid(temp_mer_loop))
-        printf("*****end reached, hashtable full***** on %d max_ht_size=%d\n", threadIdx.x, max_ht_size);  // for debugging
+        printf("*****end reached, hashtable full*****\n");  // for debugging
       walk_result = 'X';
 #ifdef DEBUG_PRINT_GPU
       if (idx == test) printf("breaking at mer not found,res: %c\n", walk_result);

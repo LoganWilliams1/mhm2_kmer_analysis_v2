@@ -477,8 +477,8 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
 
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::clear() {
-  Free((void *)keys);
-  Free(vals);
+  ERROR_CHECK(Free((void *)keys));
+  ERROR_CHECK(Free(vals));
 }
 
 template <int MAX_K>
@@ -492,8 +492,8 @@ void KmerExtsMap<MAX_K>::init(int64_t ht_capacity) {
 
 template <int MAX_K>
 void KmerExtsMap<MAX_K>::clear() {
-  Free((void *)keys);
-  Free(vals);
+  ERROR_CHECK(Free((void *)keys));
+  ERROR_CHECK(Free(vals));
 }
 
 template <int MAX_K>
@@ -631,7 +631,7 @@ void HashTableGPUDriver<MAX_K>::insert_supermer_block() {
                unpacked_elem_buff_dev, buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats, dstate->qf);
   // the kernel time is not going to be accurate, because we are not waiting for the kernel to complete
   // need to uncomment the line below, which will decrease performance by preventing the overlap of GPU and CPU execution
-  DeviceSynchronize();
+  ERROR_CHECK(DeviceSynchronize());
   dstate->kernel_timer.stop();
   num_gpu_calls++;
   dstate->insert_timer.stop();
@@ -700,11 +700,11 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   read_kmers_dev.num = num_entries;
   if (elem_buff_host.seqs) delete[] elem_buff_host.seqs;
   if (elem_buff_host.counts) delete[] elem_buff_host.counts;
-  Free(packed_elem_buff_dev.seqs);
-  Free(unpacked_elem_buff_dev.seqs);
-  if (packed_elem_buff_dev.counts) Free(packed_elem_buff_dev.counts);
-  if (unpacked_elem_buff_dev.counts) Free(unpacked_elem_buff_dev.counts);
-  Free(gpu_insert_stats);
+  ERROR_CHECK(Free(packed_elem_buff_dev.seqs));
+  ERROR_CHECK(Free(unpacked_elem_buff_dev.seqs));
+  if (packed_elem_buff_dev.counts) ERROR_CHECK(Free(packed_elem_buff_dev.counts));
+  if (unpacked_elem_buff_dev.counts) ERROR_CHECK(Free(unpacked_elem_buff_dev.counts));
+  ERROR_CHECK(Free(gpu_insert_stats));
   // overallocate to reduce collisions
   num_entries *= 1.3;
   // now compact the hash table entries
@@ -724,7 +724,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   read_kmers_dev.clear();
   unsigned int counts_host[NUM_COUNTS];
   ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(unsigned int), MemcpyDeviceToHost));
-  Free(counts_gpu);
+  ERROR_CHECK(Free(counts_gpu));
   num_dropped = counts_host[0];
   num_unique = counts_host[1];
 #ifdef DEBUG
@@ -761,7 +761,7 @@ void HashTableGPUDriver<MAX_K>::done_ctg_kmer_inserts(int &attempted_inserts, in
   ctg_kmers_dev.clear();
   unsigned int counts_host[NUM_COUNTS];
   ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(unsigned int), MemcpyDeviceToHost));
-  Free(counts_gpu);
+  ERROR_CHECK(Free(counts_gpu));
   attempted_inserts = counts_host[0];
   dropped_inserts = counts_host[1];
   new_inserts = counts_host[2];
