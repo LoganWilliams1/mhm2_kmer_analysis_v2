@@ -12,6 +12,8 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#include "gpu-utils/gpu_compatiblity.hpp"
+
 namespace quotient_filter {
 
 typedef struct quotient_filter quotient_filter;

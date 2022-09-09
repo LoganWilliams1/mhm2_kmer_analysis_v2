@@ -1,3 +1,45 @@
+/*
+ HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
+ through Lawrence Berkeley National Laboratory (subject to receipt of any required
+ approvals from the U.S. Dept. of Energy).  All rights reserved."
+
+ Redistribution and use in source and binary forms, with or without modification,
+ are permitted provided that the following conditions are met:
+
+ (1) Redistributions of source code must retain the above copyright notice, this
+ list of conditions and the following disclaimer.
+
+ (2) Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation and/or
+ other materials provided with the distribution.
+
+ (3) Neither the name of the University of California, Lawrence Berkeley National
+ Laboratory, U.S. Dept. of Energy nor the names of its contributors may be used to
+ endorse or promote products derived from this software without specific prior
+ written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+ EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+ SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ DAMAGE.
+
+ You are under no obligation whatsoever to provide any bug fixes, patches, or upgrades
+ to the features, functionality or performance of the source code ("Enhancements") to
+ anyone; however, if you choose to make your Enhancements available either publicly,
+ or directly to Lawrence Berkeley National Laboratory, without imposing a separate
+ written license agreement for such Enhancements, then you hereby grant the following
+ license: a  non-exclusive, royalty-free perpetual license to install, use, modify,
+ prepare derivative works, incorporate into other computer software, distribute, and
+ sublicense such enhancements or derivative works thereof, in binary and source code
+ form.
+*/
+
 #include "kernel.hpp"
 
 /* This function required some changes for compatibility
@@ -63,7 +105,6 @@ __device__ unsigned hash_func(cstr_type key, uint32_t max_size) {
     h *= m;          \
     h ^= k;          \
   }
-
 __device__ uint32_t MurmurHashAligned2(cstr_type key_in, uint32_t max_size) {
   int len = key_in.length;
   char* key = key_in.start_ptr;
@@ -176,8 +217,9 @@ __device__ uint32_t MurmurHashAligned2(cstr_type key_in, uint32_t max_size) {
   }
 }
 
-__device__ void ht_insert(loc_ht* thread_ht, cstr_type kmer_key, gpu_loc_assem::MerFreqs mer_val, uint32_t max_size) {
+__device__ bool ht_insert(loc_ht* thread_ht, cstr_type kmer_key, gpu_loc_assem::MerFreqs mer_val, uint32_t max_size) {
   unsigned hash_val = hash_func(kmer_key, max_size);
+  unsigned orig_hash = hash_val;
   // int count = 0; // for debugging
   while (true) {
     int if_empty = thread_ht[hash_val].key.length;  // length is set to some unimaginable number to indicate if its empty
@@ -185,14 +227,18 @@ __device__ void ht_insert(loc_ht* thread_ht, cstr_type kmer_key, gpu_loc_assem::
 
       thread_ht[hash_val].key = kmer_key;
       thread_ht[hash_val].val = mer_val;
-      return;
+      return true;
     }
     hash_val = (hash_val + 1) % max_size;  //(hash_val + 1) & (HT_SIZE-1);
+    if (hash_val == orig_hash) {
+      return false;
+    }
   }
 }
 // overload for bool vals
-__device__ void ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_val, uint32_t max_size) {
+__device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_val, uint32_t max_size) {
   unsigned hash_val = hash_func(kmer_key, max_size);
+  unsigned orig_hash = hash_val;
   // int count = 0; // for debugging
   while (true) {
     int if_empty = thread_ht[hash_val].key.length;  // length is set to some unimaginable number to indicate if its empty
@@ -202,7 +248,8 @@ __device__ void ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_
       return;
     }
     hash_val = (hash_val + 1) % max_size;  //(hash_val + 1) & (HT_SIZE-1);
-                                           // count++; //for debugging
+    // count++; //for debugging
+    if (hash_val == orig_hash) return false;
   }
 }
 
@@ -217,9 +264,9 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
       // printf("key found, returning\n");// keep this for debugging
       return thread_ht[hash_val];
     }
-    hash_val = (hash_val + 1) % max_size;                 // hash_val = (hash_val + 1) & (HT_SIZE -1);
-    if (hash_val == orig_hash) {                          // loop till you reach the same starting positions and then return error
-      printf("*****end reached, hashtable full*****\n");  // for debugging
+    hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
+    if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
+      return loc_ht::INVALID();
     }
   }
 }
@@ -236,9 +283,9 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
       // printf("key found, returning\n");// keep this for debugging
       return thread_ht[hash_val];
     }
-    hash_val = (hash_val + 1) % max_size;                 // hash_val = (hash_val + 1) & (HT_SIZE -1);
-    if (hash_val == orig_hash) {                          // loop till you reach the same starting positions and then return error
-      printf("*****end reached, hashtable full*****\n");  // for debugging
+    hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
+    if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
+      return loc_ht_bool::INVALID();
     }
   }
 }
@@ -256,15 +303,16 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
   unsigned hash_val = MurmurHashAligned2(kmer_key, max_size);
   unsigned orig_hash = hash_val;
   int done = 0;
-  int prev;
+  int prev = EMPTY;
   int mask;
+  bool valid = true;
 
   while (true) {
 #ifdef CUDA_GPU
-    if (__all_sync(done, __activemask())) return thread_ht[hash_val];
+    if (__all_sync(done, __activemask())) return valid ? thread_ht[hash_val] : loc_ht::INVALID();
 #endif
 #ifdef HIP_GPU
-    if (__all(done)) return thread_ht[hash_val];
+    if (__all(done)) return valid ? thread_ht[hash_val] : loc_ht::INVALID();
 #endif
 
     if (!done) {
@@ -289,16 +337,15 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
       if (prev != EMPTY && thread_ht[hash_val].key == kmer_key) {
         // printf("key found, returning\n");// keep this for debugging
         done = 1;
-        // return thread_ht[hash_val];
       } else if (prev == EMPTY) {
         done = 1;
-        // return thread_ht[hash_val];
       }
     }
     if (!done) {
-      hash_val = (hash_val + 1) % max_size;                 // hash_val = (hash_val + 1) & (HT_SIZE -1);
-      if (hash_val == orig_hash) {                          // loop till you reach the same starting positions and then return error
-        printf("*****end reached, hashtable full*****\n");  // for debugging
+      hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
+      if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
+        valid = false;
+        done = 1
       }
     }
   }
@@ -308,11 +355,15 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
                           cstr_type& mer_walk_temp, cstr_type& longest_walk, cstr_type& walk, const int idx, int max_walk_len) {
   char walk_result = 'X';
 #ifdef DEBUG_PRINT_GPU
-  int test = 1;
+  int test = 0;
 #endif
   for (int nsteps = 0; nsteps < max_walk_len; nsteps++) {
     // check if there is a cycle in graph
     loc_ht_bool& temp_mer_loop = ht_get(thrd_ht_bool, mer_walk_temp, max_walk_len);
+    if (!loc_ht_bool::is_valid(temp_mer_loop)) {
+      printf("*****end reached, bool hashtable full*****\n");  // for debugging
+      break;
+    }
     if (temp_mer_loop.key.length == EMPTY) {  // if the mer has not been visited, add it to the table and mark visited
       temp_mer_loop.key = mer_walk_temp;
       temp_mer_loop.val = true;
@@ -325,6 +376,10 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
     }
 
     loc_ht& temp_mer = ht_get(thrd_loc_ht, mer_walk_temp, max_ht_size);
+    if (!loc_ht::is_valid(temp_mer)) {
+      printf("*****end reached, hashtable full*****\n");  // for debugging
+      break;
+    }
     if (temp_mer.key.length == EMPTY) {  // if mer is not found then dead end reached, terminate the walk
       walk_result = 'X';
 #ifdef DEBUG_PRINT_GPU
@@ -354,7 +409,7 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
       print_mer(mer_walk_temp);
       printf("ext:%c\n", temp_mer.val.ext);
       printf("walk with mer_len:%d\n", mer_len);
-      // print_mer(walk);
+      print_mer(walk);
     }
 #endif
 
@@ -451,6 +506,10 @@ __device__ void count_mers(loc_ht* thrd_loc_ht, char* loc_r_reads, uint32_t max_
       cstr_type mer(read.start_ptr + start, mer_len);
 
       loc_ht& temp_Mer = ht_get_atomic(thrd_loc_ht, mer, max_ht_size);
+      if (!loc_ht::is_valid(temp_Mer)) {
+        printf("*****end reached, hashtable full*****\n");  // for debugging
+        break;
+      }
 
       int ext_pos = start + mer_len;
       //  assert(ext_pos < (int)read.length); // TODO: verify that assert works on gpu, for now commenting it out and replacing with
@@ -475,10 +534,6 @@ __device__ void count_mers(loc_ht* thrd_loc_ht, char* loc_r_reads, uint32_t max_
       thrd_loc_ht[k].val.set_ext(loc_ctg_depth);
     }
   }
-#ifdef CUDA_GPU
-  __syncwarp();
-#endif
-  int test = 1;
 #ifdef DEBUG_PRINT_GPU
   if (idx == test) {
     if (lane_id == 0)
@@ -530,7 +585,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
     int min_mer_len = LASSM_MIN_KMER_LEN;
     int max_mer_len = LASSM_MAX_KMER_LEN;
 
-    int active = 1;
+    unsigned active = 1;
 
     // the warp portion is for HT phase only so mapping only reads related data based on warp id
     if (warp_id_glb == 0) {
@@ -664,14 +719,14 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
 
         }  // lane id cond ended
       end:
-        // This function does not exist in HIP
-        //__syncwarp(FULL_MASK);
-        /*
-        // This function does not exist in HIP
+#ifdef CUDA_GPU
+        __syncwarp(FULL_MASK);
         unsigned mask = __activemask();
-        unsigned active = mask & 1; // zero if lane 0 has returned
-        */
+        active = mask & 1;  // zero if lane 0 has returned
+#endif
+#ifdef HIP_GPU
         active = bcast_warp(active);
+#endif
         if (active == 0) break;  // return if lane 0 has returned
         shift = bcast_warp(shift);
       }  // warp id cond end

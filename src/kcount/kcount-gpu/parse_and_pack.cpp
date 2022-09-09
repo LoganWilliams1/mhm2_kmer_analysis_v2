@@ -191,6 +191,8 @@ __global__ void build_supermers(char *seqs, int *kmer_targets, int num_kmers, in
   reduce(my_valid_kmers, num_kmers, num_valid_kmers);
 }
 
+static const uint8_t INVALID = 11;
+
 inline __device__ uint8_t get_packed_val(char base) {
   switch (base) {
     case 'a': return 1;
@@ -205,33 +207,36 @@ inline __device__ uint8_t get_packed_val(char base) {
     case 'n': return 9;
     case '_':
     case 0: return 0;
-    default: return 11;  // printf("Invalid value encountered when packing: %d\n", (int)base);
+    default: return INVALID;  // printf("Invalid value encountered when packing: %d\n", (int)base);
   };
   return 0;
 }
 
+inline int halve_up(int x) { return (x + 1) / 2; }
+
 __global__ void pack_seqs(char *dev_seqs, char *dev_packed_seqs, int seqs_len) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
-  int packed_seqs_len = seqs_len / 2;  // + seqs_len % 2;
+  int packed_seqs_len = halve_up(seqs_len);
   if (threadid < packed_seqs_len) {
     int seqs_i = threadid * 2;
     char packed = get_packed_val(dev_seqs[seqs_i]);
-    if ((int)packed == 11) {
-      printf("dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs[seqs_i],
+    if ((int)packed == INVALID) {
+      printf("INVALID dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs[seqs_i],
              packed << 4, packed, seqs_len, packed_seqs_len);
     }
     packed = packed << 4;
-    char packed_ = get_packed_val(dev_seqs[seqs_i + 1]);
-    if ((int)packed_ == 11) {
-      printf("dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
-             dev_seqs[seqs_i], seqs_i + 1, dev_seqs[seqs_i + 1], packed_ << 4, packed_, seqs_len, packed_seqs_len);
+    if (seqs_i + 1 < seqs_len) {
+      // do not overflow as each thread handles 1-2 characters in the sequence
+      char packed_ = get_packed_val(dev_seqs[seqs_i + 1]);
+      if ((int)packed_ == INVALID) {
+        printf("INVALID dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
+               dev_seqs[seqs_i], seqs_i + 1, dev_seqs[seqs_i + 1], packed_ << 4, packed_, seqs_len, packed_seqs_len);
+      }
+      packed |= packed_;
     }
-    packed |= packed_;  // get_packed_val(dev_seqs[seqs_i + 1]);
     dev_packed_seqs[threadid] = packed;
   }
 }
-
-inline int halve_up(int x) { return x / 2 + x % 2; }
 
 kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int upcxx_rank_n, int qual_offset, int kmer_len,
                                                          int num_kmer_longs, int minimizer_len, double &init_time)

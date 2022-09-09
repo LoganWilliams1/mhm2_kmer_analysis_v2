@@ -61,7 +61,10 @@
 struct cstr_type {
   char* start_ptr;
   int length;
-  __device__ cstr_type() {}
+  __device__ cstr_type() {
+    start_ptr = nullptr;
+    length = 0;
+  }
   __device__ cstr_type(char* ptr, int len) {
     start_ptr = ptr;
     length = len;
@@ -212,6 +215,11 @@ struct loc_ht {
     key = in_key;
     val = in_val;
   }
+  __device__ static loc_ht& INVALID() {
+    static loc_ht _ = {};
+    return _;
+  }
+  __device__ static bool is_valid(loc_ht& x) { return &x != &INVALID(); }
 };
 
 struct loc_ht_bool {
@@ -221,12 +229,18 @@ struct loc_ht_bool {
     key = in_key;
     val = in_val;
   }
+  __device__ static loc_ht_bool& INVALID() {
+    static loc_ht _ = {};
+    return _;
+  }
+  __device__ static bool is_valid(loc_ht_bool& x) { return &x != &INVALID(); }
 };
 
 __device__ void print_mer(cstr_type& mer);
 __global__ void ht_kernel(loc_ht* ht, char* contigs, int* offset_sum, int kmer_size);
-__device__ void ht_insert(loc_ht* thread_ht, cstr_type kmer_key, cstr_type ctg_val, uint32_t max_size);
-__device__ void ht_delete(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
+__device__ bool ht_insert(loc_ht* thread_ht, cstr_type kmer_key, cstr_type ctg_val, uint32_t max_size);
+__device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_val, uint32_t max_size) __device__
+    void ht_delete(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
 __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
 __device__ unsigned hash_func(cstr_type key, uint32_t max_size);
 __device__ void count_mers(loc_ht* thrd_loc_ht, char* loc_r_reads, uint32_t max_ht_size, char* loc_r_quals, int32_t* reads_r_offset,

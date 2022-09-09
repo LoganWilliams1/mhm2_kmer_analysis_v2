@@ -40,10 +40,6 @@
  form.
 */
 
-// #include <thrust/device_vector.h>
-// #include <thrust/host_vector.h>
-// #include <thrust/scan.h>
-
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -265,12 +261,6 @@ adept_sw::GPUDriver::~GPUDriver() {
   delete driver_state;
 }
 
-// bool adept_sw::GPUDriver::kernel_is_done() {
-//   if (EventQuery(driver_state->event) != Success) return false;
-//   ERROR_CHECK(EventDestroy(driver_state->event));
-//   return true;
-// }
-
 void adept_sw::GPUDriver::kernel_block_fwd() {
   int count, my_id;
   ERROR_CHECK(EventSynchronize(driver_state->event_fwd_0));
@@ -351,9 +341,8 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   unsigned totShmem = 3 * (minSize + 1) * sizeof(short);
   unsigned alignmentPad = 4 + (4 - totShmem % 4);
   size_t ShmemBytes = totShmem + alignmentPad;
-#ifdef CUDA_GPU
+
   if (ShmemBytes > 48000) ERROR_CHECK(FuncSetAttribute(gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
-#endif
 
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
@@ -371,13 +360,15 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
       driver_state->gpu_data->query_end_gpu + sequences_per_stream, driver_state->gpu_data->scores_gpu + sequences_per_stream,
       driver_state->matchScore, driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap, false);
 
+  // does not work without the below stream synchs on AMDGPUs
   StreamSynchronize(driver_state->streams_cuda[0]);
   StreamSynchronize(driver_state->streams_cuda[1]);
+
   // copyin back end index so that we can find new min
   asynch_mem_copies_dth_mid(driver_state->gpu_data, alAend, alBend, sequences_per_stream, sequences_stream_leftover,
                             driver_state->streams_cuda);
-  // StreamSynchronize(driver_state->streams_cuda[0]);
-  // StreamSynchronize(driver_state->streams_cuda[1]);
+  StreamSynchronize(driver_state->streams_cuda[0]);
+  StreamSynchronize(driver_state->streams_cuda[1]);
 
   ERROR_CHECK(EventRecord(driver_state->event_fwd_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_fwd_1, driver_state->streams_cuda[1]));
@@ -403,7 +394,8 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
 
   int newMin = get_new_min_length(alAend, alBend, blocksLaunched);  // find the new largest of smaller lengths
 
-  // ERROR_CHECK(EventCreateWithFlags(&driver_state->event_rev, EventDisableTiming | EventBlockingSync));
+  if (ShmemBytes > 48000) ERROR_CHECK(FuncSetAttribute(gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
+
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
                   driver_state->gpu_data->offset_query_gpu, driver_state->gpu_data->ref_start_gpu,
@@ -420,22 +412,16 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
       driver_state->gpu_data->query_end_gpu + sequences_per_stream, driver_state->gpu_data->scores_gpu + sequences_per_stream,
       driver_state->matchScore, driver_state->misMatchScore, driver_state->startGap, driver_state->extendGap, true);
 
-  StreamSynchronize(driver_state->streams_cuda[0]);
-  StreamSynchronize(driver_state->streams_cuda[1]);
-
   // does not work without the below stream synchs on AMDGPUs
   StreamSynchronize(driver_state->streams_cuda[0]);
   StreamSynchronize(driver_state->streams_cuda[1]);
 
-  // does not work without the below stream synchs on AMDGPUs
-  cudaStreamSynchronize(driver_state->streams_cuda[0]);
-  cudaStreamSynchronize(driver_state->streams_cuda[1]);
-
+  // copyin back end index so that we can find new min
   asynch_mem_copies_dth(driver_state->gpu_data, alAbeg, alBbeg, top_scores_cpu, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda);
+  StreamSynchronize(driver_state->streams_cuda[0]);
+  StreamSynchronize(driver_state->streams_cuda[1]);
 
-  // StreamSynchronize(driver_state->streams_cuda[0]);
-  // StreamSynchronize(driver_state->streams_cuda[1]);
   ERROR_CHECK(EventRecord(driver_state->event_rev_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_rev_1, driver_state->streams_cuda[1]));
 }

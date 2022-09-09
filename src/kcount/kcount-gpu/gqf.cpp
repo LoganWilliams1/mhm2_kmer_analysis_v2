@@ -7,7 +7,6 @@
  * ============================================================================
  */
 
-#include "gpu-utils/gpu_compatiblity.hpp"
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
@@ -27,12 +26,12 @@
 
 #include <array>
 
-#include "hashutil.hpp"
-#include "gqf.hpp"
-#include "gqf_int.hpp"
 #include "gpu-utils/gpu_compatiblity.hpp"
 #include "gpu-utils/gpu_common.hpp"
 #include "upcxx_utils/colors.h"
+#include "hashutil.hpp"
+#include "gqf.hpp"
+#include "gqf_int.hpp"
 
 /******************************************************************
  * Code for managing the metadata bits and slots w/o interpreting *
