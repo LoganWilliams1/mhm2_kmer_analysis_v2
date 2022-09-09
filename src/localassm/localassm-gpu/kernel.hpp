@@ -71,8 +71,8 @@ struct cstr_type {
   }
 
   __device__ bool operator==(const cstr_type& in2) {
-    bool str_eq = true;
-    if (length != EMPTY && in2.length != EMPTY)
+    bool str_eq = length == in2.length;
+    if (str_eq && length != EMPTY && in2.length != EMPTY)
       for (int i = 0; i < in2.length; i++) {
         if (start_ptr[i] != in2.start_ptr[i]) {
           str_eq = false;
@@ -216,7 +216,7 @@ struct loc_ht {
     key = in_key;
     val = in_val;
   }
-  __device__ static bool is_valid(const loc_ht& x) { x.key.length > 0; }
+  __device__ static bool is_valid(const loc_ht& x) { return x.key.length > 0; }
 };
 
 struct loc_ht_bool {

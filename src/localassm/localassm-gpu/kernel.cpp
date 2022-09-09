@@ -266,7 +266,7 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      return thread_ht[max_size]; // last extra bucket is INVALID
+      return thread_ht[max_size];          // last extra bucket is INVALID
     }
   }
 }
@@ -285,11 +285,40 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      return thread_ht[max_size]; // last extra bucket is INVALID
+      return thread_ht[max_size];          // last extra bucket is INVALID
     }
   }
 }
 
+#ifdef CUDA_GPU
+__device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size) {
+  unsigned hash_val = MurmurHashAligned2(kmer_key, max_size);
+  unsigned orig_hash = hash_val;
+
+  while (true) {
+    int prev = atomicCAS(&thread_ht[hash_val].key.length, EMPTY, kmer_key.length);
+    int mask = __match_any_sync(__activemask(),
+                                (unsigned long long)&thread_ht[hash_val]);  // all the threads in the warp which have same address
+
+    if (prev == EMPTY) {
+      thread_ht[hash_val].key.start_ptr = kmer_key.start_ptr;
+      thread_ht[hash_val].val = {.hi_q_exts = {0}, .low_q_exts = {0}, .ext = 0, .count = 0};
+    }
+    __syncwarp(mask);
+    if (prev != EMPTY && thread_ht[hash_val].key == kmer_key) {
+      return thread_ht[hash_val];
+    } else if (prev == EMPTY) {
+      return thread_ht[hash_val];
+    }
+    hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
+    if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
+      printf("*****end reached, hashtable full(atomic) from: thread:%d*****\n", threadIdx.x);  // for debugging
+      return thread_ht[max_size];                                                              // last extra bucket is INVALID
+    }
+  }
+}
+#endif
+#ifdef HIP_GPU
 /* This function required some significant changes due to lack
  * of support for certain functions in the HIP library.  The
  * __match_any_sync, __activemask, and __syncwarp functions do
@@ -304,24 +333,17 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
   unsigned orig_hash = hash_val;
   int done = 0;
   int prev = EMPTY;
-  int mask;
   bool valid = true;
 
   while (true) {
-#ifdef CUDA_GPU
-    if (__all_sync(done, __activemask())) return valid ? thread_ht[hash_val] : thread_ht[max_size]; // last extra bucket is INVALID
-#endif
-#ifdef HIP_GPU
-    if (__all(done)) return valid ? thread_ht[hash_val] : thread_ht[max_size]; // last extra bucket is INVALID
-#endif
+    if (__all(done)) return valid ? thread_ht[hash_val] : thread_ht[max_size];  // last extra bucket is INVALID
 
     if (!done) {
       prev = atomicCAS(&thread_ht[hash_val].key.length, EMPTY, kmer_key.length);
 
-#ifdef CUDA_GPU
-      mask = __match_any_sync(__activemask(), (unsigned long long)&thread_ht[hash_val]);  // all the threads in the warp which
-                                                                                          // have same address
-#endif
+      // This function doesn't exist in HIP
+      // int mask = __match_any_sync(__activemask(), (unsigned long long)&thread_ht[hash_val]);  // all the threads in the warp
+      // which have same address
 
       if (prev == EMPTY) {
         thread_ht[hash_val].key.start_ptr = kmer_key.start_ptr;
@@ -329,9 +351,8 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
       }
     }
 
-#ifdef CUDA_GPU
-    __syncwarp(mask);
-#endif
+    // This function doesn't exist in HIP
+    //__syncwarp(mask);
 
     if (!done) {
       if (prev != EMPTY && thread_ht[hash_val].key == kmer_key) {
@@ -341,6 +362,7 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
         done = 1;
       }
     }
+    if (__all(done)) return thread_ht[hash_val];
     if (!done) {
       hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
       if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
@@ -350,6 +372,7 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     }
   }
 }
+#endif
 
 __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32_t max_ht_size, int& mer_len,
                           cstr_type& mer_walk_temp, cstr_type& longest_walk, cstr_type& walk, const int idx, int max_walk_len) {
@@ -361,7 +384,7 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
     // check if there is a cycle in graph
     loc_ht_bool& temp_mer_loop = ht_get(thrd_ht_bool, mer_walk_temp, max_walk_len);
     if (!loc_ht_bool::is_valid(temp_mer_loop)) {
-      printf("*****end reached, bool hashtable full*****\n");  // for debugging
+      printf("*****end reached, bool hashtable full***** on %d max_walk_len=%d\n", threadIdx.x, max_walk_len);  // for debugging
       break;
     }
     if (temp_mer_loop.key.length == EMPTY) {  // if the mer has not been visited, add it to the table and mark visited
@@ -376,11 +399,9 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
     }
 
     loc_ht& temp_mer = ht_get(thrd_loc_ht, mer_walk_temp, max_ht_size);
-    if (!loc_ht::is_valid(temp_mer)) {
-      printf("*****end reached, hashtable full*****\n");  // for debugging
-      break;
-    }
-    if (temp_mer.key.length == EMPTY) {  // if mer is not found then dead end reached, terminate the walk
+    if (!loc_ht::is_valid(temp_mer) ||
+        temp_mer.key.length == EMPTY) {  // if mer is not found then dead end reached, terminate the walk
+        if (!loc_ht_bool::is_valid(temp_mer_loop))printf("*****end reached, hashtable full***** on %d max_ht_size=%d\n", threadIdx.x, max_ht_size);  // for debugging
       walk_result = 'X';
 #ifdef DEBUG_PRINT_GPU
       if (idx == test) printf("breaking at mer not found,res: %c\n", walk_result);
@@ -507,7 +528,7 @@ __device__ void count_mers(loc_ht* thrd_loc_ht, char* loc_r_reads, uint32_t max_
 
       loc_ht& temp_Mer = ht_get_atomic(thrd_loc_ht, mer, max_ht_size);
       if (!loc_ht::is_valid(temp_Mer)) {
-        printf("*****end reached, hashtable full*****\n");  // for debugging
+        printf("*****end reached, hashtable full ht_get_atomic*****\n");  // for debugging
         break;
       }
 
