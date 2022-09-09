@@ -230,9 +230,7 @@ __device__ bool ht_insert(loc_ht* thread_ht, cstr_type kmer_key, gpu_loc_assem::
       return true;
     }
     hash_val = (hash_val + 1) % max_size;  //(hash_val + 1) & (HT_SIZE-1);
-    if (hash_val == orig_hash) {
-      return false;
-    }
+    if (hash_val == orig_hash) return false;
   }
 }
 // overload for bool vals
@@ -266,7 +264,9 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      return thread_ht[max_size];          // last extra bucket is INVALID
+      printf("*****end reached, ht_get hashtable full on %d max_size=%d orig_hash=%d*****\n", threadIdx.x, max_size,
+             orig_hash);           // for debugging
+      return thread_ht[max_size];  // last extra bucket is FULL
     }
   }
 }
@@ -285,7 +285,9 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      return thread_ht[max_size];          // last extra bucket is INVALID
+      printf("*****end reached, ht_get bool hashtable full on %d max_size=%d orig_hash=%d*****\n", threadIdx.x, max_size,
+             orig_hash);           // for debugging
+      return thread_ht[max_size];  // last extra bucket is FULL
     }
   }
 }
@@ -312,8 +314,9 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     }
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
-      printf("*****end reached, hashtable full(atomic) from: thread:%d*****\n", threadIdx.x);  // for debugging
-      return thread_ht[max_size];                                                              // last extra bucket is INVALID
+      printf("*****end reached, ht_get_atomic hashtable full(atomic) from: thread:%d max_size=%d orig_hash=%d *****\n", threadIdx.x,
+             max_size, orig_hash);  // for debugging
+      return thread_ht[max_size];   // last extra bucket is FULL
     }
   }
 }
@@ -366,6 +369,8 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     if (!done) {
       hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
       if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
+        printf("*****end reached, ht_get_atomic hashtable full(atomic) from: thread:%d max_size=%d orig_hash=%d *****\n",
+               threadIdx.x, max_size, orig_hash);  // for debugging
         valid = false;
         done = 1;
       }
@@ -401,7 +406,8 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
     loc_ht& temp_mer = ht_get(thrd_loc_ht, mer_walk_temp, max_ht_size);
     if (!loc_ht::is_valid(temp_mer) ||
         temp_mer.key.length == EMPTY) {  // if mer is not found then dead end reached, terminate the walk
-        if (!loc_ht_bool::is_valid(temp_mer_loop))printf("*****end reached, hashtable full***** on %d max_ht_size=%d\n", threadIdx.x, max_ht_size);  // for debugging
+      if (!loc_ht_bool::is_valid(temp_mer_loop))
+        printf("*****end reached, hashtable full***** on %d max_ht_size=%d\n", threadIdx.x, max_ht_size);  // for debugging
       walk_result = 'X';
 #ifdef DEBUG_PRINT_GPU
       if (idx == test) printf("breaking at mer not found,res: %c\n", walk_result);
@@ -436,7 +442,7 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
 
     mer_walk_temp.start_ptr = mer_walk_temp.start_ptr + 1;    // increment the mer pointer and append the ext
     mer_walk_temp.start_ptr[mer_walk_temp.length - 1] = ext;  // walk pointer points at the end of initial mer point.
-    if (ext != 0) walk.length++;
+    walk.length++;
   }
 
 #ifdef DEBUG_PRINT_GPU
