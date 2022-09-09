@@ -153,14 +153,13 @@ vector<string> gpu_utils::get_gpu_uuids() {
     uuids.push_back(get_uuid_str(prop.uuid.bytes));
     set_dev = true;
 #endif
-#else
+#endif
     if (!set_dev) {
       ostringstream os;
       os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;
       uuids.push_back(os.str());
       set_dev = true;
     }
-#endif
   }
   return uuids;
 }

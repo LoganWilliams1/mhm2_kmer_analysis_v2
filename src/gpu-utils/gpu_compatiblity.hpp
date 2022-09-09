@@ -100,6 +100,7 @@
 #define OccupancyMaxPotentialBlockSize hipOccupancyMaxPotentialBlockSize)
 
 #define FuncSetAttribute hipFuncSetAttribute
+#define FuncGetAttribute hipFuncGetAttribute
 #define FuncAttributeMaxDynamicSharedMemorySize hipFuncAttributeMaxDynamicSharedMemorySize
 
 #endif
@@ -157,6 +158,7 @@
 #define OccupancyMaxPotentialBlockSize cudaOccupancyMaxPotentialBlockSize
 
 #define FuncSetAttribute cudaFuncSetAttribute
+#define FuncGetAttribute cudaFuncGetAttribute
 #define FuncAttributeMaxDynamicSharedMemorySize cudaFuncAttributeMaxDynamicSharedMemorySize
 
 #endif
