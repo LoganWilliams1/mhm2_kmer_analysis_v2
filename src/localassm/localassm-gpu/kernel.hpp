@@ -45,7 +45,7 @@
 #include <stdio.h>
 #include <iostream>
 
-#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_compatibility.hpp"
 #include "gpu-utils/gpu_common.hpp"
 
 #define FULL 0xFFFFFFFF

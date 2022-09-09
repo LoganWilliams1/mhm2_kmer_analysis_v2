@@ -26,7 +26,7 @@
 
 #include <array>
 
-#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_compatibility.hpp"
 #include "gpu-utils/gpu_common.hpp"
 #include "upcxx_utils/colors.h"
 #include "hashutil.hpp"

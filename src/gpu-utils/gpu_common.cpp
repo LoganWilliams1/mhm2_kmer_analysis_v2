@@ -44,7 +44,7 @@
 #include <array>
 
 #include "upcxx_utils/colors.h"
-#include "gpu_compatiblity.hpp"
+#include "gpu_compatibility.hpp"
 #include "gpu_common.hpp"
 
 namespace gpu_common {

@@ -18,7 +18,7 @@
 #include <errno.h>
 
 #include "partitioned_counter.hpp"
-#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_compatibility.hpp"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 

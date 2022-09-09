@@ -12,7 +12,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
-#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_compatibility.hpp"
 
 namespace quotient_filter {
 

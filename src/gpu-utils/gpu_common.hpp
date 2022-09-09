@@ -45,7 +45,7 @@
 #include <iostream>
 #include <chrono>
 
-#include "gpu_compatiblity.hpp"
+#include "gpu_compatibility.hpp"
 
 namespace gpu_common {
 

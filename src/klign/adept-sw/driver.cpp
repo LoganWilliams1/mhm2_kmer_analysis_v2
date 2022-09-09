@@ -46,7 +46,7 @@
 #include <string>
 #include <chrono>
 
-#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_compatibility.hpp"
 #include "gpu-utils/gpu_common.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 

@@ -47,7 +47,7 @@
 #include <tuple>
 
 #include "upcxx_utils/colors.h"
-#include "gpu-utils/gpu_compatiblity.hpp"
+#include "gpu-utils/gpu_compatibility.hpp"
 #include "gpu-utils/gpu_common.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 #include "parse_and_pack.hpp"
