@@ -57,11 +57,13 @@ __device__ int bcast_warp(int arg) {
     value = arg;    // all threads except lane 0
 #ifdef CUDA_GPU
   value = __shfl_sync(0xffffffff, value, 0);  // Synchronize all threads in warp, and get "value" from lane 0
+  if (value != arg && laneId == 0) printf("Thread %d failed to bcast_warp. with val:%d, arg:%d \n", threadIdx.x, value, arg);
 #endif
 #ifdef HIP_GPU
   value = __shfl(value, 0);  // Get "value" from lane 0
-#endif
   if (value != arg && laneId == 0) printf("failed to bcast_warp\n");
+#endif
+  
   return value;
 }
 
