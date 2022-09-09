@@ -471,7 +471,7 @@ def main():
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
         print("This is Perlmutter GPU partition - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
-        
+
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
@@ -622,7 +622,7 @@ def main():
             else:
                 final_assembly = _output_dir + "final_assembly.fasta"
                 if os.path.exists(final_assembly):
-                    print("Final assembly can be found at ", final_assembly)
+                    print("Final assembly can be found at", os.path.abspath(final_assembly))
                 else:
                     err_msgs.append("Could not find the final assembly!  It should be at %s\n" % (final_assembly))
                 print_err_msgs(err_msgs, _proc.returncode)
