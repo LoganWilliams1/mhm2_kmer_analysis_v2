@@ -70,6 +70,7 @@ __device__ int bcast_warp(int arg) {
 __device__ void print_mer(cstr_type& mer) {
 #ifdef CUDA_GPU
   if (threadIdx.x % 32 == 0) {
+    if (mer.length == FULL ||  mer.length == EMPTY) { printf("bad print_mer\n"); return; }
     for (int i = 0; i < mer.length; i++) {
       printf("%c", mer.start_ptr[i]);
     }
@@ -79,6 +80,7 @@ __device__ void print_mer(cstr_type& mer) {
 }
 
 __device__ void cstr_copy(cstr_type& str1, cstr_type& str2) {
+  if (str1.length == FULL || str2.length == FULL || str1.length == EMPTY || str2.length == EMPTY) { printf("bad cstr_copy\n"); return; }
   for (int i = 0; i < str2.length; i++) {
     str1.start_ptr[i] = str2.start_ptr[i];
   }
@@ -87,6 +89,7 @@ __device__ void cstr_copy(cstr_type& str1, cstr_type& str2) {
 
 __device__ unsigned hash_func(cstr_type key, uint32_t max_size) {
   unsigned hash, i;
+  if (key.length == FULL || key.length == EMPTY) { printf("bad hash_func\n"); return; }
   for (hash = i = 0; i < key.length; ++i) {
     hash += key.start_ptr[i];
     hash += (hash << 10);
@@ -108,6 +111,7 @@ __device__ unsigned hash_func(cstr_type key, uint32_t max_size) {
     h ^= k;          \
   }
 __device__ uint32_t MurmurHashAligned2(cstr_type key_in, uint32_t max_size) {
+  if (key_in.length == FULL || key_in.length == EMPTY) { printf("bad MurmurHashAligned2\n"); return; }
   int len = key_in.length;
   char* key = key_in.start_ptr;
   const uint32_t m = 0x5bd1e995;
@@ -230,7 +234,7 @@ __device__ bool ht_insert(loc_ht* thread_ht, cstr_type kmer_key, gpu_loc_assem::
       thread_ht[hash_val].key = kmer_key;
       thread_ht[hash_val].val = mer_val;
       return true;
-    }
+    } else if (if_empty == FULL) printf("Bad ht_insert\n");
     hash_val = (hash_val + 1) % max_size;  //(hash_val + 1) & (HT_SIZE-1);
     if (hash_val == orig_hash) return false;
   }
@@ -246,7 +250,7 @@ __device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_
       thread_ht[hash_val].key = kmer_key;
       thread_ht[hash_val].val = bool_val;
       return true;
-    }
+    } else if (if_empty == FULL) printf("Bad ht_insert bool\n");
     hash_val = (hash_val + 1) % max_size;  //(hash_val + 1) & (HT_SIZE-1);
     // count++; //for debugging
     if (hash_val == orig_hash) return false;
@@ -260,6 +264,7 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
   while (true) {
     if (thread_ht[hash_val].key.length == EMPTY) {
       return thread_ht[hash_val];
+    } else if (thread_ht[hash_val].key.length == FULL) { printf("bad ht_get\n"); 
     } else if (thread_ht[hash_val].key == kmer_key) {
       // printf("key found, returning\n");// keep this for debugging
       return thread_ht[hash_val];
@@ -280,6 +285,7 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
   while (true) {
     if (thread_ht[hash_val].key.length == EMPTY) {
       return thread_ht[hash_val];
+    } else if (thread_ht[hash_val].key.length == FULL) { printf("bad ht_get bool\n");
     } else if (thread_ht[hash_val].key == kmer_key) {
       // printf("key found, returning\n");// keep this for debugging
       return thread_ht[hash_val];
@@ -305,6 +311,8 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     if (prev == EMPTY) {
       thread_ht[hash_val].key.start_ptr = kmer_key.start_ptr;
       thread_ht[hash_val].val = {.hi_q_exts = {0}, .low_q_exts = {0}, .ext = 0, .count = 0};
+    } else if (prev == FULL) {
+      printf("bad ht_get_atomic\n");
     }
     __syncwarp(mask);
     if (prev != EMPTY && thread_ht[hash_val].key == kmer_key) {
@@ -351,6 +359,8 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
       if (prev == EMPTY) {
         thread_ht[hash_val].key.start_ptr = kmer_key.start_ptr;
         thread_ht[hash_val].val = {.hi_q_exts = {0}, .low_q_exts = {0}, .ext = 0, .count = 0};
+      } else if (prev == FULL) {
+        printf("bad ht_get_atomic\n");
       }
     }
 
@@ -384,6 +394,7 @@ __device__ char walk_mers(loc_ht* thrd_loc_ht, loc_ht_bool* thrd_ht_bool, uint32
 #ifdef DEBUG_PRINT_GPU
   int test = 0;
 #endif
+  if (mer_walk_temp.length == FULL) {printf("bad walk_mers\n"); }
   for (int nsteps = 0; nsteps < max_walk_len; nsteps++) {
     // check if there is a cycle in graph
     loc_ht_bool& temp_mer_loop = ht_get(thrd_ht_bool, mer_walk_temp, max_walk_len);
@@ -617,6 +628,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
     if (warp_id_glb == 0) {
       loc_ctg.start_ptr = contigs;
       loc_ctg.length = ctg_offsets[warp_id_glb];
+      if (loc_ctg.length == FULL || loc_ctg.length == EMPTY) printf("bad iterative_walks_kernel\n");
       loc_bool_map = global_ht_bool + warp_id_glb * max_walk_len;
       longest_walk_loc = longest_walks + warp_id_glb * max_walk_len;
       loc_mer_walk_temp = mer_walk_temp + warp_id_glb * (max_walk_len + max_mer_len_off);
@@ -629,6 +641,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
     } else {
       loc_ctg.start_ptr = contigs + ctg_offsets[warp_id_glb - 1];
       loc_ctg.length = ctg_offsets[warp_id_glb] - ctg_offsets[warp_id_glb - 1];
+      if (loc_ctg.length == FULL || loc_ctg.length == EMPTY) printf("bad iterative_walks_kernel2\n");
       loc_bool_map = global_ht_bool + warp_id_glb * max_walk_len;
       longest_walk_loc = longest_walks + warp_id_glb * max_walk_len;
       loc_mer_walk_temp = mer_walk_temp + warp_id_glb * (max_walk_len + max_mer_len_off);
@@ -654,6 +667,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
 
     max_ht_size = ht_loc_size;
     max_mer_len = min(max_mer_len, loc_ctg.length);
+    if (max_mer_len == FULL || max_mer_len == EMPTY) printf("bad iterative_walks_kernel3\n");
 
     cstr_type longest_walk_thread(longest_walk_loc, 0);
 
@@ -681,6 +695,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
           loc_bool_map[k].key.length = EMPTY;
         }
         if (lane_id == 0) {  // this phase is processed by single thread of a warp
+          if (loc_ctg.length == FULL || loc_ctg.length == EMPTY) printf("bad iterative_walks_kernel4\n");
           cstr_type ctg_mer(loc_ctg.start_ptr + (loc_ctg.length - mer_len), mer_len);
           cstr_type loc_mer_walk(loc_mer_walk_temp, 0);
           cstr_copy(loc_mer_walk, ctg_mer);
@@ -759,6 +774,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
     }
     if (lane_id == 0) {
       if (longest_walk_thread.length > 0) {
+        if (longest_walk_thread.length == EMPTY || longest_walk_thread.length == FULL) printf("bad iterative_walks_kernel5\n");
         final_walk_lens[warp_id_glb] = longest_walk_thread.length;
         // printf("final longest walk len:%d/n", longest_walk_thread.length);
         // print_mer(longest_walk_thread);
