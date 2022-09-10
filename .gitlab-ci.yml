@@ -10,7 +10,7 @@ variables:
   APPLICATION: mhm2
   TEST_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:latest
   RELEASE_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:$CI_BUILD_REF_NAME
-  UPCXX_VER: 2021.3.0
+  UPCXX_VER: 2022.3.0
 
 stages:
   - build
@@ -35,8 +35,8 @@ Cori:build:
     - date
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
-    - export BASE=${SCRATCH}/tmp/gitlab-runner-scratch-Cori-mhm2-${USER}
-    - export CI_SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -44,11 +44,13 @@ Cori:build:
     - mkdir -p ${BASE}
     - rm -rf ${CI_SCRATCH}
     - echo "Cleaning out old installs"
-    - find ${BASE} -maxdepth 1  -name 'mhm*'  -mtime +4 -type d -exec rm -rf '{}' ';' || /bin/true
+    - find ${BASE}/scratch -maxdepth 1  -name "${CI_PROJECT_NAME}-*-*-*"  -mtime +7 -type d -exec rm -rf '{}' ';' || /bin/true
     - mkdir -p ${CI_SCRATCH} ${RUN_PREFIX}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - module list
     - git describe
@@ -110,8 +112,8 @@ Cori:validation:
     - export GASNET_BACKTRACE=1
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
-    - export BASE=${SCRATCH}/tmp/gitlab-runner-scratch-Cori-mhm2-${USER}
-    - export CI_SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -123,6 +125,8 @@ Cori:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)   
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - module list
     - set -x
@@ -181,8 +185,8 @@ Cori:accuracy:
     - export GASNET_BACKTRACE=1
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
-    - export BASE=${SCRATCH}/tmp/gitlab-runner-scratch-Cori-mhm2-${USER}
-    - export CI_SCRATCH=${BASE}/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -191,7 +195,9 @@ Cori:accuracy:
     - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
-    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"    
+    - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - module list
     - set -x
@@ -262,19 +268,24 @@ HULK:build:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
+    - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --disable-ibv --with-default-network=smp"
     - export GASNET_PHYSMEM_MAX=2/3
+    - rm -rf ${CI_SCRATCH}
     - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
+    - echo "Completed successfully on hulk"
     
 
 HULK:validation:
@@ -284,8 +295,8 @@ HULK:validation:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -294,9 +305,12 @@ HULK:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
+    - echo "Completed successfully on hulk"
 
 HULK:accuracy:
   stage: accuracy
@@ -305,8 +319,8 @@ HULK:accuracy:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install to PATH"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
@@ -316,6 +330,8 @@ HULK:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
@@ -326,6 +342,7 @@ HULK:accuracy:
     - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - mv test-arctic-samples ${RUN_PREFIX}/rel-test-arctic-samples
+    - echo "Completed successfully on hulk"
 
 
 #
@@ -339,8 +356,8 @@ Bacteria:build:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -348,13 +365,17 @@ Bacteria:build:
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
+    - rm -rf ${CI_SCRATCH}
     - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
+    - echo "Completed successfully on bacteria"
 
 Bacteria:validation:
   stage: validation
@@ -363,8 +384,8 @@ Bacteria:validation:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -374,9 +395,12 @@ Bacteria:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
+    - echo "Completed successfully on bacteria"
 
 Bacteria:accuracy:
   stage: accuracy
@@ -385,8 +409,8 @@ Bacteria:accuracy:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -397,6 +421,8 @@ Bacteria:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
@@ -429,20 +455,22 @@ Fungi:build:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
-    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
+    - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CXX=/usr/bin/mpicxx
-    - export GASNET_PHYSMEM_MAX=2/3
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=/usr/bin/mpicxx --enable-ibv --with-default-network=ibv"
     - export GASNET_PHYSMEM_MAX=2/3
+    - rm -rf ${CI_SCRATCH}
     - mkdir -p ${CI_SCRATCH}
     - exec >  >(tee -ia ${CI_SCRATCH}/build.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build.err >&2)
     - echo "Logging to ${CI_SCRATCH}/build.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/build.log ${CI_SCRATCH}/build.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/build.err ${CI_SCRATCH}/build.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.build.sh ${BASE}
@@ -454,8 +482,8 @@ Fungi:validation:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -465,6 +493,8 @@ Fungi:validation:
     - exec >  >(tee -ia ${CI_SCRATCH}/validation.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/validation.err >&2)
     - echo "Logging to ${CI_SCRATCH}/validation.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ln ${CI_SCRATCH}/validation.log ${CI_SCRATCH}/validation.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/validation.err ${CI_SCRATCH}/validation.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.validation.sh ${BASE}
@@ -476,8 +506,8 @@ Fungi:accuracy:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export CI_INSTALL=${BASE}/ci-install-mhm2-upcxx-${UPCXX_VER}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -488,6 +518,8 @@ Fungi:accuracy:
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
+    - ln ${CI_SCRATCH}/accuracy.log ${CI_SCRATCH}/accuracy.log-$(date '+%Y%m%d_%H%M%S')
+    - ln ${CI_SCRATCH}/accuracy.err ${CI_SCRATCH}/accuracy.err-$(date '+%Y%m%d_%H%M%S')
     - env
     - set -x
     - ./ci/ubuntu.accuracy.sh ${BASE}
