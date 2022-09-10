@@ -10,6 +10,6 @@ module rm darshan
 
 module load cmake
 module load git
-module load upcxx
+module load upcxx/nightly
 
 module list
