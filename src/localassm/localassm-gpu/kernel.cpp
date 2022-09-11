@@ -89,7 +89,7 @@ __device__ void cstr_copy(cstr_type& str1, cstr_type& str2) {
 
 __device__ unsigned hash_func(cstr_type key, uint32_t max_size) {
   unsigned hash, i;
-  if (key.length == FULL || key.length == EMPTY) { printf("bad hash_func\n"); return; }
+  if (key.length == FULL || key.length == EMPTY) { printf("bad hash_func\n"); return 0; }
   for (hash = i = 0; i < key.length; ++i) {
     hash += key.start_ptr[i];
     hash += (hash << 10);
@@ -111,7 +111,7 @@ __device__ unsigned hash_func(cstr_type key, uint32_t max_size) {
     h ^= k;          \
   }
 __device__ uint32_t MurmurHashAligned2(cstr_type key_in, uint32_t max_size) {
-  if (key_in.length == FULL || key_in.length == EMPTY) { printf("bad MurmurHashAligned2\n"); return; }
+  if (key_in.length == FULL || key_in.length == EMPTY) { printf("bad MurmurHashAligned2\n"); return 0; }
   int len = key_in.length;
   char* key = key_in.start_ptr;
   const uint32_t m = 0x5bd1e995;
@@ -272,7 +272,7 @@ __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_si
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
       printf("*****end reached, ht_get hashtable full*****\n");           // for debugging
-      return thread_ht[max_size];  // last extra bucket is FULL
+      // FIXME this breaks CORI GPU: return thread_ht[max_size];  // last extra bucket is FULL
     }
   }
 }
@@ -293,7 +293,7 @@ __device__ loc_ht_bool& ht_get(loc_ht_bool* thread_ht, cstr_type kmer_key, uint3
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
       printf("*****end reached, ht_get bool hashtable full*****\n");           // for debugging
-      return thread_ht[max_size];  // last extra bucket is FULL
+      // FIXME this breaks CORI GPU: return thread_ht[max_size];  // last extra bucket is FULL
     }
   }
 }
@@ -324,7 +324,7 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
       printf("*****end reached, ht_get_atomic hashtable full(atomic) from: thread:%d max_size=%d orig_hash=%d *****\n", threadIdx.x,
              max_size, orig_hash);  // for debugging
-      return thread_ht[max_size];   // last extra bucket is FULL
+      // FIXME THIS BREAKS CORI GPU: return thread_ht[max_size];   // last extra bucket is FULL
     }
   }
 }
