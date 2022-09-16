@@ -59,6 +59,9 @@
 
 #include "gpu_hash_funcs.cpp"
 
+#include "tcf_wrapper.hpp"
+
+
 using namespace std;
 using namespace gpu_common;
 using namespace kcount_gpu;
@@ -397,7 +400,7 @@ __device__ bool gpu_insert_kmer(KmerCountsMap<MAX_K> elems, uint64_t hash_val, K
 
 template <int MAX_K>
 __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBuff supermer_buff, uint32_t buff_len, int kmer_len,
-                                          bool ctg_kmers, InsertStats *insert_stats, quotient_filter::QF *qf) {
+                                          bool ctg_kmers, InsertStats *insert_stats, two_choice_filter::TCF * tcf) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
   int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0, num_unique_qf = 0;
@@ -411,24 +414,58 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
       if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) printf("ERROR: block equal to KEY_TRANSITION\n");
       auto hash_val = kmer_hash(kmer);
       char prev_left_ext = '0', prev_right_ext = '0';
-      bool use_qf = (qf != nullptr);
+      bool use_qf = (tcf != nullptr);
       bool update_only = (use_qf && !ctg_kmers);
       bool updated = gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count,
                                      new_inserts, dropped_inserts, ctg_kmers, use_qf, update_only);
 
       if (update_only && !updated) {
         // not found in the hash table - look in the qf
-        auto qf_insert_result = quotient_filter::insert_kmer(qf, hash_val, left_ext, right_ext, prev_left_ext, prev_right_ext);
-        if (qf_insert_result == quotient_filter::QF_ITEM_INSERTED) {
-          num_unique_qf++;
-          assert(prev_left_ext == '0' && prev_right_ext == '0');
-        } else if (qf_insert_result == quotient_filter::QF_ITEM_FOUND) {
-          gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
+        bool found = false;
+        uint16_t result =0;
+        uint16_t packed = two_choice_filter::pack_extensions(left_ext, right_ext);
+
+        bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
+
+
+        if (success){
+
+          if (!found){
+
+            //inserted successfully
+            num_unique_qf++;
+
+            //does this need to be asserted?
+            assert(prev_left_ext == '0' && prev_right_ext == '0');
+
+          }  else {
+
+            //found successfully
+            two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
+            gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
                           dropped_inserts, ctg_kmers, use_qf, false);
-        } else if (qf_insert_result == quotient_filter::QF_FULL) {
-          // printf(KLRED "WARNING [%s:%d]" KNORM " GQF is full\n", __FILE__, __LINE__);
+
+          }
+
+        } else {
+
+          //dropped
           dropped_inserts++;
+
         }
+
+        //old QF code
+        // auto qf_insert_result = quotient_filter::insert_kmer(qf, hash_val, left_ext, right_ext, prev_left_ext, prev_right_ext);
+        // if (qf_insert_result == quotient_filter::QF_ITEM_INSERTED) {
+        //   num_unique_qf++;
+        //   assert(prev_left_ext == '0' && prev_right_ext == '0');
+        // } else if (qf_insert_result == quotient_filter::QF_ITEM_FOUND) {
+        //   gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
+        //                   dropped_inserts, ctg_kmers, use_qf, false);
+        // } else if (qf_insert_result == quotient_filter::QF_FULL) {
+        //   // printf(KLRED "WARNING [%s:%d]" KNORM " GQF is full\n", __FILE__, __LINE__);
+        //   dropped_inserts++;
+        // }
       }
     }
   }
@@ -443,6 +480,8 @@ struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
   cudaEvent_t event;
   QuickTimer insert_timer, kernel_timer;
   quotient_filter::QF *qf = nullptr;
+  two_choice_filter::TCF * tcf = nullptr;
+
 };
 
 template <int MAX_K>
@@ -504,29 +543,60 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits " << nbits_qf << KNORM << endl;
   if (nbits_qf == 0) use_qf = false;
   if (use_qf) {
-    qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-    double qf_avail_mem = gpu_avail_mem / 5;
-    // if (!upcxx_rank_me)
-    //   cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n";
-    if (qf_bytes_used > qf_avail_mem) {
-      // For debugging OOMs
-      // size_t prev_bytes_used = qf_bytes_used;
-      // int prev_nbits = nbits_qf;
-      double factor = qf_avail_mem / qf_bytes_used;
-      size_t corrected_max_elems = (max_elems_qf * factor);
-      auto corrected_nbits_qf = log2(corrected_max_elems);
-      if (corrected_nbits_qf >= nbits_qf) corrected_nbits_qf--;
-      nbits_qf = corrected_nbits_qf;
-      // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits corrected to " << nbits_qf << KNORM << endl;
-      //  drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
-      if (kmer_len >= 96) nbits_qf--;
-      if (nbits_qf == 0) nbits_qf = 1;
-      qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-      // if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
+
+
+    //tcf is much nicer
+    qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
+
+    double tcf_available_mem = gpu_avail_mem / 5;
+
+    if (qf_bytes_used > tcf_available_mem){
+
+      //size to exactly the memory available.
+      qf_bytes_used = tcf_available_mem;
+      
+      auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(tcf_available_mem);
+
+      printf("%d: Sizing from available mem %llu, %llu\n", upcxx_rank_me, qf_bytes_used, sizing_controller.total()*4);
+      dstate->tcf = two_choice_filter::TCF::generate_on_device( &sizing_controller, 42);
+
+      
+
     } else {
-      if (kmer_len >= 64) nbits_qf--;
+
+      //we can size to the size we want
+      
+      auto sizing_controller = two_choice_filter::get_tcf_sizing(max_elems_qf);
+      printf("%d: Sizing to desired %llu, %llu\n", upcxx_rank_me, qf_bytes_used, sizing_controller.total()*4);
+      dstate->tcf = two_choice_filter::TCF::generate_on_device( &sizing_controller, 42);
+
     }
-    quotient_filter::qf_malloc_device(&(dstate->qf), nbits_qf);
+
+
+
+    // qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
+    // double qf_avail_mem = gpu_avail_mem / 5;
+    // // if (!upcxx_rank_me)
+    // //   cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n";
+    // if (qf_bytes_used > qf_avail_mem) {
+    //   // For debugging OOMs
+    //   // size_t prev_bytes_used = qf_bytes_used;
+    //   // int prev_nbits = nbits_qf;
+    //   double factor = qf_avail_mem / qf_bytes_used;
+    //   size_t corrected_max_elems = (max_elems_qf * factor);
+    //   auto corrected_nbits_qf = log2(corrected_max_elems);
+    //   if (corrected_nbits_qf >= nbits_qf) corrected_nbits_qf--;
+    //   nbits_qf = corrected_nbits_qf;
+    //   // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits corrected to " << nbits_qf << KNORM << endl;
+    //   //  drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
+    //   if (kmer_len >= 96) nbits_qf--;
+    //   if (nbits_qf == 0) nbits_qf = 1;
+    //   qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
+    //   // if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
+    // } else {
+    //   if (kmer_len >= 64) nbits_qf--;
+    // }
+    // quotient_filter::qf_malloc_device(&(dstate->qf), nbits_qf);
   }
 
   // now check that we have sufficient memory for the required capacity
@@ -569,6 +639,10 @@ void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_m
   // free up space
   if (dstate->qf) quotient_filter::qf_destroy_device(dstate->qf);
   dstate->qf = nullptr;
+
+  if (dstate->tcf) two_choice_filter::TCF::free_on_device(dstate->tcf);
+  dstate->tcf = nullptr;
+
   size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (1 + sizeof(count_t)) * 1.5;
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
   size_t max_slots = 0.97 * (gpu_avail_mem - elem_buff_size) / elem_size;
@@ -587,6 +661,7 @@ HashTableGPUDriver<MAX_K>::~HashTableGPUDriver() {
   if (dstate) {
     // this happens when there is no ctg kmers pass
     if (dstate->qf) quotient_filter::qf_destroy_device(dstate->qf);
+    if (dstate->tcf) two_choice_filter::TCF::free_on_device(dstate->tcf);
     delete dstate;
   }
 }
@@ -608,7 +683,7 @@ void HashTableGPUDriver<MAX_K>::insert_supermer_block() {
   // gridsize = gridsize * threadblocksize;
   // threadblocksize = 1;
   gpu_insert_supermer_block<<<gridsize, threadblocksize>>>(is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev, unpacked_elem_buff_dev,
-                                                           buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats, dstate->qf);
+                                                           buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats, dstate->tcf);
   // the kernel time is not going to be accurate, because we are not waiting for the kernel to complete
   // need to uncomment the line below, which will decrease performance by preventing the overlap of GPU and CPU execution
   cudaDeviceSynchronize();
@@ -788,6 +863,7 @@ int HashTableGPUDriver<MAX_K>::get_num_gpu_calls() {
   return num_gpu_calls;
 }
 
+//temporarily disabled
 template <int MAX_K>
 double HashTableGPUDriver<MAX_K>::get_qf_load_factor() {
   if (!dstate->qf) return 0;

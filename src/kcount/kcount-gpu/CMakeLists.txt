@@ -1,9 +1,33 @@
+
+#cmake modifications to support TCF tables
+#todo - we can probably add the project as 
+
+include(poggers-cpm/CPM.cmake)
+
+CPMAddPackage(
+  NAME poggers
+  GITHUB_REPOSITORY huntermBerkeley/poggers
+  GIT_TAG origin/main
+)
+
+message("CPM and Poggers included.")
+
+#end of TCF changes
+
+
+
+
 add_library(
   KCOUNT_GPU_LIBRARY_obj OBJECT parse_and_pack.cpp gpu_hash_table.cpp gqf.cpp
                                 hashutil.cpp partitioned_counter.cpp)
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
   target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
+
+  #interface poggers/tcf with GPU library
+  target_link_libraries(KCOUNT_GPU_LIBRARY_obj poggers)
+
   # unsuccessful attempt to suppress warning about recursion
+
   target_link_options(
     KCOUNT_GPU_LIBRARY_obj PRIVATE $<DEVICE_LINK:--nvlink-options
     -suppress-stack-size-warning>)
