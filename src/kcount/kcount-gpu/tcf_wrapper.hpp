@@ -139,8 +139,12 @@ __host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing_from_mem(uint64_t 
 
   uint64_t max_slots = available_bytes/4;
 
+
+
   //90/11 split over size for forward and backing tables.
-  poggers::sizing::size_in_num_slots<2> my_size(max_slots*.9, max_slots*.1);
+  poggers::sizing::size_in_num_slots<2> my_size ((max_slots*90ULL/100ULL), (max_slots*10ULL/100ULL));
+  //printf("%llu bytes gives %llu slots, given: %llu + %llu = %llu\n", available_bytes, max_slots, my_size.next(), my_size.next(), my_size.total());
+  my_size.reset();
   return my_size;
 
 }

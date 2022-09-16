@@ -553,22 +553,23 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
     if (qf_bytes_used > tcf_available_mem){
 
       //size to exactly the memory available.
-      qf_bytes_used = tcf_available_mem;
+      qf_bytes_used = tcf_available_mem - 100;
       
-      auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(tcf_available_mem);
+      auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
 
-      printf("%d: Sizing from available mem %llu, %llu\n", upcxx_rank_me, qf_bytes_used, sizing_controller.total()*4);
       dstate->tcf = two_choice_filter::TCF::generate_on_device( &sizing_controller, 42);
-
+      //printf("%d: %llu kmers, Sizing from available mem %llu, expected from_size %llu, true %llu \n", upcxx_rank_me, max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use());
       
 
     } else {
 
       //we can size to the size we want
       
-      auto sizing_controller = two_choice_filter::get_tcf_sizing(max_elems_qf);
-      printf("%d: Sizing to desired %llu, %llu\n", upcxx_rank_me, qf_bytes_used, sizing_controller.total()*4);
+      auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
       dstate->tcf = two_choice_filter::TCF::generate_on_device( &sizing_controller, 42);
+      //printf("%d: %llu kmers, Sizing to desired %llu, expected from_size %llu, true %llu \n", upcxx_rank_me, max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use());
+      //printf("%d: %llu kmers, Sizing to desired %llu, expected from_size %llu, true %llu, upper %llu\n", upcxx_rank_me, max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use(), dstate->tcf->host_bytes_in_use_top());
+
 
     }
 
