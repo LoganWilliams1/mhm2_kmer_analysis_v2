@@ -49,6 +49,10 @@
 #include <poggers/probing_schemes/double_hashing.cuh>
 #include <poggers/probing_schemes/power_of_two.cuh>
 
+
+//new container for 2-byte key val pairs
+#include <poggers/representations/grouped_key_val_pair.cuh>
+
 #include <poggers/representations/key_val_pair.cuh>
 #include <poggers/representations/dynamic_container.cuh>
 
@@ -63,6 +67,7 @@
 
 #include <poggers/insert_schemes/linear_insert_buckets.cuh>
 
+
 #include <poggers/tables/bucketed_table.cuh>
 
 namespace two_choice_filter {
@@ -70,8 +75,8 @@ namespace two_choice_filter {
 __constant__ char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
 
 
-using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using TCF = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+using TCF = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
 
 __device__ uint16_t pack_extensions(char left, char right){
 
