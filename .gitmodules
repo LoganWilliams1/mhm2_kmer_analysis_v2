@@ -8,3 +8,6 @@
 [submodule "test/googletest"]
 	path = test/googletest
 	url = https://github.com/google/googletest/
+[submodule "poggers"]
+	path = poggers
+	url = https://github.com/huntermBerkeley/poggers

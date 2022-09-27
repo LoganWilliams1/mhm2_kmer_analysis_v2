@@ -2,15 +2,15 @@
 #cmake modifications to support TCF tables
 #todo - we can probably add the project as 
 
-include(poggers-cpm/CPM.cmake)
+#include(poggers-cpm/CPM.cmake)
 
-CPMAddPackage(
-  NAME poggers
-  GITHUB_REPOSITORY huntermBerkeley/poggers
-  GIT_TAG origin/main
-)
+#CPMAddPackage(
+#  NAME poggers
+#  GITHUB_REPOSITORY huntermBerkeley/poggers
+#  GIT_TAG origin/main
+#)
 
-message("CPM and Poggers included.")
+#message("CPM and Poggers included.")
 
 #end of TCF changes
 
