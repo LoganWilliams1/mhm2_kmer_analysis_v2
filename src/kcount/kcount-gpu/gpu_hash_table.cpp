@@ -882,8 +882,15 @@ int HashTableGPUDriver<MAX_K>::get_num_gpu_calls() {
 //temporarily disabled
 template <int MAX_K>
 double HashTableGPUDriver<MAX_K>::get_qf_load_factor() {
-  if (!dstate->qf) return 0;
-  return (double)quotient_filter::host_qf_get_num_occupied_slots(dstate->qf) / quotient_filter::host_qf_get_nslots(dstate->qf);
+
+  if (dstate->tcf){
+    return (double)dstate->tcf->get_fill()/dstate->tcf->get_num_slots();
+  }
+
+  return 0;
+
+  // if (!dstate->qf) return 0;
+  // return (double)quotient_filter::host_qf_get_num_occupied_slots(dstate->qf) / quotient_filter::host_qf_get_nslots(dstate->qf);
 }
 
 template <int MAX_K>
