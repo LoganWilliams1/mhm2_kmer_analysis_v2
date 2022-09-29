@@ -879,12 +879,11 @@ int HashTableGPUDriver<MAX_K>::get_num_gpu_calls() {
   return num_gpu_calls;
 }
 
-//temporarily disabled
 template <int MAX_K>
 double HashTableGPUDriver<MAX_K>::get_qf_load_factor() {
 
   if (dstate->tcf){
-    return (double)dstate->tcf->get_fill()/dstate->tcf->get_num_slots();
+    return (double) dstate->tcf->get_fill() / dstate->tcf->get_num_slots();
   }
 
   return 0;
