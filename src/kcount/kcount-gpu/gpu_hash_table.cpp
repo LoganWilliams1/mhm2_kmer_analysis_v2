@@ -535,13 +535,13 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
   size_t max_error_free_elems = max_elems * (1.0 - frac_singletons);
   if (!upcxx_rank_me)
-    printf(KLMAGENTA "Max elems %lu of which %lu expected to be error free" KNORM "\n", max_elems, max_error_free_elems);
+    printf(KLMAGENTA "Max elems per rank of %d, of which %lu expected to be error free" KNORM "\n", max_elems, max_error_free_elems);
   // expected size of compact hash table
   size_t expected_compact_ht_size = max_error_free_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
   // increase to max double size to include contig kmers
   expected_compact_ht_size *= 2;
   // limit how much compact and ctg kmers ht can take; limit more for smaller k
-  size_t max_compact_ht_mem = gpu_avail_mem / (kmer_len < 60 ? 3 : 2);
+  size_t max_compact_ht_mem = gpu_avail_mem / (kmer_len < 60 ? 3 : 2.7);
   if (expected_compact_ht_size > max_compact_ht_mem) {
     if (!upcxx_rank_me)
       printf(KLMAGENTA "Reduced expected compact hash table size from %lu to %lu" KNORM "\n", expected_compact_ht_size,
