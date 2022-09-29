@@ -183,7 +183,15 @@ __host__ __device__ uint64_t estimate_memory(uint64_t max_num_kmers){
 
   //estimate to 120% to be safe
   //and 4 bytes per item pair
+  #if TCF_SMALL
+
+  return (max_num_kmers*2*1.2); 
+
+  #else
+
   return (max_num_kmers*4*1.2);
+
+  #endif
 
 }
 
@@ -200,8 +208,15 @@ __host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing(uint64_t max_num_k
 
 __host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing_from_mem(uint64_t available_bytes){
 
+  #if TCF_SMALL
+
+  uint64_t max_slots = available_bytes/2;
+
+  #else
+
   uint64_t max_slots = available_bytes/4;
 
+  #endif
 
 
   //90/11 split over size for forward and backing tables.
