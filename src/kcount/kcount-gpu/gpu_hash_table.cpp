@@ -536,8 +536,15 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   size_t max_error_free_elems = max_elems * (1.0 - frac_singletons);
   // expected size of compact hash table
   size_t expected_compact_ht_size = max_error_free_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
-  // increase to max double size for contig kmers
+  // increase to max double size to include contig kmers
   expected_compact_ht_size *= 2;
+  // only allow it to be at most 1/3 available memory
+  if (expected_compact_ht_size > gpu_avail_mem / 3) {
+    if (!upcxx_rank_me)
+      printf(KLMAGENTA "Reduced expected compact hash table size from %lu to %lu" KNORM "\n", expected_compact_ht_size,
+             gpu_avail_mem / 3);
+    expected_compact_ht_size = gpu_avail_mem / 3;
+  }
   gpu_avail_mem -= expected_compact_ht_size;
   if (!upcxx_rank_me)
     printf(KLMAGENTA "Expected compact hash table size %lu (avail mem now %lu)" KNORM "\n", expected_compact_ht_size,
@@ -557,9 +564,11 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
       max_elems *= (1.0 - frac_singletons);
       // tcf is much nicer
       qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
-      // limit the TCF to max 1/10 of the available memory
-      double tcf_available_mem = gpu_avail_mem / 10;
+      // limit the TCF to max 1/8 of the available memory
+      size_t tcf_available_mem = gpu_avail_mem / 8;
       if (qf_bytes_used > tcf_available_mem) {
+        if (!upcxx_rank_me)
+          printf(KLMAGENTA "TCF resized down from %lu to %lu" KNORM "\n", qf_bytes_used, tcf_available_mem - 100);
         // size to just under the memory available.
         qf_bytes_used = tcf_available_mem - 100;
         auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
