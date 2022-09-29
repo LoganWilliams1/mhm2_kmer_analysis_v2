@@ -89,7 +89,8 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     int64_t my_num_kmers = PackedReads::estimate_num_kmers(kmer_len, packed_reads_list);
     // use the max among all ranks
     my_num_kmers = reduce_all(my_num_kmers, op_fast_max).wait();
-    dist_object<KmerDHT<MAX_K>> kmer_dht(world(), my_num_kmers, max_kmer_store, options->max_rpcs_in_flight, options->use_qf);
+    dist_object<KmerDHT<MAX_K>> kmer_dht(world(), my_num_kmers, max_kmer_store, options->max_rpcs_in_flight, options->use_qf,
+                                         options->frac_singletons);
     LOG_MEM("Allocated kmer_dht");
     barrier();
     begin_gasnet_stats("kmer_analysis k = " + to_string(kmer_len));

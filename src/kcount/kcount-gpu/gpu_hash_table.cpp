@@ -61,7 +61,6 @@
 
 #include "tcf_wrapper.hpp"
 
-
 using namespace std;
 using namespace gpu_common;
 using namespace kcount_gpu;
@@ -400,7 +399,7 @@ __device__ bool gpu_insert_kmer(KmerCountsMap<MAX_K> elems, uint64_t hash_val, K
 
 template <int MAX_K>
 __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBuff supermer_buff, uint32_t buff_len, int kmer_len,
-                                          bool ctg_kmers, InsertStats *insert_stats, two_choice_filter::TCF * tcf) {
+                                          bool ctg_kmers, InsertStats *insert_stats, two_choice_filter::TCF *tcf) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
   int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0, num_unique_qf = 0;
@@ -423,64 +422,43 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
         // not found in the hash table - look in the qf
         bool found = false;
 
-
-        #if TCF_SMALL
-        uint8_t result =0;
+#if TCF_SMALL
+        uint8_t result = 0;
         uint8_t packed = two_choice_filter::pack_extensions_small(left_ext, right_ext);
-        #else
+#else
         uint16_t result = 0;
         uint16_t packed = two_choice_filter::pack_extensions(left_ext, right_ext);
-        #endif
+#endif
 
-        #if TCF_DELETE
+#if TCF_DELETE
         bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
-        #else
+#else
         bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
-        #endif
+#endif
 
-
-        if (success){
-
-          if (!found){
-
-            //inserted successfully
+        if (success) {
+          if (!found) {
+            // inserted successfully
             num_unique_qf++;
 
-            //does this need to be asserted?
+            // does this need to be asserted?
             assert(prev_left_ext == '0' && prev_right_ext == '0');
 
-          }  else {
-
-            //found successfully
-            #if TCF_SMALL
-            two_choice_filter::unpack_extensions_small( result, prev_left_ext, prev_right_ext);
-            #else
-            two_choice_filter::unpack_extensions( result, prev_left_ext, prev_right_ext);
-            #endif
+          } else {
+// found successfully
+#if TCF_SMALL
+            two_choice_filter::unpack_extensions_small(result, prev_left_ext, prev_right_ext);
+#else
+            two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
+#endif
             gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
-                          dropped_inserts, ctg_kmers, use_qf, false);
-
+                            dropped_inserts, ctg_kmers, use_qf, false);
           }
 
         } else {
-
-          //dropped
+          // dropped
           dropped_inserts++;
-
         }
-
-        //old QF code
-        // auto qf_insert_result = quotient_filter::insert_kmer(qf, hash_val, left_ext, right_ext, prev_left_ext, prev_right_ext);
-        // if (qf_insert_result == quotient_filter::QF_ITEM_INSERTED) {
-        //   num_unique_qf++;
-        //   assert(prev_left_ext == '0' && prev_right_ext == '0');
-        // } else if (qf_insert_result == quotient_filter::QF_ITEM_FOUND) {
-        //   gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
-        //                   dropped_inserts, ctg_kmers, use_qf, false);
-        // } else if (qf_insert_result == quotient_filter::QF_FULL) {
-        //   // printf(KLRED "WARNING [%s:%d]" KNORM " GQF is full\n", __FILE__, __LINE__);
-        //   dropped_inserts++;
-        // }
       }
     }
   }
@@ -495,8 +473,7 @@ struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
   cudaEvent_t event;
   QuickTimer insert_timer, kernel_timer;
   quotient_filter::QF *qf = nullptr;
-  two_choice_filter::TCF * tcf = nullptr;
-
+  two_choice_filter::TCF *tcf = nullptr;
 };
 
 template <int MAX_K>
@@ -540,7 +517,7 @@ HashTableGPUDriver<MAX_K>::HashTableGPUDriver() {}
 template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, int max_elems, size_t gpu_avail_mem,
                                      double &init_time, size_t &gpu_bytes_reqd, size_t &ht_bytes_used, size_t &qf_bytes_used,
-                                     bool use_qf) {
+                                     bool use_qf, double frac_singletons) {
   QuickTimer init_timer;
   init_timer.start();
   this->upcxx_rank_me = upcxx_rank_me;
@@ -550,79 +527,62 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   gpu_utils::set_gpu_device(upcxx_rank_me);
   dstate = new HashTableDriverState();
   dstate->qf = nullptr;
-  // max ratio of singletons to dups
-  uint64_t max_elems_qf = max_elems * 5;
-  int nbits_qf = log2(max_elems_qf);
-  // set this with small-arctic.fq to 22 to test QF overflow - should hit load of 1.2
-  // nbits_qf = 22;
-  // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits " << nbits_qf << KNORM << endl;
-  if (nbits_qf == 0) use_qf = false;
-  if (use_qf) {
-
-
-    //tcf is much nicer
-    qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
-
-    double tcf_available_mem = gpu_avail_mem / 5;
-
-    if (qf_bytes_used > tcf_available_mem){
-
-      //size to exactly the memory available.
-      qf_bytes_used = tcf_available_mem - 100;
-      
-      auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
-
-      dstate->tcf = two_choice_filter::TCF::generate_on_device( &sizing_controller, 42);
-      //printf("%d: %llu kmers, Sizing from available mem %llu, expected from_size %llu, true %llu \n", upcxx_rank_me, max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use());
-      
-
-    } else {
-
-      //we can size to the size we want
-      
-      auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
-      dstate->tcf = two_choice_filter::TCF::generate_on_device( &sizing_controller, 42);
-      //printf("%d: %llu kmers, Sizing to desired %llu, expected from_size %llu, true %llu \n", upcxx_rank_me, max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use());
-      //printf("%d: %llu kmers, Sizing to desired %llu, expected from_size %llu, true %llu, upper %llu\n", upcxx_rank_me, max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use(), dstate->tcf->host_bytes_in_use_top());
-
-
-    }
-
-
-
-    // qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-    // double qf_avail_mem = gpu_avail_mem / 5;
-    // // if (!upcxx_rank_me)
-    // //   cout << "QF nbits " << nbits_qf << " qf_avail_mem " << qf_avail_mem << " qf bytes used " << qf_bytes_used << "\n";
-    // if (qf_bytes_used > qf_avail_mem) {
-    //   // For debugging OOMs
-    //   // size_t prev_bytes_used = qf_bytes_used;
-    //   // int prev_nbits = nbits_qf;
-    //   double factor = qf_avail_mem / qf_bytes_used;
-    //   size_t corrected_max_elems = (max_elems_qf * factor);
-    //   auto corrected_nbits_qf = log2(corrected_max_elems);
-    //   if (corrected_nbits_qf >= nbits_qf) corrected_nbits_qf--;
-    //   nbits_qf = corrected_nbits_qf;
-    //   // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits corrected to " << nbits_qf << KNORM << endl;
-    //   //  drop bits further for really long kmers because the space requirements for the qf relative to the ht go down
-    //   if (kmer_len >= 96) nbits_qf--;
-    //   if (nbits_qf == 0) nbits_qf = 1;
-    //   qf_bytes_used = quotient_filter::qf_estimate_memory(nbits_qf);
-    //   // if (!upcxx_rank_me) cout << "Corrected: QF nbits " << nbits_qf << " qf bytes used " << qf_bytes_used << "\n";
-    // } else {
-    //   if (kmer_len >= 64) nbits_qf--;
-    // }
-    // quotient_filter::qf_malloc_device(&(dstate->qf), nbits_qf);
-  }
-
-  // now check that we have sufficient memory for the required capacity
-  size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (1 + sizeof(count_t)) * 1.5;
+  if (!upcxx_rank_me) printf(KLMAGENTA "GPU available memory %lu" KNORM "\n", gpu_avail_mem);
+  // size taken by fixed buffers for data transfer to the GPU
+  size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (3 + sizeof(count_t));
+  gpu_avail_mem -= elem_buff_size;
+  if (!upcxx_rank_me) printf(KLMAGENTA "Elem buff size %lu (avail mem now %lu)" KNORM "\n", elem_buff_size, gpu_avail_mem);
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
-  gpu_bytes_reqd = (max_elems * elem_size) + elem_buff_size + qf_bytes_used;
-  // save 1/5 of avail gpu memory for possible ctg kmers and compact hash table
+  size_t max_error_free_elems = max_elems * (1.0 - frac_singletons);
+  // expected size of compact hash table
+  size_t expected_compact_ht_size = max_error_free_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
+  // increase to max double size for contig kmers
+  expected_compact_ht_size *= 2;
+  gpu_avail_mem -= expected_compact_ht_size;
+  if (!upcxx_rank_me)
+    printf(KLMAGENTA "Expected compact hash table size %lu (avail mem now %lu)" KNORM "\n", expected_compact_ht_size,
+           gpu_avail_mem);
+
+  if (use_qf) {
+    // space for all kmers in the QF
+    uint64_t max_elems_qf = max_elems;
+    int nbits_qf = log2(max_elems_qf);
+    // set this with small-arctic.fq to 22 to test QF overflow - should hit load of 1.2
+    // nbits_qf = 22;
+    // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits " << nbits_qf << KNORM << endl;
+    if (nbits_qf == 0) {
+      use_qf = false;
+    } else {
+      // reduce the max expected elems by the singletons
+      max_elems *= (1.0 - frac_singletons);
+      // tcf is much nicer
+      qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
+      // limit the TCF to max 1/10 of the available memory
+      double tcf_available_mem = gpu_avail_mem / 10;
+      if (qf_bytes_used > tcf_available_mem) {
+        // size to just under the memory available.
+        qf_bytes_used = tcf_available_mem - 100;
+        auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
+        dstate->tcf = two_choice_filter::TCF::generate_on_device(&sizing_controller, 42);
+        // printf("%d: %llu kmers, Sizing from available mem %llu, expected from_size %llu, true %llu \n", upcxx_rank_me,
+        // max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use());
+      } else {
+        // we can size to the size we want
+        auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
+        dstate->tcf = two_choice_filter::TCF::generate_on_device(&sizing_controller, 42);
+        // printf("%d: %llu kmers, Sizing to desired %llu, expected from_size %llu, true %llu \n", upcxx_rank_me, max_elems_qf,
+        // qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use()); printf("%d: %llu kmers, Sizing to desired
+        // %llu, expected from_size %llu, true %llu, upper %llu\n", upcxx_rank_me, max_elems_qf, qf_bytes_used,
+        // sizing_controller.total()*4, dstate->tcf->host_bytes_in_use(), dstate->tcf->host_bytes_in_use_top());
+      }
+    }
+  }
+  gpu_avail_mem -= qf_bytes_used;
+  if (!upcxx_rank_me) printf(KLMAGENTA "TCF uses %lu (avail mem now %lu" KNORM "\n", qf_bytes_used, gpu_avail_mem);
+  gpu_bytes_reqd = max_elems * elem_size;
   // set capacity to max avail remaining from gpu memory - more slots means lower load
-  auto max_slots = (use_qf ? 0.6 : 0.8) * (gpu_avail_mem - elem_buff_size - qf_bytes_used) / elem_size;
-  // find the first prime number lower than this value
+  auto max_slots = gpu_avail_mem / elem_size;
+  // find the first prime number lower than the available slots, and no more than 3x the max number of elements
   primes::Prime prime;
   prime.set(min((size_t)max_slots, (size_t)(max_elems * 3)), false);
   auto ht_capacity = prime.get();
@@ -881,9 +841,8 @@ int HashTableGPUDriver<MAX_K>::get_num_gpu_calls() {
 
 template <int MAX_K>
 double HashTableGPUDriver<MAX_K>::get_qf_load_factor() {
-
-  if (dstate->tcf){
-    return (double) dstate->tcf->get_fill() / dstate->tcf->get_num_slots();
+  if (dstate->tcf) {
+    return (double)dstate->tcf->get_fill() / dstate->tcf->get_num_slots();
   }
 
   return 0;

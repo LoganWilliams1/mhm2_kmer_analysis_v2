@@ -102,7 +102,8 @@ void Supermer::unpack() {
 int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 
 template <int MAX_K>
-KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf)
+KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf,
+                        double frac_singletons)
     : local_kmers({})
     , ht_inserter({})
     , kmer_store()
@@ -157,9 +158,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
         num_supermer_inserts++;
         ht_inserter->insert_supermer(supermer.seq, supermer.count);
       });
-  // this is conservative, actually varies from around 1/2 to 1/5
-  if (use_qf) my_num_kmers *= 0.6;
-  ht_inserter->init(my_num_kmers, use_qf);
+  ht_inserter->init(my_num_kmers, use_qf, frac_singletons);
   barrier();
 }
 

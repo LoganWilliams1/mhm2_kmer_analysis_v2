@@ -115,6 +115,8 @@ class Options {
   bool shuffle_reads = true;
   bool dump_kmers = false;
   bool use_qf = true;
+  // conservative
+  double frac_singletons = 0.6;
   string optimize_for = "default";
 
   Options();
