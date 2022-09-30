@@ -350,6 +350,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   local_kmers->reserve(num_entries * 1.5);
   LOG_MEM("After insert_into_local_hashtable reserve");
   uint64_t invalid = 0;
+  uint64_t sum_kmer_counts = 0;
   while (true) {
     auto [kmer_array, count_exts] = state->ht_gpu_driver.get_next_entry();
     if (!kmer_array) break;
@@ -380,6 +381,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
       WARN("Found a duplicate kmer ", kmer.to_string(), " - shouldn't happen: existing count ", it->second.count, " new count ",
            kmer_counts.count);
     local_kmers->insert({kmer, kmer_counts});
+    sum_kmer_counts += kmer_counts.count;
   }
   insert_timer.stop();
 
@@ -393,6 +395,8 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   if (all_kmers_size != all_num_entries - all_invalid)
     SWARN("CPU kmer counts not equal to gpu kmer counts: ", all_kmers_size, " != ", (all_num_entries - all_invalid),
           " all_num_entries: ", all_num_entries, " all_invalid: ", all_invalid);
+  auto all_sum_kmer_counts = reduce_one(sum_kmer_counts, op_fast_add, 0).wait();
+  SLOG_GPU("For ", all_kmers_size, " kmers, average kmer count (depth): ", fixed, setprecision(2), (double)all_sum_kmer_counts / all_kmers_size, "\n");
   double gpu_insert_time = 0, gpu_kernel_time = 0;
   state->ht_gpu_driver.get_elapsed_time(gpu_insert_time, gpu_kernel_time);
   auto avg_gpu_insert_time = reduce_one(gpu_insert_time, op_fast_add, 0).wait() / rank_n();
