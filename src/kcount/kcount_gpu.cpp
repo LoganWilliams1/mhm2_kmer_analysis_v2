@@ -191,7 +191,7 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t max_elems, bool use_qf, double frac_singletons) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, bool use_qf, int sequencing_depth) {
   barrier(local_team());
   this->use_qf = use_qf;
   state = new HashTableInserterState();
@@ -205,7 +205,7 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, bool use_qf, double frac_s
   SLOG_GPU("Available GPU memory per rank for kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), "\n");
   assert(state != nullptr);
   state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, gpu_avail_mem_per_rank, init_time, gpu_bytes_reqd,
-                            ht_bytes_used, qf_bytes_used, use_qf, frac_singletons);
+                            ht_bytes_used, qf_bytes_used, use_qf, sequencing_depth);
   auto capacity = state->ht_gpu_driver.get_capacity();
   SLOG_GPU("GPU read kmers hash table has capacity per rank of ", capacity, " for ", (int64_t)max_elems, " elements\n");
   SLOG_GPU("Using ", get_size_str(ht_bytes_used), " for the GPU hash table and ", get_size_str(qf_bytes_used), " for the QF\n");
@@ -282,6 +282,9 @@ void HashTableInserter<MAX_K>::flush_inserts() {
     // state->ht_gpu_driver.get_qf_load_factor());
     auto all_qf_failures = reduce_one(qf_failures, op_fast_add, 0).wait();
     if (all_qf_failures) SWARN("GQF failed to insert ", all_qf_failures, " items");
+    uint64_t num_dropped_qf_elems = reduce_one((uint64_t)insert_stats.dropped_qf, op_fast_add, 0).wait();
+    if (num_dropped_qf_elems)
+      SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf_elems, num_attempted_inserts), " elements");
   }
   double load = (double)(insert_stats.new_inserts) / capacity;
   double avg_load_factor = reduce_one(load, op_fast_add, 0).wait() / rank_n();
@@ -396,7 +399,8 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     SWARN("CPU kmer counts not equal to gpu kmer counts: ", all_kmers_size, " != ", (all_num_entries - all_invalid),
           " all_num_entries: ", all_num_entries, " all_invalid: ", all_invalid);
   auto all_sum_kmer_counts = reduce_one(sum_kmer_counts, op_fast_add, 0).wait();
-  SLOG_GPU("For ", all_kmers_size, " kmers, average kmer count (depth): ", fixed, setprecision(2), (double)all_sum_kmer_counts / all_kmers_size, "\n");
+  SLOG_GPU("For ", all_kmers_size, " kmers, average kmer count (depth): ", fixed, setprecision(2),
+           (double)all_sum_kmer_counts / all_kmers_size, "\n");
   double gpu_insert_time = 0, gpu_kernel_time = 0;
   state->ht_gpu_driver.get_elapsed_time(gpu_insert_time, gpu_kernel_time);
   auto avg_gpu_insert_time = reduce_one(gpu_insert_time, op_fast_add, 0).wait() / rank_n();

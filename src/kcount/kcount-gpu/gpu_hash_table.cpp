@@ -402,7 +402,7 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
                                           bool ctg_kmers, InsertStats *insert_stats, two_choice_filter::TCF *tcf) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
-  int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0, num_unique_qf = 0;
+  int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0, num_unique_qf = 0, dropped_inserts_qf = 0;
   if (threadid > 0 && threadid < buff_len) {
     attempted_inserts++;
     KmerArray<MAX_K> kmer;
@@ -457,13 +457,14 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
 
         } else {
           // dropped
-          dropped_inserts++;
+          dropped_inserts_qf++;
         }
       }
     }
   }
   reduce(attempted_inserts, buff_len, &insert_stats->attempted);
   reduce(dropped_inserts, buff_len, &insert_stats->dropped);
+  reduce(dropped_inserts_qf, buff_len, &insert_stats->dropped_qf);
   reduce(new_inserts, buff_len, &insert_stats->new_inserts);
   reduce(num_unique_qf, buff_len, &insert_stats->num_unique_qf);
 }
@@ -517,7 +518,7 @@ HashTableGPUDriver<MAX_K>::HashTableGPUDriver() {}
 template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, int max_elems, size_t gpu_avail_mem,
                                      double &init_time, size_t &gpu_bytes_reqd, size_t &ht_bytes_used, size_t &qf_bytes_used,
-                                     bool use_qf, double frac_singletons) {
+                                     bool use_qf, int sequencing_depth) {
   QuickTimer init_timer;
   init_timer.start();
   this->upcxx_rank_me = upcxx_rank_me;
@@ -533,9 +534,17 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   gpu_avail_mem -= elem_buff_size;
   if (!upcxx_rank_me) printf(KLMAGENTA "Elem buff size %lu (avail mem now %lu)" KNORM "\n", elem_buff_size, gpu_avail_mem);
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
-  size_t max_error_free_elems = max_elems * (1.0 - frac_singletons);
+  // FIXME: this is a crude calculation based on an assumed error rate per base
+  double err = 1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len);
+  // double frac_good = 1.0 - err / (err + 1.0 / sequencing_depth);
+  double frac_good = 0.4;
   if (!upcxx_rank_me)
-    printf(KLMAGENTA "Max elems per rank of %d, of which %lu expected to be error free" KNORM "\n", max_elems, max_error_free_elems);
+    printf(KLMAGENTA "Using an error rate of %.2f for k %d, the expected fraction of singletons is %.3f " KNORM "\n", err, kmer_len,
+           (1.0 - frac_good));
+  size_t max_error_free_elems = max_elems * frac_good;
+  if (!upcxx_rank_me)
+    printf(KLMAGENTA "Max elems per rank of %d, of which %lu expected to be error free" KNORM "\n", max_elems,
+           max_error_free_elems);
   // expected size of compact hash table
   size_t expected_compact_ht_size = max_error_free_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
   // increase to max double size to include contig kmers
@@ -563,15 +572,14 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
     if (nbits_qf == 0) {
       use_qf = false;
     } else {
-      // reduce the max expected elems by the singletons
-      max_elems *= (1.0 - frac_singletons);
+      // reduce the max expected elems to the good ones only
+      max_elems *= frac_good;
       // tcf is much nicer
       qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
       // limit the TCF to max 1/8 of the available memory
       size_t tcf_available_mem = gpu_avail_mem / 8;
       if (qf_bytes_used > tcf_available_mem) {
-        if (!upcxx_rank_me)
-          printf(KLMAGENTA "TCF resized down from %lu to %lu" KNORM "\n", qf_bytes_used, tcf_available_mem - 100);
+        if (!upcxx_rank_me) printf(KLMAGENTA "TCF resized down from %lu to %lu" KNORM "\n", qf_bytes_used, tcf_available_mem - 100);
         // size to just under the memory available.
         qf_bytes_used = tcf_available_mem - 100;
         auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);

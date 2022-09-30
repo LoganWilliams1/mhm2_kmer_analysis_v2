@@ -423,7 +423,7 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::IsMember({"cpu", "core", "numa", "none"}));
   add_flag_def(app, "--use-qf", use_qf,
                "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
-  app.add_option("--fraction-singletons", frac_singletons, "Expected fraction of singleton kmers")->check(CLI::Range(0.1, 0.99));
+  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError &e) {

@@ -38,9 +38,9 @@
  # sublicense such enhancements or derivative works thereof, in binary and source code
  # form.
 
-# estimated of sequencing depth for sizing of kcount hash table. Should be conservative
-# to avoid OOM
-add_definitions(-DSEQUENCING_DEPTH=5)
+# error rate per base, fraction
+add_definitions(-DBASE_ERROR_RATE=0.025)
+
 # quality cutoff for rejecting bases as bad during kmer counting
 # quality encoding is logarithmic, so the probability of an error is:
 # cutoff 10: 10% chance
