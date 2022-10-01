@@ -59,7 +59,7 @@ do
   RWDI=$inst-RelWithDebInfo/bin/mhm2.py
   OPTS="-r ${ARCTIC}/arctic_sample_0.fq -v --checkpoint=yes"
   echo "Submitting job on ${nodes} $arch nodes"
-  job=$(sbatch --parsable --job-name="CImvg-${CI_COMMIT_SHORT_SHA}" ${slurm_opts} --nodes=${nodes} --wrap="${RWDI} $OPTS -o ${RUN_PREFIX}/$arch-rwdi-0 && echo 'sleeping for srun to recover' && sleep 30 && ${DBG} ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/$arch-dbg-0-k63 && echo Good")
+  job=$(sbatch --parsable --job-name="CImvg-${CI_COMMIT_SHORT_SHA}" ${slurm_opts} --nodes=${nodes} --wrap="${RWDI} $OPTS -o ${RUN_PREFIX}/$arch-rwdi-0 && echo 'sleeping for srun to recover' && sleep 60 && ${DBG} ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/$arch-dbg-0-k63 && echo Good")
   slurm_jobs="$slurm_jobs $job"
 done
 
