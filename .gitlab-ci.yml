@@ -18,6 +18,83 @@ stages:
   - accuracy
 
 #
+# perlmutter
+#
+
+Perlmutter:build:
+  stage: build
+  tags:
+    - Perlmutter
+  script:
+    - set -e
+    - git submodule init
+    - git submodule sync
+    - git submodule update
+    - uname -a
+    - pwd
+    - date
+    - echo "Establishing variables"
+    - export MHM2_SOURCE=$(pwd)
+    - export BASE=${PSCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
+    - mkdir -p ${BASE}
+    - rm -rf ${CI_SCRATCH}
+    - echo "Cleaning out old installs"
+    - find ${BASE}/ -maxdepth 1  -name "${CI_PROJECT_NAME}-*-*-*"  -mtime +14 -type d -exec rm -rf '{}' ';' || /bin/true
+    - mkdir -p ${CI_SCRATCH}
+    - dt=$(date '+%Y%m%d_%H%M%S')
+    - exec >  >(tee -ia ${CI_SCRATCH}/build-${dt}.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/build-${dt}.err >&2)    
+    - echo "Logging to ${CI_SCRATCH}/build-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ${MHM2_SOURCE}/ci/perlmutter.build.sh
+    - echo "Perlmutter build done"
+
+Perlmutter:validation:
+  stage: validation
+  tags:
+    - Perlmutter
+  script:
+    - set -e
+    - uname -a
+    - pwd
+    - date
+    - export GASNET_BACKTRACE=1
+    - echo "Establishing variables"
+    - export MHM2_SOURCE=$(pwd)
+    - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
+    - dt=$(date '+%Y%m%d_%H%M%S')
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation-${dt}.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation-${dt}.err >&2)    
+    - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ${MHM2_SOURCE}/ci/perlmutter.validation.sh
+    - echo "Perlmutter validation done"
+
+Perlmutter:accuracy:
+  stage: accuracy
+  tags:
+    - Perlmutter
+  script:
+    - set -e
+    - uname -a
+    - pwd
+    - date
+    - export GASNET_BACKTRACE=1
+    - echo "Establishing variables"
+    - export MHM2_SOURCE=$(pwd)
+    - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
+    - dt=$(date '+%Y%m%d_%H%M%S')
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation-$dt.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation-$dt.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - ${MHM2_SOURCE}/ci/perlmutter.accuracy.sh
+    - echo "Perlmutter accuracy done"
+
+#
 # cori
 #
 
