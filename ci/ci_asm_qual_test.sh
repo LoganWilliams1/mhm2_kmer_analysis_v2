@@ -30,6 +30,7 @@ then
 else
   echo "Restarting in $test_dir"
 fi
+uptime
 $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
 status=$?
 if [ $status -ne 0 ]
@@ -37,6 +38,7 @@ then
   echo "MHM2 failed! - $status"
   exit 1
 fi
+uptime
 $mhm2_install_dir/bin/check_asm_quality.py --asm-dir $test_dir --expected-quals $mhm2_install_dir/share/good-arctic-sample0.txt --refs $wd/$refs 2>&1 \
    | tee $test_dir/check_asm_quality_test.log
 status="$? ${PIPESTATUS[*]}"
@@ -45,3 +47,4 @@ then
   echo "check_asm_quality.py failed! - $status"
   exit 1
 fi
+uptime

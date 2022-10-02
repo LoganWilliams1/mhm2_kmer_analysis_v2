@@ -278,7 +278,8 @@ void HashTableInserter<MAX_K>::flush_inserts() {
     SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
              " balance\n");
     uint64_t qf_failures = (uint64_t)state->ht_gpu_driver.get_qf_failures();
-    //if (qf_failures) WARN("GQF failed to insert ", qf_failures, " items, load factor ", state->ht_gpu_driver.get_qf_load_factor());
+    // if (qf_failures) WARN("GQF failed to insert ", qf_failures, " items, load factor ",
+    // state->ht_gpu_driver.get_qf_load_factor());
     auto all_qf_failures = reduce_one(qf_failures, op_fast_add, 0).wait();
     if (all_qf_failures) SWARN("GQF failed to insert ", all_qf_failures, " items");
   }
@@ -300,9 +301,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   IntermittentTimer insert_timer("gpu insert to cpu timer");
   insert_timer.start();
   if (state->ht_gpu_driver.pass_type == CTG_KMERS_PASS) {
+    LOG_MEM("Before done_ctg_kmer_inserts");
     int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0;
     state->ht_gpu_driver.done_ctg_kmer_inserts(attempted_inserts, dropped_inserts, new_inserts);
     barrier();
+    LOG_MEM("After done_ctg_kmer_inserts");
     auto num_dropped_elems = reduce_one((uint64_t)dropped_inserts, op_fast_add, 0).wait();
     auto num_attempted_inserts = reduce_one((uint64_t)attempted_inserts, op_fast_add, 0).wait();
     auto num_new_inserts = reduce_one((uint64_t)new_inserts, op_fast_add, 0).wait();
@@ -318,14 +321,20 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
     }
   }
   barrier();
+  LOG_MEM("before done_all_inserts");
+  Timings::wait_pending();
   int num_dropped = 0, num_entries = 0, num_purged = 0;
   state->ht_gpu_driver.done_all_inserts(num_dropped, num_entries, num_purged);
   barrier();
+  LOG_MEM("after done_all_inserts");
+  Timings::wait_pending();
   auto msm_num_dropped = min_sum_max_reduce_one(num_dropped).wait();
   auto msm_num_entries = min_sum_max_reduce_one(num_entries).wait();
-  auto msm_pct_dropped = min_sum_max_reduce_one((float) (num_entries == 0 ? 0.0 : ((float) num_dropped) / ((float) num_entries))).wait();
+  auto msm_pct_dropped =
+      min_sum_max_reduce_one((float)(num_entries == 0 ? 0.0 : ((float)num_dropped) / ((float)num_entries))).wait();
   if (msm_num_dropped.max > 0)
-    SWARN("GPU dropped ", msm_pct_dropped.to_string(), " entries. dropped: ", msm_num_dropped.to_string(), " total: ", msm_num_entries.to_string(), " when compacting to output hash table\n");
+    SWARN("GPU dropped ", msm_pct_dropped.to_string(), " entries. dropped: ", msm_num_dropped.to_string(),
+          " total: ", msm_num_entries.to_string(), " when compacting to output hash table\n");
 
   auto all_capacity = reduce_one((uint64_t)state->ht_gpu_driver.get_final_capacity(), op_fast_add, 0).wait();
   auto all_num_purged = reduce_one((uint64_t)num_purged, op_fast_add, 0).wait();
@@ -339,6 +348,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
 
   // add some space for the ctg kmers
   local_kmers->reserve(num_entries * 1.5);
+  LOG_MEM("After insert_into_local_hashtable reserve");
   uint64_t invalid = 0;
   while (true) {
     auto [kmer_array, count_exts] = state->ht_gpu_driver.get_next_entry();
@@ -355,6 +365,11 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
       invalid++;
       continue;
     }
+    if (count_exts->count >= KCOUNT_HIGH_KMER_COUNT) {
+      Kmer<MAX_K> kmer(kmer_array->longs);
+      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", count_exts->count, " kmer = ", kmer.to_string(), "\n");
+    }
+
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = static_cast<kmer_count_t>(min(count_exts->count, static_cast<count_t>(UINT16_MAX))),
                               .left = (char)count_exts->left,
@@ -390,6 +405,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
            max_gpu_insert_time, " max, load balance ", load_balance, KNORM, "\n");
   SLOG_GPU("  kernel: ", fixed, setprecision(3), avg_gpu_kernel_time, " avg, ", max_gpu_kernel_time, " max\n");
   barrier();
+  LOG_MEM("After insert_into_local_hashtable inserts");
 }
 
 #define seq_block_inserter_K(KMER_LEN) template struct SeqBlockInserter<KMER_LEN>;

@@ -76,7 +76,8 @@ extern IntermittentTimer compute_alns_timer;
 extern IntermittentTimer get_ctgs_timer;
 extern IntermittentTimer aln_kernel_timer;
 
-void init_aligner(AlnScoring &aln_scoring, int rlen_limit);
+void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
+                  int rlen_limit);
 void cleanup_aligner();
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
@@ -149,13 +150,13 @@ class KmerCtgDHT {
   size_t unique_kmer_seed_lookups = 0;
   unsigned kmer_len;
 
-  KmerCtgDHT(int max_store_size, int max_rpcs_in_flight, bool allow_multi_kmers)
+  KmerCtgDHT(int max_store_size, int max_rpcs_in_flight, bool allow_multi_kmers, uint64_t num_contig_kmers = 0)
       : kmer_map({})
       , global_ctg_seqs({})
       , kmer_store()
       , num_dropped_seed_to_ctgs(0) {
     kmer_len = Kmer<MAX_K>::get_k();
-    kmer_store.set_size("insert ctg seeds", max_store_size, max_rpcs_in_flight);
+    kmer_store.set_size("insert ctg seeds", max_store_size, max_rpcs_in_flight, num_contig_kmers);
     kmer_store.set_update_func([&kmer_map = this->kmer_map, &num_dropped_seed_to_ctgs = this->num_dropped_seed_to_ctgs,
                                 allow_multi_kmers](KmerAndCtgLoc<MAX_K> kmer_and_ctg_loc) {
       CtgLoc ctg_loc = kmer_and_ctg_loc.ctg_loc;
@@ -335,7 +336,7 @@ class Aligner {
       int rstop = rstart + overlap_len;
       int cstop = cstart + overlap_len;
       if (orient == '-') switch_orient(rstart, rstop, rlen);
-      int score1 = overlap_len * cpu_aligner.aln_scoring.match;
+      int score1 = overlap_len * cpu_aligner.ssw_aligner.get_match_score();
       Aln aln(rname, cid, rstart, rstop, rlen, cstart, cstop, clen, orient, score1, 0, 0, read_group_id);
       assert(aln.is_valid());
       if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(rseq, to_string(overlap_len) + "=");
@@ -366,7 +367,7 @@ class Aligner {
   }
 
  public:
-  Aligner(int kmer_len, Alns &alns, int rlen_limit, bool compute_cigar, int64_t all_num_ctgs)
+  Aligner(int kmer_len, Alns &alns, int rlen_limit, bool compute_cigar, bool use_blastn_scores, int64_t all_num_ctgs)
       : num_alns(0)
       , num_perfect_alns(0)
       , num_overlaps(0)
@@ -375,11 +376,13 @@ class Aligner {
       , ctg_seqs({})
       , read_seqs({})
       , active_kernel_fut(make_future())
-      , cpu_aligner(compute_cigar)
+      , cpu_aligner(compute_cigar, use_blastn_scores)
       , alns(&alns) {
     ctg_cache.set_invalid_key(std::numeric_limits<cid_t>::max());
     ctg_cache.reserve(3 * all_num_ctgs / rank_n() + 1024);
-    init_aligner(cpu_aligner.aln_scoring, rlen_limit);
+    init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
+                 (int)cpu_aligner.ssw_aligner.get_gap_opening_penalty(), (int)cpu_aligner.ssw_aligner.get_gap_extending_penalty(),
+                 (int)cpu_aligner.ssw_aligner.get_ambiguity_penalty(), rlen_limit);
   }
 
   ~Aligner() {
@@ -781,14 +784,14 @@ static int align_kmers(KmerCtgDHT<MAX_K> &kmer_ctg_dht, Aligner &aligner,
 }
 
 template <int MAX_K>
-static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads *> &packed_reads_list, Alns &alns, int rlen_limit,
-                            int seed_space, int64_t all_num_ctgs, bool compute_cigar) {
+static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReadsList &packed_reads_list, Alns &alns, int rlen_limit,
+                            int seed_space, int64_t all_num_ctgs, bool compute_cigar, bool use_blastn_scores) {
   BarrierTimer timer(__FILEFUNC__);
   SLOG_VERBOSE("Using a seed space of ", seed_space, "\n");
   int64_t tot_num_kmers = 0;
   int64_t num_reads = 0;
   int64_t num_reads_aligned = 0, num_excess_alns_reads = 0;
-  Aligner aligner(Kmer<MAX_K>::get_k(), alns, rlen_limit, compute_cigar, all_num_ctgs);
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns, rlen_limit, compute_cigar, use_blastn_scores, all_num_ctgs);
   aligner.clear_aln_bufs();
   barrier();
   int64_t kmer_bytes_received = 0;
@@ -865,7 +868,8 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads 
   auto fut = align_file_timer.reduce_timings().then([](ShTimings sh_align_file_timings) {
     SLOG_VERBOSE("Alignment timings: ", sh_align_file_timings->to_string(true, true), "\n");
   });
-  all_done = when_all(all_done, fut, progbar.set_done());
+  Timings::set_pending(fut);
+  all_done = when_all(all_done, progbar.set_done());
   // free some memory
   HASH_TABLE<Kmer<MAX_K>, vector<KmerToRead>>().swap(kmer_read_map);
 
@@ -878,7 +882,9 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads 
 
   aligner.sort_alns();
   auto num_overlaps = aligner.get_num_overlaps();
+
   all_done.wait();
+  Timings::wait_pending();
   barrier();
 
   auto tot_num_reads = tot_num_reads_fut.wait();
@@ -916,21 +922,25 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, vector<PackedReads 
 }
 
 template <int MAX_K>
-double find_alignments(unsigned kmer_len, vector<PackedReads *> &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
+double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
                        Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool use_kmer_cache, bool compute_cigar,
-                       int min_ctg_len) {
+                       bool use_blastn_scores, int min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
   Kmer<MAX_K>::set_k(kmer_len);
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, "\n");
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
   bool allow_multi_kmers = compute_cigar;
-  KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers);
+  uint64_t num_ctg_kmers = 0;
+  for (auto &ctg : ctgs)
+    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+  KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   barrier();
   build_alignment_index(kmer_ctg_dht, ctgs, min_ctg_len);
 #ifdef DEBUG
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
-  double kernel_elapsed = do_alignments(kmer_ctg_dht, packed_reads_list, alns, rlen_limit, seed_space, all_num_ctgs, compute_cigar);
+  double kernel_elapsed =
+      do_alignments(kmer_ctg_dht, packed_reads_list, alns, rlen_limit, seed_space, all_num_ctgs, compute_cigar, use_blastn_scores);
   barrier();
   auto num_alns = alns.size();
   auto num_dups = alns.get_num_dups();

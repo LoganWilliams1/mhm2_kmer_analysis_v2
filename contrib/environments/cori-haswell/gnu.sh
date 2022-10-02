@@ -6,9 +6,10 @@ module rm PrgEnv-intel
 module load PrgEnv-gnu
 module rm craype-mic-knl
 module load craype-haswell
+module rm darshan
 
 module load cmake
 module load git
-module load upcxx
+module load upcxx/nightly
 
 module list

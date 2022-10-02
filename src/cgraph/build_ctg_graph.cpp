@@ -377,7 +377,7 @@ static std::pair<int, int> min_hamming_dist(const string &s1, const string &s2, 
   return {min_dist, expected_overlap};
 }
 
-static void parse_reads(unsigned kmer_len, const vector<PackedReads *> &packed_reads_list) {
+static void parse_reads(unsigned kmer_len, const PackedReadsList &packed_reads_list) {
   BarrierTimer timer(__FILEFUNC__);
 
   int64_t num_seqs_added = 0;
@@ -639,7 +639,7 @@ static void merge_nbs() {
                all_max_orphan_len, ", max depth ", all_max_orphan_depth, "\n");
 }
 
-void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kmer_len, vector<PackedReads *> &packed_reads_list,
+void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kmer_len, PackedReadsList &packed_reads_list,
                      Contigs &ctgs, Alns &alns) {
   BarrierTimer timer(__FILEFUNC__);
   _graph = graph;
