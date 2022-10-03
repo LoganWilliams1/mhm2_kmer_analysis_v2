@@ -60,14 +60,30 @@ int main(int argc, char *argv[])
   }
 
   int64_t len;
+  const char * empty = "";
+  const char * p1 = "/1";
+  const char * p2 = "/2";
   while((len = kseq_read(kseq1)) > 0) 
   {
-    fprintf(IFQ, "@%.*s\n%.*s\n+\n%.*s\n", kseq1->name.l, kseq1->name.s, kseq1->seq.l, kseq1->seq.s, kseq1->qual.l, kseq1->qual.s);
     if ((len = kseq_read(kseq2)) <= 0) {
       fprintf(stderr, "Read 1 and Read 2 have different record counts!\n");
       exit(1);
     }
-    fprintf(IFQ, "@%.*s\n%.*s\n+\n%.*s\n", kseq2->name.l, kseq2->name.s, kseq2->seq.l, kseq2->seq.s, kseq2->qual.l, kseq2->qual.s);
+    int is_same = 1;
+    if (kseq1->name.l != kseq2->name.l) {
+      fprintf(stderr, "Read 1 and Read 2 have different read names %.*s %.*s\n",  kseq1->name.l, kseq1->name.s, kseq2->name.l, kseq2->name.s);
+      exit(1);
+    }
+    if (memcmp(kseq1->name.s, kseq2->name.s, kseq1->name.l) != 0) {
+      if (kseq1->name.l <= 2 || memcmp(kseq1->name.s, kseq2->name.s, kseq1->name.l - 2) != 0) {
+        fprintf(stderr, "Read 1 and Read 2 have are not paired read names %.*s %.*s\n",  kseq1->name.l, kseq1->name.s, kseq2->name.l, kseq2->name.s);
+        exit(1);
+      }
+      is_same = 0;
+    }
+      
+    fprintf(IFQ, "@%.*s%s\n%.*s\n+\n%.*s\n", kseq1->name.l, kseq1->name.s, (is_same ? p1 : empty), kseq1->seq.l, kseq1->seq.s, kseq1->qual.l, kseq1->qual.s);
+    fprintf(IFQ, "@%.*s%s\n%.*s\n+\n%.*s\n", kseq2->name.l, kseq2->name.s, (is_same ? p2 : empty), kseq2->seq.l, kseq2->seq.s, kseq2->qual.l, kseq2->qual.s);
   }
 
   kseq_destroy(kseq1);
