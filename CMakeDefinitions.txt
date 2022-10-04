@@ -39,7 +39,7 @@
  # form.
 
 # error rate per base, fraction
-add_definitions(-DBASE_ERROR_RATE=0.0025)
+add_definitions(-DBASE_ERROR_RATE=0.005)
 
 # quality cutoff for rejecting bases as bad during kmer counting
 # quality encoding is logarithmic, so the probability of an error is:

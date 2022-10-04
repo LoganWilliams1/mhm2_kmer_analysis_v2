@@ -554,7 +554,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
            expected_compact_ht_size, max_elems, gpu_avail_mem);
 
   // FIXME: this is a crude calculation based on an assumed error rate per base
-  double kmer_error_rate = 2.0 * (1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len));
+  double kmer_error_rate = 1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len);
   // double kmer_error_rate = 0.2;
   if (!upcxx_rank_me) printf(KLMAGENTA "kmer error rate %.3f" KNORM "\n", kmer_error_rate);
   size_t num_errors = max_elems * sequencing_depth * kmer_error_rate;
