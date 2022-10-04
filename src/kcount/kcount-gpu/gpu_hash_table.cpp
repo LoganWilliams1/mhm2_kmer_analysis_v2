@@ -49,6 +49,7 @@
 #include <assert.h>
 #include <cuda_runtime_api.h>
 #include <cuda.h>
+#include <cmath>
 
 #include "upcxx_utils/colors.h"
 #include "gpu-utils/gpu_common.hpp"
@@ -534,23 +535,13 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   gpu_avail_mem -= elem_buff_size;
   if (!upcxx_rank_me) printf(KLMAGENTA "Elem buff size %lu (avail mem now %lu)" KNORM "\n", elem_buff_size, gpu_avail_mem);
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
-  // FIXME: this is a crude calculation based on an assumed error rate per base
-  double err = 1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len);
-  // double frac_good = 1.0 - err / (err + 1.0 / sequencing_depth);
-  double frac_good = 0.4;
-  if (!upcxx_rank_me)
-    printf(KLMAGENTA "Using an error rate of %.2f for k %d, the expected fraction of singletons is %.3f " KNORM "\n", err, kmer_len,
-           (1.0 - frac_good));
-  size_t max_error_free_elems = max_elems * frac_good;
-  if (!upcxx_rank_me)
-    printf(KLMAGENTA "Max elems per rank of %d, of which %lu expected to be error free" KNORM "\n", max_elems,
-           max_error_free_elems);
+  if (!upcxx_rank_me) printf(KLMAGENTA "Max unique elems per rank of %d" KNORM "\n", max_elems);
   // expected size of compact hash table
-  size_t expected_compact_ht_size = max_error_free_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
+  size_t expected_compact_ht_size = max_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
   // increase to max double size to include contig kmers
   expected_compact_ht_size *= 2;
-  // limit how much compact and ctg kmers ht can take; limit more for smaller k
-  size_t max_compact_ht_mem = gpu_avail_mem / (kmer_len < 60 ? 3 : 2.7);
+  // limit how much compact and ctg kmers ht can take
+  size_t max_compact_ht_mem = gpu_avail_mem / 3;
   if (expected_compact_ht_size > max_compact_ht_mem) {
     if (!upcxx_rank_me)
       printf(KLMAGENTA "Reduced expected compact hash table size from %lu to %lu" KNORM "\n", expected_compact_ht_size,
@@ -559,12 +550,18 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   }
   gpu_avail_mem -= expected_compact_ht_size;
   if (!upcxx_rank_me)
-    printf(KLMAGENTA "Expected compact hash table and ctg kmers size %lu for %lu elements (avail mem now %lu)" KNORM "\n",
-           expected_compact_ht_size, max_error_free_elems, gpu_avail_mem);
+    printf(KLMAGENTA "Expected compact hash table and ctg kmers size %lu for %d elements (avail mem now %lu)" KNORM "\n",
+           expected_compact_ht_size, max_elems, gpu_avail_mem);
+
+  // FIXME: this is a crude calculation based on an assumed error rate per base
+  double kmer_error_rate = 2.0 * (1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len));
+  // double kmer_error_rate = 0.2;
+  if (!upcxx_rank_me) printf(KLMAGENTA "kmer error rate %.3f" KNORM "\n", kmer_error_rate);
+  size_t num_errors = max_elems * sequencing_depth * kmer_error_rate;
 
   if (use_qf) {
-    // space for all kmers in the QF
-    uint64_t max_elems_qf = max_elems;
+    // space for all unique kmers in the QF, plus some wiggle room
+    uint64_t max_elems_qf = 1.3 * (max_elems + num_errors);
     int nbits_qf = log2(max_elems_qf);
     // set this with small-arctic.fq to 22 to test QF overflow - should hit load of 1.2
     // nbits_qf = 22;
@@ -572,8 +569,6 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
     if (nbits_qf == 0) {
       use_qf = false;
     } else {
-      // reduce the max expected elems to the good ones only
-      max_elems *= frac_good;
       // tcf is much nicer
       qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
       // limit the TCF to max 1/8 of the available memory
@@ -597,6 +592,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
       }
     }
   }
+  if (!use_qf) max_elems += num_errors;
   gpu_avail_mem -= qf_bytes_used;
   if (!upcxx_rank_me) printf(KLMAGENTA "TCF uses %lu (avail mem now %lu" KNORM "\n", qf_bytes_used, gpu_avail_mem);
   gpu_bytes_reqd = max_elems * elem_size;

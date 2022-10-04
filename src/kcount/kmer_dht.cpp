@@ -120,7 +120,6 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   BarrierTimer timer(__FILEFUNC__);
   auto node0_cores = upcxx::local_team().rank_n();
   // check if we have enough memory to run
-  // this factor reflects a lower bound on sequencing depth (0.2 gives 5x). Conservative to avoid OOM.
   // FIXME: determine the correct adjustment factor from sampling reads
   double adjustment_factor = 1.0 / sequencing_depth;
   auto my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
@@ -146,11 +145,6 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, my_num_kmers);
 
   barrier();
-  // in this case we have to roughly estimate the hash table size because the space is reserved now
-  // err on the side of excess because the whole point of doing this is speed and we don't want a
-  // hash table resize
-  // Unfortunately, this estimate depends on the depth of the sample - high depth means more wasted memory,
-  // but low depth means potentially resizing the hash table, which is very expensive
   double kmers_space_reserved = my_adjusted_num_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts));
   SLOG_VERBOSE("Reserving at least ", get_size_str(node0_cores * kmers_space_reserved), " for kmer hash tables with ",
                node0_cores * my_adjusted_num_kmers, " entries on node 0\n");
