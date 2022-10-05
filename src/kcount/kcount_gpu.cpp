@@ -198,21 +198,17 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, bool use_qf, int sequencin
   double init_time;
   // calculate total slots for hash table. Reserve space for parse and pack
   size_t bytes_for_pnp = KCOUNT_SEQ_BLOCK_SIZE * (2 + Kmer<MAX_K>::get_N_LONGS() * sizeof(uint64_t) + sizeof(int));
-  size_t gpu_bytes_reqd = 0, ht_bytes_used = 0, qf_bytes_used = 0;
+  size_t ht_bytes_used = 0, qf_bytes_used = 0;
   DBG("Finding available memory on GPU ", gpu_utils::get_gpu_uuid(), "\n");
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   auto gpu_avail_mem_per_rank = (get_gpu_avail_mem_per_rank() - bytes_for_pnp) * 0.9;
   SLOG_GPU("Available GPU memory per rank for kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), "\n");
   assert(state != nullptr);
-  state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, gpu_avail_mem_per_rank, init_time, gpu_bytes_reqd,
+  state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, gpu_avail_mem_per_rank, init_time, 
                             ht_bytes_used, qf_bytes_used, use_qf, sequencing_depth);
   auto capacity = state->ht_gpu_driver.get_capacity();
   SLOG_GPU("GPU read kmers hash table has capacity per rank of ", capacity, " for ", (int64_t)max_elems, " elements\n");
   SLOG_GPU("Using ", get_size_str(ht_bytes_used), " for the GPU hash table and ", get_size_str(qf_bytes_used), " for the QF\n");
-  if (capacity < max_elems)
-    SLOG_VERBOSE("GPU read kmers hash table has less than requested capacity: ", perc_str(capacity, max_elems),
-                 "; full capacity requires ", get_size_str(gpu_bytes_reqd), " memory on GPU but only have ",
-                 get_size_str(gpu_avail_mem_per_rank), "\n");
   SLOG_GPU("Initialized hash table GPU driver in ", fixed, setprecision(3), init_time, " s\n");
   barrier(local_team());
   auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();

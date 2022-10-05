@@ -66,6 +66,16 @@ using namespace std;
 using namespace gpu_common;
 using namespace kcount_gpu;
 
+// convenience functions
+#define SLOG(fmt, ...) \
+  if (!upcxx_rank_me) printf(KLMAGENTA "GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
+
+#define SWARN(fmt, ...) \
+  if (!upcxx_rank_me) printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
+
+#define WARN(fmt, ...) \
+  printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
+
 const uint64_t KEY_EMPTY = 0xffffffffffffffff;
 const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
 const uint8_t KEY_EMPTY_BYTE = 0xff;
@@ -76,10 +86,10 @@ __device__ void kmer_set(KmerArray<MAX_K> &kmer1, const KmerArray<MAX_K> &kmer2)
   uint64_t old_key;
   for (int i = 0; i < N_LONGS - 1; i++) {
     old_key = atomicExch((unsigned long long *)&(kmer1.longs[i]), kmer2.longs[i]);
-    if (old_key != KEY_EMPTY) printf("ERROR: old key should be KEY_EMPTY\n");
+    if (old_key != KEY_EMPTY) WARN("old key should be KEY_EMPTY");
   }
   old_key = atomicExch((unsigned long long *)&(kmer1.longs[N_LONGS - 1]), kmer2.longs[N_LONGS - 1]);
-  if (old_key != KEY_TRANSITION) printf("ERROR: old key should be KEY_TRANSITION\n");
+  if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
 }
 
 template <int MAX_K>
@@ -203,7 +213,7 @@ __global__ void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> co
           int8_t left_ext = get_ext(elems.vals[threadid], 0, ext_map);
           int8_t right_ext = get_ext(elems.vals[threadid], 4, ext_map);
           if (elems.vals[threadid].kmer_count < 2)
-            printf("WARNING: elem should have been purged, count %d\n", elems.vals[threadid].kmer_count);
+            WARN("elem should have been purged, count %d", elems.vals[threadid].kmer_count);
           compact_elems.vals[slot].count = elems.vals[threadid].kmer_count;
           compact_elems.vals[slot].left = left_ext;
           compact_elems.vals[slot].right = right_ext;
@@ -246,7 +256,7 @@ static __constant__ char to_base[] = {'0', 'a', 'c', 'g', 't', 'A', 'C', 'G', 'T
 
 inline __device__ char to_base_func(int index, int pp) {
   if (index > 9) {
-    printf("ERROR: index out of range for to_base: %d, packed seq pos %d\n", index, pp);
+    WARN("index out of range for to_base: %d, packed seq pos %d", index, pp);
     return 0;
   }
   if (index == 0) return '_';
@@ -302,11 +312,11 @@ __device__ bool get_kmer_from_supermer(SupermerBuff supermer_buff, uint32_t buff
     if (bad_qual(right_ext)) right_ext = '0';
   }
   if (!is_valid_base(left_ext)) {
-    printf("ERROR: threadid %d, invalid char for left nucleotide %d\n", threadid, (uint8_t)left_ext);
+    WARN("threadid %d, invalid char for left nucleotide %d", threadid, (uint8_t)left_ext);
     return false;
   }
   if (!is_valid_base(right_ext)) {
-    printf("ERROR: threadid %d, invalid char for right nucleotide %d\n", threadid, (uint8_t)right_ext);
+    WARN("threadid %d, invalid char for right nucleotide %d", threadid, (uint8_t)right_ext);
     return false;
   }
   uint64_t kmer_rc[N_LONGS];
@@ -350,7 +360,7 @@ __device__ bool gpu_insert_kmer(KmerCountsMap<MAX_K> elems, uint64_t hash_val, K
         if (old_key == KEY_EMPTY) {
           if (update_only) {
             old_key = atomicExch((unsigned long long *)&(elems.keys[slot].longs[N_LONGS - 1]), KEY_EMPTY);
-            if (old_key != KEY_TRANSITION) printf("ERROR: old key should be KEY_TRANSITION\n");
+            if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
             return false;
           }
           kmer_set(elems.keys[slot], kmer);
@@ -410,8 +420,8 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
     char left_ext, right_ext;
     count_t kmer_count;
     if (get_kmer_from_supermer<MAX_K>(supermer_buff, buff_len, kmer_len, kmer.longs, left_ext, right_ext, kmer_count)) {
-      if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) printf("ERROR: block equal to KEY_EMPTY\n");
-      if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) printf("ERROR: block equal to KEY_TRANSITION\n");
+      if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) WARN("block equal to KEY_EMPTY");
+      if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) WARN("block equal to KEY_TRANSITION");
       auto hash_val = kmer_hash(kmer);
       char prev_left_ext = '0', prev_right_ext = '0';
       bool use_qf = (tcf != nullptr);
@@ -518,8 +528,8 @@ HashTableGPUDriver<MAX_K>::HashTableGPUDriver() {}
 
 template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, int max_elems, size_t gpu_avail_mem,
-                                     double &init_time, size_t &gpu_bytes_reqd, size_t &ht_bytes_used, size_t &qf_bytes_used,
-                                     bool use_qf, int sequencing_depth) {
+                                     double &init_time, size_t &ht_bytes_used, size_t &qf_bytes_used, bool use_qf,
+                                     int sequencing_depth) {
   QuickTimer init_timer;
   init_timer.start();
   this->upcxx_rank_me = upcxx_rank_me;
@@ -529,78 +539,76 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   gpu_utils::set_gpu_device(upcxx_rank_me);
   dstate = new HashTableDriverState();
   dstate->qf = nullptr;
-  if (!upcxx_rank_me) printf(KLMAGENTA "GPU available memory %lu" KNORM "\n", gpu_avail_mem);
-  // size taken by fixed buffers for data transfer to the GPU
+  
+  SLOG("GPU available memory %lu", gpu_avail_mem);
+  SLOG("Max unique elems per rank of %d", max_elems);
+  // reserve space for the fixed size buffer for passing data to the GPU
   size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (3 + sizeof(count_t));
   gpu_avail_mem -= elem_buff_size;
-  if (!upcxx_rank_me) printf(KLMAGENTA "Elem buff size %lu (avail mem now %lu)" KNORM "\n", elem_buff_size, gpu_avail_mem);
-  size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
-  if (!upcxx_rank_me) printf(KLMAGENTA "Max unique elems per rank of %d" KNORM "\n", max_elems);
-  // expected size of compact hash table
-  size_t expected_compact_ht_size = max_elems * (sizeof(KmerArray<MAX_K>) + sizeof(CountExts));
-  // increase to max double size to include contig kmers
-  expected_compact_ht_size *= 2;
-  // limit how much compact and ctg kmers ht can take
-  size_t max_compact_ht_mem = gpu_avail_mem / 3;
-  if (expected_compact_ht_size > max_compact_ht_mem) {
-    if (!upcxx_rank_me)
-      printf(KLMAGENTA "Reduced expected compact hash table size from %lu to %lu" KNORM "\n", expected_compact_ht_size,
-             max_compact_ht_mem);
-    expected_compact_ht_size = max_compact_ht_mem;
-  }
-  gpu_avail_mem -= expected_compact_ht_size;
-  if (!upcxx_rank_me)
-    printf(KLMAGENTA "Expected compact hash table and ctg kmers size %lu for %d elements (avail mem now %lu)" KNORM "\n",
-           expected_compact_ht_size, max_elems, gpu_avail_mem);
+  SLOG("Elem buff size %lu (avail mem now %lu)", elem_buff_size, gpu_avail_mem);
 
   // FIXME: this is a crude calculation based on an assumed error rate per base
   double kmer_error_rate = 1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len);
-  // double kmer_error_rate = 0.2;
-  if (!upcxx_rank_me) printf(KLMAGENTA "kmer error rate %.3f" KNORM "\n", kmer_error_rate);
+  SLOG("Estimated kmer error rate %.3f", kmer_error_rate);
   size_t num_errors = max_elems * sequencing_depth * kmer_error_rate;
+  // crude estimate of how ctg kmers increase with increasing kmer length
+  double ratio_ctg_to_read_kmers = (double)kmer_len / 100;
+  
+  size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
+  // expected size of compact hash table
+  size_t compact_elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountExts);
+  double elem_size_ratio = (double)compact_elem_size / (double)elem_size;
+  SLOG("Element size for main HT %lu and for compact HT %lu (ratio %.3f)", elem_size, compact_elem_size, elem_size_ratio);
 
-  if (use_qf) {
-    // space for all unique kmers in the QF, plus some wiggle room
-    uint64_t max_elems_qf = 1.3 * (max_elems + num_errors);
-    int nbits_qf = log2(max_elems_qf);
-    // set this with small-arctic.fq to 22 to test QF overflow - should hit load of 1.2
-    // nbits_qf = 22;
-    // if (!upcxx_rank_me) cout << KLRED << "Number of QF bits " << nbits_qf << KNORM << endl;
-    if (nbits_qf == 0) {
-      use_qf = false;
-    } else {
-      // tcf is much nicer
-      qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
-      // limit the TCF to max 1/8 of the available memory
-      size_t tcf_available_mem = gpu_avail_mem / 8;
-      if (qf_bytes_used > tcf_available_mem) {
-        if (!upcxx_rank_me) printf(KLMAGENTA "TCF resized down from %lu to %lu" KNORM "\n", qf_bytes_used, tcf_available_mem - 100);
-        // size to just under the memory available.
-        qf_bytes_used = tcf_available_mem - 100;
-        auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
-        dstate->tcf = two_choice_filter::TCF::generate_on_device(&sizing_controller, 42);
-        // printf("%d: %llu kmers, Sizing from available mem %llu, expected from_size %llu, true %llu \n", upcxx_rank_me,
-        // max_elems_qf, qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use());
-      } else {
-        // we can size to the size we want
-        auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
-        dstate->tcf = two_choice_filter::TCF::generate_on_device(&sizing_controller, 42);
-        // printf("%d: %llu kmers, Sizing to desired %llu, expected from_size %llu, true %llu \n", upcxx_rank_me, max_elems_qf,
-        // qf_bytes_used, sizing_controller.total()*4, dstate->tcf->host_bytes_in_use()); printf("%d: %llu kmers, Sizing to desired
-        // %llu, expected from_size %llu, true %llu, upper %llu\n", upcxx_rank_me, max_elems_qf, qf_bytes_used,
-        // sizing_controller.total()*4, dstate->tcf->host_bytes_in_use(), dstate->tcf->host_bytes_in_use_top());
-      }
-    }
+  double target_load_factor = 0.5;
+  double load_multiplier = 1.0 / target_load_factor;
+  // There are several different structures that all have to fit in the GPU memory. We first compute the
+  // memory required by all of them at the target load factor, and then reduce uniformly if there is insufficient
+  // 1. The read kmers hash table. With the QF, this is the size of the number of unique kmers. Without the QF,
+  //    it is that size plus the size of the errors. In addition, this hash table needs to be big enough to have
+  //    all the read kmers added too, if this is not the first round.
+  //size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
+  size_t max_read_kmers = (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
+  size_t read_kmers_size = max_read_kmers * elem_size;
+  // 2. The QF, if used. This is the size of all the unique read kmers plus the errors, plus some wiggle room
+  size_t max_elems_qf = load_multiplier * (use_qf ? max_elems + num_errors : 0) * 1.3;
+  size_t qf_size = use_qf ? two_choice_filter::estimate_memory(max(1.0, log2(max_elems_qf))) : 0;
+  // 3. The ctg kmers hash table (only present if this is not the first contigging round). This varies in size
+  //    from about 0.2 to 1.0 of the read kmers size, starting small with low k and getting higher with large k
+  size_t max_ctg_kmers = load_multiplier * (max_elems * ratio_ctg_to_read_kmers);
+  size_t ctg_kmers_size = max_ctg_kmers * elem_size;
+  // 4. The final compact hash table, which is the size needed to store all the unique kmers from both the reads
+  //    and contigs.
+  size_t max_compact_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers);
+  size_t compact_kmers_size = max_compact_kmers * compact_elem_size;
+  
+  SLOG("Element counts: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", max_read_kmers,
+       max_elems_qf, max_ctg_kmers, max_compact_kmers);
+  size_t tot_size = read_kmers_size + qf_size + ctg_kmers_size + compact_kmers_size;
+  SLOG("Element sizes: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu, total %lu", read_kmers_size,
+       qf_size, ctg_kmers_size, compact_kmers_size, tot_size);
+
+  if (tot_size > gpu_avail_mem) {
+    double reduction_ratio = (double)gpu_avail_mem / tot_size;
+    SLOG("Insufficent memory for %.2f load factor across all data structures; reducing by a factor of %.3f",
+         target_load_factor, reduction_ratio);
+    max_read_kmers *= reduction_ratio;
+    max_elems_qf *= reduction_ratio;
+    max_ctg_kmers *= reduction_ratio;
+    max_compact_kmers *= reduction_ratio;
+    SLOG("Adjusted element counts: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", max_read_kmers,
+         max_elems_qf, max_ctg_kmers, max_compact_kmers);
   }
-  if (!use_qf) max_elems += num_errors;
-  gpu_avail_mem -= qf_bytes_used;
-  if (!upcxx_rank_me) printf(KLMAGENTA "TCF uses %lu (avail mem now %lu" KNORM "\n", qf_bytes_used, gpu_avail_mem);
-  gpu_bytes_reqd = max_elems * elem_size;
-  // set capacity to max avail remaining from gpu memory - more slots means lower load
-  auto max_slots = gpu_avail_mem / elem_size;
+  
+  if (use_qf) {
+    qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
+    auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
+    dstate->tcf = two_choice_filter::TCF::generate_on_device(&sizing_controller, 42);
+  }
+  
   // find the first prime number lower than the available slots, and no more than 3x the max number of elements
   primes::Prime prime;
-  prime.set(min((size_t)max_slots, (size_t)(max_elems * 3)), false);
+  prime.set(max_read_kmers, false);
   auto ht_capacity = prime.get();
   ht_bytes_used = ht_capacity * elem_size;
 
@@ -723,9 +731,8 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries)
 #ifdef DEBUG
   auto expected_num_entries = read_kmers_stats.new_inserts - num_purged;
   if (num_entries != (int)expected_num_entries)
-    cerr << KLRED << "[" << upcxx_rank_me << "] WARNING mismatch " << num_entries << " != " << expected_num_entries << " diff "
-         << (num_entries - (int)expected_num_entries) << " new inserts " << read_kmers_stats.new_inserts << " num purged "
-         << num_purged << KNORM << endl;
+    WARN("mismatch %lu != %lu diff %lu new inserts %lu num purged %lu", num_entries, expected_num_entries,
+         (num_entries - (int)expected_num_entries), read_kmers_stats.new_inserts, num_purged);
 #endif
   read_kmers_dev.num = num_entries;
 }
@@ -776,8 +783,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   num_unique = counts_host[1];
 #ifdef DEBUG
   if (num_unique != read_kmers_dev.num)
-    cerr << KLRED << "[" << upcxx_rank_me << "] <gpu_hash_table.cpp:" << __LINE__ << "> WARNING: " << KNORM
-         << "mismatch in expected entries " << num_unique << " != " << read_kmers_dev.num << "\n";
+    WARN("mismatch in expected entries %lu != %lu", num_unique, read_kmers_dev.num);
 #endif
   // now copy the gpu hash table values across to the host
   // We only do this once, which requires enough memory on the host to store the full GPU hash table, but since the GPU memory
