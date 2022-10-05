@@ -442,7 +442,7 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
 #endif
 
 #if TCF_DELETE
-        bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
+        bool success = tcf->insert_if_not_exists_delete(tcf->get_my_tile(), hash_val, packed, result, found);
 #else
         bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
 #endif
