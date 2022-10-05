@@ -588,7 +588,8 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   SLOG("Element sizes: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu, total %lu", read_kmers_size,
        qf_size, ctg_kmers_size, compact_kmers_size, tot_size);
 
-  double mem_ratio = (double)gpu_avail_mem / tot_size;
+  // keep some in reserve as a buffer
+  double mem_ratio = (double)(0.8 * gpu_avail_mem) / tot_size;
   if (mem_ratio < 1.0) 
     SLOG("Insufficent memory for %.2f load factor across all data structures; reducing by a factor of %.3f",
          target_load_factor, mem_ratio);
