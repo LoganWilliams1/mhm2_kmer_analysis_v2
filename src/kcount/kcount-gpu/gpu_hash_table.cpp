@@ -560,7 +560,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   double elem_size_ratio = (double)compact_elem_size / (double)elem_size;
   SLOG("Element size for main HT %lu and for compact HT %lu (ratio %.3f)", elem_size, compact_elem_size, elem_size_ratio);
 
-  double target_load_factor = 0.5;
+  double target_load_factor = 0.66;
   double load_multiplier = 1.0 / target_load_factor;
   // There are several different structures that all have to fit in the GPU memory. We first compute the
   // memory required by all of them at the target load factor, and then reduce uniformly if there is insufficient
@@ -568,7 +568,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   //    it is that size plus the size of the errors. In addition, this hash table needs to be big enough to have
   //    all the read kmers added too, if this is not the first round.
   //size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
-  size_t max_read_kmers = (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
+  size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
   size_t read_kmers_size = max_read_kmers * elem_size;
   // 2. The QF, if used. This is the size of all the unique read kmers plus the errors, plus some wiggle room
   size_t max_elems_qf = load_multiplier * (use_qf ? max_elems + num_errors : 0) * 1.3;
@@ -588,17 +588,16 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   SLOG("Element sizes: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu, total %lu", read_kmers_size,
        qf_size, ctg_kmers_size, compact_kmers_size, tot_size);
 
-  if (tot_size > gpu_avail_mem) {
-    double reduction_ratio = (double)gpu_avail_mem / tot_size;
+  double mem_ratio = (double)gpu_avail_mem / tot_size;
+  if (mem_ratio < 1.0) 
     SLOG("Insufficent memory for %.2f load factor across all data structures; reducing by a factor of %.3f",
-         target_load_factor, reduction_ratio);
-    max_read_kmers *= reduction_ratio;
-    max_elems_qf *= reduction_ratio;
-    max_ctg_kmers *= reduction_ratio;
-    max_compact_kmers *= reduction_ratio;
-    SLOG("Adjusted element counts: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", max_read_kmers,
-         max_elems_qf, max_ctg_kmers, max_compact_kmers);
-  }
+         target_load_factor, mem_ratio);
+  max_read_kmers *= mem_ratio;
+  max_elems_qf *= mem_ratio;
+  max_ctg_kmers *= mem_ratio;
+  max_compact_kmers *= mem_ratio;
+  SLOG("Adjusted element counts by %.3f: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", mem_ratio,
+       max_read_kmers, max_elems_qf, max_ctg_kmers, max_compact_kmers);
   
   if (use_qf) {
     qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
