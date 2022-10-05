@@ -552,6 +552,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   SLOG("Estimated kmer error rate %.3f", kmer_error_rate);
   size_t num_errors = max_elems * sequencing_depth * kmer_error_rate;
   // crude estimate of how ctg kmers increase with increasing kmer length
+  // FIXME: calculate this directly from the contigs
   double ratio_ctg_to_read_kmers = (double)kmer_len / 100;
   
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
@@ -567,8 +568,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // 1. The read kmers hash table. With the QF, this is the size of the number of unique kmers. Without the QF,
   //    it is that size plus the size of the errors. In addition, this hash table needs to be big enough to have
   //    all the read kmers added too, if this is not the first round.
-  //size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
-  size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? num_errors : 0));
+  size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? 0 : num_errors));
   size_t read_kmers_size = max_read_kmers * elem_size;
   // 2. The QF, if used. This is the size of all the unique read kmers plus the errors, plus some wiggle room
   size_t max_elems_qf = load_multiplier * (use_qf ? max_elems + num_errors : 0) * 1.3;
