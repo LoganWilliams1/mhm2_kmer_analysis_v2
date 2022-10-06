@@ -19,7 +19,7 @@ set(BINARY mhm2_test)
 file(
   GLOB TEST_SOURCES
   LIST_DIRECTORIES false
-  *.hpp *.cpp)
+  *.hpp main.cpp *-test.cpp)
 
 set(SOURCES ${TEST_SOURCES})
 
