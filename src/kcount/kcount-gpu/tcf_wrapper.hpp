@@ -1,5 +1,4 @@
-#ifndef TCF_WRAPPER_H
-#define TCF_WRAPPER_H
+#pragma once
 
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
@@ -43,14 +42,13 @@
  form.
 */
 
-//inclusions to build the TCF
+// inclusions to build the TCF
 #include <poggers/metadata.cuh>
 #include <poggers/hash_schemes/murmurhash.cuh>
 #include <poggers/probing_schemes/double_hashing.cuh>
 #include <poggers/probing_schemes/power_of_two.cuh>
 
-
-//new container for 2-byte key val pairs
+// new container for 2-byte key val pairs
 #include <poggers/representations/grouped_key_val_pair.cuh>
 
 #include <poggers/representations/key_val_pair.cuh>
@@ -64,9 +62,7 @@
 
 #include <poggers/representations/packed_bucket.cuh>
 
-
 #include <poggers/insert_schemes/linear_insert_buckets.cuh>
-
 
 #include <poggers/tables/bucketed_table.cuh>
 
@@ -84,152 +80,142 @@ __constant__ char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
 
 #if TCF_SMALL
 
-using backing_table = poggers::tables::bucketed_table<uint64_t, uint8_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<10,6>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using TCF = poggers::tables::bucketed_table<uint64_t,uint8_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<10,6>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+using backing_table = poggers::tables::bucketed_table<
+    uint64_t, uint8_t,
+    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
+    1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher,
+    poggers::hashers::murmurHasher>;
+using TCF = poggers::tables::bucketed_table<
+    uint64_t, uint8_t,
+    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
+    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
+    poggers::hashers::murmurHasher, true, backing_table>;
 #else
 
-using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::mhm_hasher>;
-using TCF = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::mhm_hasher, true, backing_table>;
+using backing_table =
+    poggers::tables::bucketed_table<uint64_t, uint16_t,
+                                    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+                                        poggers::representations::key_val_pair, uint16_t>::representation>::representation,
+                                    1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20,
+                                    poggers::probing_schemes::doubleHasher, poggers::hashers::mhm_hasher>;
+using TCF =
+    poggers::tables::bucketed_table<uint64_t, uint16_t,
+                                    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+                                        poggers::representations::key_val_pair, uint16_t>::representation>::representation,
+                                    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2,
+                                    poggers::probing_schemes::doubleHasher, poggers::hashers::mhm_hasher, true, backing_table>;
 
 #endif
 
-
-__device__ uint16_t pack_extensions(char left, char right){
-
+__device__ uint16_t pack_extensions(char left, char right) {
   uint16_t ret_val = 0;
 
-  for (uint i = 0; i < 6; i++){
-
-    if (left == kmer_ext[i]){
+  for (uint i = 0; i < 6; i++) {
+    if (left == kmer_ext[i]) {
       ret_val += i << 8;
     }
 
-    if (right == kmer_ext[i]){
+    if (right == kmer_ext[i]) {
       ret_val += i;
     }
-
   }
 
   return ret_val;
-
-
 }
 
-__device__ bool unpack_extensions(uint16_t storage, char & left, char & right){
-
+__device__ bool unpack_extensions(uint16_t storage, char& left, char& right) {
   uint16_t left_val = ((storage & 0xff00) >> 8);
 
   uint16_t right_val = (storage & 0x00ff);
 
-  if ((left_val < 6) && (right_val < 6)){
-
+  if ((left_val < 6) && (right_val < 6)) {
     left = kmer_ext[left_val];
     right = kmer_ext[right_val];
 
     return true;
   } else {
-
     return false;
   }
-
 }
 
-__device__ uint8_t pack_extensions_small(char left, char right){
-
+__device__ uint8_t pack_extensions_small(char left, char right) {
   uint8_t ret_val = 0;
 
-  for (uint i = 0; i < 6; i++){
-
-    if (left == kmer_ext[i]){
+  for (uint i = 0; i < 6; i++) {
+    if (left == kmer_ext[i]) {
       ret_val += i << 3;
     }
 
-    if (right == kmer_ext[i]){
+    if (right == kmer_ext[i]) {
       ret_val += i;
     }
-
   }
 
   return ret_val;
-
-
 }
 
-__device__ bool unpack_extensions_small(uint8_t storage, char & left, char & right){
-
-  //grab bits 3-5
+__device__ bool unpack_extensions_small(uint8_t storage, char& left, char& right) {
+  // grab bits 3-5
   uint8_t left_val = ((storage & 0x38) >> 3);
 
-  //grab bits 0-2
+  // grab bits 0-2
   uint8_t right_val = (storage & 0x07);
 
-  if ((left_val < 6) && (right_val < 6)){
-
+  if ((left_val < 6) && (right_val < 6)) {
     left = kmer_ext[left_val];
     right = kmer_ext[right_val];
 
     return true;
   } else {
-
     return false;
   }
-
 }
 
-//returns the usage of the TCF 
-//this should be accurate to within a few bytes
-//only deviation from the formula is based off the difference in block size.
-__host__ __device__ uint64_t estimate_memory(uint64_t max_num_kmers){
+// returns the usage of the TCF
+// this should be accurate to within a few bytes
+// only deviation from the formula is based off the difference in block size.
+__host__ __device__ uint64_t estimate_memory(uint64_t max_num_kmers) {
+// estimate to 120% to be safe
+// and 4 bytes per item pair
+#if TCF_SMALL
 
-  //estimate to 120% to be safe
-  //and 4 bytes per item pair
-  #if TCF_SMALL
+  return (max_num_kmers * 2 * 1.2);
 
-  return (max_num_kmers*2*1.2); 
+#else
 
-  #else
-
-  return (max_num_kmers*4*1.2);
-
-  #endif
-
-}
-
-__host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing(uint64_t max_num_kmers){
-
-  uint64_t max_slots = max_num_kmers*1.2;
-
-  //90/11 split over size for forward and backing tables.
-
-  poggers::sizing::size_in_num_slots<2> my_size(max_slots*.9, max_slots*.1);
-  return my_size;
-
-}
-
-__host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing_from_mem(uint64_t available_bytes){
-
-  #if TCF_SMALL
-
-  uint64_t max_slots = available_bytes/2;
-
-  #else
-
-  uint64_t max_slots = available_bytes/4;
-
-  #endif
-
-
-  //90/11 split over size for forward and backing tables.
-  poggers::sizing::size_in_num_slots<2> my_size ((max_slots*90ULL/100ULL), (max_slots*10ULL/100ULL));
-  //printf("%llu bytes gives %llu slots, given: %llu + %llu = %llu\n", available_bytes, max_slots, my_size.next(), my_size.next(), my_size.total());
-  my_size.reset();
-  return my_size;
-
-}
-
-
-
-}
-
+  return (max_num_kmers * 4 * 1.2);
 
 #endif
+}
+
+__host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing(uint64_t max_num_kmers) {
+  uint64_t max_slots = max_num_kmers * 1.2;
+
+  // 90/11 split over size for forward and backing tables.
+
+  poggers::sizing::size_in_num_slots<2> my_size(max_slots * .9, max_slots * .1);
+  return my_size;
+}
+
+__host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing_from_mem(uint64_t available_bytes) {
+#if TCF_SMALL
+
+  uint64_t max_slots = available_bytes / 2;
+
+#else
+
+  uint64_t max_slots = available_bytes / 4;
+
+#endif
+
+  // 90/11 split over size for forward and backing tables.
+  poggers::sizing::size_in_num_slots<2> my_size((max_slots * 90ULL / 100ULL), (max_slots * 10ULL / 100ULL));
+  // printf("%llu bytes gives %llu slots, given: %llu + %llu = %llu\n", available_bytes, max_slots, my_size.next(), my_size.next(),
+  // my_size.total());
+  my_size.reset();
+  return my_size;
+}
+
+}  // namespace two_choice_filter
