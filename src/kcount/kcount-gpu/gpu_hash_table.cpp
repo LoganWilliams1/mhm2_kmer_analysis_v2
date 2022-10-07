@@ -614,7 +614,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
   // uncomment to debug OOMs
   // cout << "ht bytes used " << (ht_bytes_used / 1024 / 1024) << "MB\n";
-
+  SLOG("Read kmers final capacity %lu", ht_capacity);
   read_kmers_dev.init(ht_capacity);
   // for transferring packed elements from host to gpu
   elem_buff_host.seqs = new char[KCOUNT_GPU_HASHTABLE_BLOCK_SIZE];
@@ -635,6 +635,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
 template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_mem) {
+  SLOG("Initializing ctg kmers with max %d elements", max_elems);
   pass_type = CTG_KMERS_PASS;
   // free up space
   if (dstate->qf) quotient_filter::qf_destroy_device(dstate->qf);
@@ -649,6 +650,7 @@ void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_m
   primes::Prime prime;
   prime.set(min(max_slots, (size_t)(max_elems * 3)), false);
   auto ht_capacity = prime.get();
+  SLOG("Ctg kmers final capacity %lu", ht_capacity);
   ctg_kmers_dev.init(ht_capacity);
   elem_buff_host.counts = new count_t[KCOUNT_GPU_HASHTABLE_BLOCK_SIZE];
   cudaErrchk(cudaMalloc(&packed_elem_buff_dev.counts, KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * sizeof(count_t)));

@@ -134,8 +134,8 @@ class KmerDHT {
  public:
   bool using_ctg_kmers = false;
 
-  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf, int sequencing_depth,
-          size_t num_ctg_kmers);
+  KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf,
+          int sequencing_depth);
 
   void clear_stores();
 
