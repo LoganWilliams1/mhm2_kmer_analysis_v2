@@ -103,12 +103,13 @@ int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 
 template <int MAX_K>
 KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf,
-                        int sequencing_depth)
+                        int sequencing_depth, size_t num_ctg_kmers)
     : local_kmers({})
     , ht_inserter({})
     , kmer_store()
     , max_kmer_store_bytes(max_kmer_store_bytes)
     , my_num_kmers(my_num_kmers)
+    , my_num_ctg_kmers(num_ctg_kmers)
     , max_rpcs_in_flight(max_rpcs_in_flight)
     , num_supermer_inserts(0) {
   // minimizer len depends on k
@@ -154,7 +155,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
         num_supermer_inserts++;
         ht_inserter->insert_supermer(supermer.seq, supermer.count);
       });
-  ht_inserter->init(my_adjusted_num_kmers, use_qf, sequencing_depth);
+  ht_inserter->init(my_adjusted_num_kmers, num_ctg_kmers, use_qf, sequencing_depth);
   barrier();
 }
 
@@ -171,9 +172,9 @@ KmerDHT<MAX_K>::~KmerDHT() {
 }
 
 template <int MAX_K>
-void KmerDHT<MAX_K>::init_ctg_kmers(int64_t max_elems) {
+void KmerDHT<MAX_K>::init_ctg_kmers() {
   using_ctg_kmers = true;
-  ht_inserter->init_ctg_kmers(max_elems);
+  ht_inserter->init_ctg_kmers(my_num_ctg_kmers);
 }
 
 template <int MAX_K>

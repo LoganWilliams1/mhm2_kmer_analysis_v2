@@ -102,7 +102,7 @@ class HashTableInserter {
   HashTableInserter();
   ~HashTableInserter();
 
-  void init(size_t num_elems, bool use_qf, int sequencing_depth);
+  void init(size_t num_elems, size_t num_ctg_elems, bool use_qf, int sequencing_depth);
 
   void init_ctg_kmers(size_t max_elems);
 
@@ -124,6 +124,7 @@ class KmerDHT {
   upcxx_utils::ThreeTierAggrStore<Supermer> kmer_store;
   int64_t max_kmer_store_bytes;
   int64_t my_num_kmers;
+  size_t my_num_ctg_kmers;
   int max_rpcs_in_flight;
   int64_t num_supermer_inserts;
   std::chrono::time_point<std::chrono::high_resolution_clock> start_t;
@@ -133,13 +134,14 @@ class KmerDHT {
  public:
   bool using_ctg_kmers = false;
 
-  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf, int sequencing_depth);
+  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf, int sequencing_depth,
+          size_t num_ctg_kmers);
 
   void clear_stores();
 
   ~KmerDHT();
 
-  void init_ctg_kmers(int64_t max_elems);
+  void init_ctg_kmers();
 
   int get_minimizer_len();
 

@@ -73,8 +73,7 @@ using namespace kcount_gpu;
 #define SWARN(fmt, ...) \
   if (!upcxx_rank_me) printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
 
-#define WARN(fmt, ...) \
-  printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
+#define WARN(fmt, ...) printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
 
 const uint64_t KEY_EMPTY = 0xffffffffffffffff;
 const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
@@ -212,8 +211,7 @@ __global__ void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> co
           // compute exts
           int8_t left_ext = get_ext(elems.vals[threadid], 0, ext_map);
           int8_t right_ext = get_ext(elems.vals[threadid], 4, ext_map);
-          if (elems.vals[threadid].kmer_count < 2)
-            WARN("elem should have been purged, count %d", elems.vals[threadid].kmer_count);
+          if (elems.vals[threadid].kmer_count < 2) WARN("elem should have been purged, count %d", elems.vals[threadid].kmer_count);
           compact_elems.vals[slot].count = elems.vals[threadid].kmer_count;
           compact_elems.vals[slot].left = left_ext;
           compact_elems.vals[slot].right = right_ext;
@@ -527,9 +525,9 @@ template <int MAX_K>
 HashTableGPUDriver<MAX_K>::HashTableGPUDriver() {}
 
 template <int MAX_K>
-void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, int max_elems, size_t gpu_avail_mem,
-                                     double &init_time, size_t &ht_bytes_used, size_t &qf_bytes_used, bool use_qf,
-                                     int sequencing_depth) {
+void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, int max_elems, int max_ctg_elems,
+                                     size_t gpu_avail_mem, double &init_time, size_t &ht_bytes_used, size_t &qf_bytes_used,
+                                     bool use_qf, int sequencing_depth) {
   QuickTimer init_timer;
   init_timer.start();
   this->upcxx_rank_me = upcxx_rank_me;
@@ -539,7 +537,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   gpu_utils::set_gpu_device(upcxx_rank_me);
   dstate = new HashTableDriverState();
   dstate->qf = nullptr;
-  
+
   SLOG("GPU available memory %lu", gpu_avail_mem);
   SLOG("Max unique elems per rank of %d", max_elems);
   // reserve space for the fixed size buffer for passing data to the GPU
@@ -554,7 +552,9 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // crude estimate of how ctg kmers increase with increasing kmer length
   // FIXME: calculate this directly from the contigs
   double ratio_ctg_to_read_kmers = (double)kmer_len / 100;
-  
+  SLOG("Estimating ctg elems at %.0f, but actually have %d, ratio %.3f", ratio_ctg_to_read_kmers * max_elems, max_ctg_elems,
+       ratio_ctg_to_read_kmers * max_elems / max_ctg_elems);
+
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
   // expected size of compact hash table
   size_t compact_elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountExts);
@@ -568,44 +568,44 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // 1. The read kmers hash table. With the QF, this is the size of the number of unique kmers. Without the QF,
   //    it is that size plus the size of the errors. In addition, this hash table needs to be big enough to have
   //    all the read kmers added too, if this is not the first round.
-  size_t max_read_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers + (use_qf ? 0 : num_errors));
+  size_t max_read_kmers = load_multiplier * (max_elems + max_ctg_elems + (use_qf ? 0 : num_errors));
   size_t read_kmers_size = max_read_kmers * elem_size;
   // 2. The QF, if used. This is the size of all the unique read kmers plus the errors, plus some wiggle room
   size_t max_elems_qf = load_multiplier * (use_qf ? max_elems + num_errors : 0) * 1.3;
   size_t qf_size = use_qf ? two_choice_filter::estimate_memory(max(1.0, log2(max_elems_qf))) : 0;
   // 3. The ctg kmers hash table (only present if this is not the first contigging round). This varies in size
   //    from about 0.2 to 1.0 of the read kmers size, starting small with low k and getting higher with large k
-  size_t max_ctg_kmers = load_multiplier * (max_elems * ratio_ctg_to_read_kmers);
+  size_t max_ctg_kmers = load_multiplier * max_ctg_elems;
   size_t ctg_kmers_size = max_ctg_kmers * elem_size;
   // 4. The final compact hash table, which is the size needed to store all the unique kmers from both the reads
   //    and contigs.
-  size_t max_compact_kmers = load_multiplier * (max_elems + max_elems * ratio_ctg_to_read_kmers);
+  size_t max_compact_kmers = load_multiplier * (max_elems + max_ctg_elems);
   size_t compact_kmers_size = max_compact_kmers * compact_elem_size;
-  
-  SLOG("Element counts: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", max_read_kmers,
-       max_elems_qf, max_ctg_kmers, max_compact_kmers);
+
+  SLOG("Element counts: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", max_read_kmers, max_elems_qf, max_ctg_kmers,
+       max_compact_kmers);
   size_t tot_size = read_kmers_size + qf_size + ctg_kmers_size + compact_kmers_size;
-  SLOG("Element sizes: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu, total %lu", read_kmers_size,
-       qf_size, ctg_kmers_size, compact_kmers_size, tot_size);
+  SLOG("Element sizes: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu, total %lu", read_kmers_size, qf_size, ctg_kmers_size,
+       compact_kmers_size, tot_size);
 
   // keep some in reserve as a buffer
   double mem_ratio = (double)(0.8 * gpu_avail_mem) / tot_size;
-  if (mem_ratio < 1.0) 
-    SLOG("Insufficent memory for %.2f load factor across all data structures; reducing by a factor of %.3f",
-         target_load_factor, mem_ratio);
+  if (mem_ratio < 1.0)
+    SLOG("Insufficent memory for %.2f load factor across all data structures; reducing by a factor of %.3f", target_load_factor,
+         mem_ratio);
   max_read_kmers *= mem_ratio;
   max_elems_qf *= mem_ratio;
   max_ctg_kmers *= mem_ratio;
   max_compact_kmers *= mem_ratio;
-  SLOG("Adjusted element counts by %.3f: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", mem_ratio,
-       max_read_kmers, max_elems_qf, max_ctg_kmers, max_compact_kmers);
-  
+  SLOG("Adjusted element counts by %.3f: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", mem_ratio, max_read_kmers,
+       max_elems_qf, max_ctg_kmers, max_compact_kmers);
+
   if (use_qf) {
     qf_bytes_used = two_choice_filter::estimate_memory(max_elems_qf);
     auto sizing_controller = two_choice_filter::get_tcf_sizing_from_mem(qf_bytes_used);
     dstate->tcf = two_choice_filter::TCF::generate_on_device(&sizing_controller, 42);
   }
-  
+
   // find the first prime number lower than the available slots, and no more than 3x the max number of elements
   primes::Prime prime;
   prime.set(max_read_kmers, false);
@@ -643,7 +643,7 @@ void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_m
   if (dstate->tcf) two_choice_filter::TCF::free_on_device(dstate->tcf);
   dstate->tcf = nullptr;
 
-  size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (1 + sizeof(count_t)) * 1.5;
+  size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (1 + sizeof(count_t)) * 3;
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
   size_t max_slots = 0.97 * (gpu_avail_mem - elem_buff_size) / elem_size;
   primes::Prime prime;
@@ -782,8 +782,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   num_dropped = counts_host[0];
   num_unique = counts_host[1];
 #ifdef DEBUG
-  if (num_unique != read_kmers_dev.num)
-    WARN("mismatch in expected entries %lu != %lu", num_unique, read_kmers_dev.num);
+  if (num_unique != read_kmers_dev.num) WARN("mismatch in expected entries %lu != %lu", num_unique, read_kmers_dev.num);
 #endif
   // now copy the gpu hash table values across to the host
   // We only do this once, which requires enough memory on the host to store the full GPU hash table, but since the GPU memory

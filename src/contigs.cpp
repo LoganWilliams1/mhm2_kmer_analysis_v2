@@ -260,3 +260,11 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   SLOG_VERBOSE("Loaded ", reduce_one(contigs.size(), op_fast_add, 0).wait(), " contigs (",
                get_size_str(reduce_one(tot_len, op_fast_add, 0).wait()), ") from ", ctgs_fname, "\n");
 }
+
+size_t Contigs::get_num_ctg_kmers(int kmer_len) {
+  size_t num_ctg_kmers = 0;
+  for (auto &ctg : contigs) {
+    if (ctg.seq.length() > kmer_len) num_ctg_kmers += (ctg.seq.length() - kmer_len + 1);
+  }
+  return num_ctg_kmers;
+}
