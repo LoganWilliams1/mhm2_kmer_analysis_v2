@@ -110,7 +110,7 @@ class HashTableInserter {
 
   void flush_inserts();
 
-  void insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers);
+  double insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers);
 
   void get_elapsed_time(double &insert_time, double &kernel_time);
 };
@@ -127,6 +127,7 @@ class KmerDHT {
   size_t my_num_ctg_kmers;
   int max_rpcs_in_flight;
   int64_t num_supermer_inserts;
+  double avg_kmer_count;
   std::chrono::time_point<std::chrono::high_resolution_clock> start_t;
 
   int minimizer_len = 15;
@@ -154,6 +155,8 @@ class KmerDHT {
   KmerCounts *get_local_kmer_counts(Kmer<MAX_K> &kmer);
 
   int64_t get_num_supermer_inserts();
+
+  double get_avg_kmer_count();
 
   bool kmer_exists(Kmer<MAX_K> kmer);
 

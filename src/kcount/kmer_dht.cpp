@@ -110,6 +110,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t m
     , max_kmer_store_bytes(max_kmer_store_bytes)
     , my_num_kmers(my_num_kmers)
     , my_num_ctg_kmers(my_num_ctg_kmers)
+    , avg_kmer_count(0)
     , max_rpcs_in_flight(max_rpcs_in_flight)
     , num_supermer_inserts(0) {
   // minimizer len depends on k
@@ -214,6 +215,11 @@ int64_t KmerDHT<MAX_K>::get_num_supermer_inserts() {
 }
 
 template <int MAX_K>
+double KmerDHT<MAX_K>::get_avg_kmer_count() {
+  return avg_kmer_count;
+}
+
+template <int MAX_K>
 bool KmerDHT<MAX_K>::kmer_exists(Kmer<MAX_K> kmer_fw) {
   const Kmer<MAX_K> kmer_rc = kmer_fw.revcomp();
   const Kmer<MAX_K> *kmer = (kmer_rc < kmer_fw) ? &kmer_rc : &kmer_fw;
@@ -244,7 +250,7 @@ void KmerDHT<MAX_K>::flush_updates() {
 
 template <int MAX_K>
 void KmerDHT<MAX_K>::finish_updates() {
-  ht_inserter->insert_into_local_hashtable(local_kmers);
+  avg_kmer_count = ht_inserter->insert_into_local_hashtable(local_kmers);
   double insert_time, kernel_time;
   ht_inserter->get_elapsed_time(insert_time, kernel_time);
   stage_timers.kernel_kmer_analysis->inc_elapsed(kernel_time);
