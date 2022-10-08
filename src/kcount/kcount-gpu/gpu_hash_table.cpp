@@ -567,13 +567,12 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // memory required by all of them at the target load factor, and then reduce uniformly if there is insufficient
   // 1. The read kmers hash table. With the QF, this is the size of the number of unique kmers. Without the QF,
   //    it is that size plus the size of the errors. In addition, this hash table needs to be big enough to have
-  //    all the read kmers added too, if this is not the first round. For those, at most 1/2 of them will already be
-  //    in the read kmers hash table (empirically determined)
-  size_t max_read_kmers = load_multiplier * (max_elems + max_ctg_elems / 2 + (use_qf ? 0 : num_errors));
+  //    all the read kmers added too,
+  size_t max_read_kmers = load_multiplier * (max_elems + max_ctg_elems + (use_qf ? 0 : num_errors));
   size_t read_kmers_size = max_read_kmers * elem_size;
   // 2. The QF, if used. This is the size of all the unique read kmers plus the errors, plus some wiggle room. The
   //    QF uses so little memory that we can afford to oversize some
-  size_t max_elems_qf = load_multiplier * (use_qf ? max_elems + num_errors : 0) * 2.0;
+  size_t max_elems_qf = load_multiplier * (use_qf ? max_elems + num_errors : 0) * 1.3;
   size_t qf_size = use_qf ? two_choice_filter::estimate_memory(max(1.0, log2(max_elems_qf))) : 0;
   // 3. The ctg kmers hash table (only present if this is not the first contigging round). This varies in size
   //    from about 0.2 to 1.0 of the read kmers size, starting small with low k and getting higher with large k
@@ -586,7 +585,9 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
   SLOG("Element counts: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu", max_read_kmers, max_elems_qf, max_ctg_kmers,
        max_compact_kmers);
-  size_t tot_size = read_kmers_size + qf_size + ctg_kmers_size + compact_kmers_size;
+  // for the total size, the read kmer hash table must exist with just the QF, then just the ctg kmers, then just the compact kmers
+  // so we choose the largest of these options
+  size_t tot_size = read_kmers_size + max(qf_size, max(ctg_kmers_size, compact_kmers_size));
   SLOG("Element sizes: read kmers %lu, qf %lu, ctg kmer %lu, compact ht %lu, total %lu", read_kmers_size, qf_size, ctg_kmers_size,
        compact_kmers_size, tot_size);
 

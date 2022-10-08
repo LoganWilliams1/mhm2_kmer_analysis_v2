@@ -6,7 +6,8 @@ module load cmake
 module rm xl
 module load gcc
 module load cuda
-module load upcxx/nightly
+#module load upcxx/nightly
+module load upcxx
 module load python
 
 export UPCXX_NETWORK=ucx
