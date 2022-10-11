@@ -11,3 +11,6 @@
 [submodule "poggers"]
 	path = poggers
 	url = https://github.com/huntermBerkeley/poggers
+[submodule "contrib/seqtk"]
+	path = contrib/seqtk
+	url = https://github.com/lh3/seqtk.git
