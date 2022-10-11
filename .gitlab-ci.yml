@@ -42,7 +42,7 @@ Cori:build:
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - mkdir -p ${BASE}
-    - rm -rf ${CI_SCRATCH}
+    - rm -rf ${CI_SCRATCH}/?*/
     - echo "Cleaning out old installs"
     - find ${BASE}/scratch -maxdepth 1  -name "${CI_PROJECT_NAME}-*-*-*"  -mtime +7 -type d -exec rm -rf '{}' ';' || /bin/true
     - mkdir -p ${CI_SCRATCH} ${RUN_PREFIX}
@@ -272,7 +272,7 @@ HULK:build:
     - export PATH=${CI_EXTRA_PATH}:$PATH
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --disable-ibv --with-default-network=smp"
     - export GASNET_PHYSMEM_MAX=2/3
-    - rm -rf ${CI_SCRATCH}
+    - rm -rf ${CI_SCRATCH}/?*/
     - mkdir -p ${CI_SCRATCH}
     - dt=$(date '+%Y%m%d_%H%M%S')
     - exec >  >(tee -ia ${CI_SCRATCH}/build-$dt.log)
@@ -359,7 +359,7 @@ Bacteria:build:
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=On"
     - export CXX=/usr/bin/mpicxx
     - export GASNET_PHYSMEM_MAX=2/3
-    - rm -rf ${CI_SCRATCH}
+    - rm -rf ${CI_SCRATCH}/?*/
     - mkdir -p ${CI_SCRATCH}
     - dt=$(date '+%Y%m%d_%H%M%S')
     - exec >  >(tee -ia ${CI_SCRATCH}/build-$dt.log)
@@ -455,7 +455,7 @@ Fungi:build:
     - export CI_CMAKE_OPTS="-DENABLE_CUDA=Off"
     - export CI_UPCXX_CONFIGURE_OPTS="--enable-valgrind --with-cxx=/usr/bin/mpicxx --enable-ibv --with-default-network=ibv"
     - export GASNET_PHYSMEM_MAX=2/3
-    - rm -rf ${CI_SCRATCH}
+    - rm -rf ${CI_SCRATCH}/?*/
     - mkdir -p ${CI_SCRATCH}
     - dt=$(date '+%Y%m%d_%H%M%S')
     - exec >  >(tee -ia ${CI_SCRATCH}/build-$dt.log)
