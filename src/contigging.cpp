@@ -99,7 +99,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     end_gasnet_stats();
     stage_timers.analyze_kmers->stop();
     auto avg_kmer_count = kmer_dht->get_avg_kmer_count();
-    SLOG("Changing sequencing depth from ", options->sequencing_depth, " to ", (int)avg_kmer_count, "\n");
+    SLOG_VERBOSE("Changing sequencing depth from ", options->sequencing_depth, " to ", (int)avg_kmer_count, "\n");
     options->sequencing_depth = (int)avg_kmer_count;
     barrier();
     LOG_MEM("Analyzed kmers");

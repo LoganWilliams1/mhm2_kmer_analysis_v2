@@ -424,7 +424,7 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
+void HashTableInserter<MAX_K>::init(size_t num_elems, size_t num_ctg_elems, bool use_qf, int sequencing_depth) {
   state = new HashTableInserterState();
   state->using_ctg_kmers = false;
   double free_mem = get_free_mem(true);
@@ -492,7 +492,7 @@ void HashTableInserter<MAX_K>::flush_inserts() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers) {
+double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_good_kmers = state->kmers->size();
   state->insert_timer.start();
@@ -541,6 +541,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   auto tot_num_purged = reduce_one(num_purged, op_fast_add, 0).wait();
   auto tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
   SLOG_CPU_HT("Purged ", tot_num_purged, " kmers ( ", perc_str(tot_num_purged, tot_num_kmers), ")\n");
+  return 2;
 }
 
 template <int MAX_K>
