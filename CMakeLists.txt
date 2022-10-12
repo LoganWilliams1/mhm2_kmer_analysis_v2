@@ -312,7 +312,9 @@ include_directories("zstr/src")
 
 add_subdirectory(src)
 
-add_subdirectory(poggers)
+if(ENABLE_CUDA)
+  add_subdirectory(poggers)
+endif()
 
 install(PROGRAMS ci/check_asm_quality.py ci/ci_asm_qual_test.sh
                  ci/ci_asm_qual_test-full.sh
