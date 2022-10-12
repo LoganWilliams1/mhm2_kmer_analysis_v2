@@ -16,7 +16,6 @@
    * rm -rf $(find . -name '.git' )
    * cd ..
    * tar -czf mhm2-vX.Y.Z.tar.gz mhm2-vX.Y.Z/
-   * upload tar.gz to Downloads section of bitbucket
 
 ## Test
    * tar -xzf mhm2-vX.Y.Z.tar.gz
@@ -26,3 +25,8 @@
    * cmake -DCMAKE_INSTALL_PREFIX=install ..
    * make -j install
    * ./install/bin/ci_asm_qual_test.sh
+   
+## Release
+   * upload tar.gz to Downloads section of bitbucket
+   * update the wiki page to announce and link to the release: https://bitbucket.org/berkeleylab/mhm2/wiki/Home
+
