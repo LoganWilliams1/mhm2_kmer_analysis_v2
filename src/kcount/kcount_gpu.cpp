@@ -49,8 +49,8 @@
 #include "kcount-gpu/parse_and_pack.hpp"
 #include "kcount-gpu/gpu_hash_table.hpp"
 
-//#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
-#define SLOG_GPU SLOG_VERBOSE
+#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+//#define SLOG_GPU SLOG_VERBOSE
 
 using namespace std;
 using namespace upcxx_utils;
@@ -191,14 +191,12 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, bool use_qf, int sequencing_depth) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf, int sequencing_depth) {
   barrier(local_team());
   this->use_qf = use_qf;
   state = new HashTableInserterState();
-  double init_time;
   // calculate total slots for hash table. Reserve space for parse and pack
   size_t bytes_for_pnp = KCOUNT_SEQ_BLOCK_SIZE * (2 + Kmer<MAX_K>::get_N_LONGS() * sizeof(uint64_t) + sizeof(int));
-  size_t ht_bytes_used = 0, qf_bytes_used = 0;
   DBG("Finding available memory on GPU ", gpu_utils::get_gpu_uuid(), "\n");
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   auto gpu_avail_mem_per_rank = (get_gpu_avail_mem_per_rank() - bytes_for_pnp) * 0.9;
@@ -206,14 +204,15 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, bool
   SLOG_GPU("Initializing read kmers hash table with max ", max_elems, " elems (with max ", max_ctg_elems,
            " elems for ctg hash table}\n");
   assert(state != nullptr);
-  auto driver_msgs =
-      state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, max_ctg_elems, gpu_avail_mem_per_rank,
-                                init_time, ht_bytes_used, qf_bytes_used, use_qf, sequencing_depth);
+  string driver_msgs, driver_warnings;
+  BaseTimer t;
+  t.start();
+  state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, max_ctg_elems, num_errors, gpu_avail_mem_per_rank,
+                            driver_msgs, driver_warnings, use_qf, sequencing_depth);
+  t.stop();
   SLOG_GPU(driver_msgs);
-  auto capacity = state->ht_gpu_driver.get_capacity();
-  SLOG_GPU("GPU read kmers hash table has capacity per rank of ", capacity, "\n");
-  SLOG_GPU("Using ", get_size_str(ht_bytes_used), " for the GPU hash table and ", get_size_str(qf_bytes_used), " for the QF\n");
-  SLOG_GPU("Initialized hash table GPU driver in ", fixed, setprecision(3), init_time, " s\n");
+  if (!driver_warnings.empty()) SWARN(driver_warnings);
+  SLOG_GPU("Initialized hash table GPU driver in ", fixed, setprecision(3), t.get_elapsed(), " s\n");
   barrier(local_team());
   auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();
   SLOG_GPU("GPU read kmers hash table used ", get_size_str(gpu_used_mem), " memory on GPU out of ",

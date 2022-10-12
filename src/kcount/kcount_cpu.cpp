@@ -49,8 +49,8 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define SLOG_CPU_HT(...) SLOG(KLGREEN, __VA_ARGS__, KNORM)
-#define SLOG_CPU_HT(...) SLOG_VERBOSE(__VA_ARGS__)
+#define SLOG_CPU_HT(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+//#define SLOG_CPU_HT(...) SLOG_VERBOSE(__VA_ARGS__)
 
 template <int MAX_K>
 struct SeqBlockInserter<MAX_K>::SeqBlockInserterState {
@@ -424,15 +424,61 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t num_elems, size_t num_ctg_elems, bool use_qf, int sequencing_depth) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, bool use_qf, int sequencing_depth) {
   state = new HashTableInserterState();
   state->using_ctg_kmers = false;
   double free_mem = get_free_mem(true);
   SLOG_CPU_HT("There is ", get_size_str(free_mem), " free memory\n");
-  // set aside a fraction of free mem for everything else, including the final hash table we copy across to
-  double avail_mem = KCOUNT_CPU_HT_MEM_FRACTION * free_mem / local_team().rank_n();
-  // double avail_mem = 0.05 * free_mem / local_team().rank_n();
+  double avail_mem = free_mem / local_team().rank_n();
+  // FIXME: this is a crude calculation based on an assumed error rate per base
+  int kmer_len = Kmer<MAX_K>::get_k();
+  double kmer_error_rate = 1.0 - pow(1.0 - BASE_ERROR_RATE, kmer_len);
+  SLOG_CPU_HT("Estimated kmer error rate ", fixed, setprecision(3), kmer_error_rate, "\n");
+  size_t num_errors = max_elems * sequencing_depth * kmer_error_rate;
+  // upper threshold on inaccuracies in ctg element calculations
+  max_ctg_elems *= 0.8;
+
   size_t elem_size = sizeof(Kmer<MAX_K>) + sizeof(KmerExtsCounts);
+  // expected size of compact hash table
+  size_t compact_elem_size = sizeof(Kmer<MAX_K>) + sizeof(KmerCounts);
+  double elem_size_ratio = (double)compact_elem_size / (double)elem_size;
+  SLOG_CPU_HT("Element size for main HT ", elem_size, " and for compact HT ", compact_elem_size, " (ratio ", fixed, setprecision(3),
+              elem_size_ratio, ")\n");
+
+  double target_load_factor = 0.66;
+  double load_multiplier = 1.0 / target_load_factor;
+  // There are several different structures that all have to fit into memory. We first compute the
+  // memory required by all of them at the target load factor, and then reduce uniformly if there is insufficient
+  // 1. The read kmers hash table. This is the size of the number of unique kmers plus the size of the errors. In addition, this
+  //    hash table needs to be big enough to have all the ctg kmers added too,
+  size_t max_read_kmers = load_multiplier * (max_elems + max_ctg_elems + num_errors);
+  size_t read_kmers_size = max_read_kmers * elem_size;
+  // 2. The ctg kmers hash table (only present if this is not the first contigging round).
+  size_t max_ctg_kmers = load_multiplier * max_ctg_elems;
+  size_t ctg_kmers_size = max_ctg_kmers * elem_size;
+  // 3. The final compact hash table, which is the size needed to store all the unique kmers from both the reads and contigs.
+  size_t max_compact_kmers = load_multiplier * (max_elems + max_ctg_elems);
+  size_t compact_kmers_size = max_compact_kmers * compact_elem_size;
+
+  SLOG_CPU_HT("Element counts: read kmers ", max_read_kmers, ", ctg kmers ", max_ctg_kmers, ", compact ht ", max_compact_kmers,
+              "\n");
+  //  for the total size, the read kmer hash table must exist the ctg kmers, then just the compact kmers
+  //  so we choose the largest of these options
+  size_t tot_size = read_kmers_size + max(ctg_kmers_size, compact_kmers_size);
+  SLOG_CPU_HT("Element sizes: read kmers ", read_kmers_size, ", ctg kmer ", ctg_kmers_size, ", compact ht ", compact_kmers_size,
+              ", total ", tot_size, "\n");
+
+  // keep some in reserve for all the various other requirements, e.g. rpcs, local allocs, etc
+  double mem_ratio = (double)(0.8 * avail_mem) / tot_size;
+  if (mem_ratio < 1.0)
+    SLOG_CPU_HT("Insufficent memory for ", fixed, setprecision(3), target_load_factor,
+                " load factor across all data structures; reducing by a factor of ", mem_ratio, "\n");
+  max_read_kmers *= mem_ratio;
+  max_ctg_kmers *= mem_ratio;
+  max_compact_kmers *= mem_ratio;
+  SLOG_CPU_HT("Adjusted element counts by ", fixed, setprecision(3), mem_ratio, ": read kmers ", max_read_kmers, ", qf ",
+              max_elems_qf, ", ctg kmer ", max_ctg_kmers, ", compact ht ", max_compact_kmers, "\n");
+
   size_t max_elems = avail_mem / elem_size;
   SLOG_CPU_HT("Request for ", num_elems, " elements and space available for ", max_elems, " elements of size ", elem_size, "\n");
   // don't make too many extra elems because that takes longer to initialize

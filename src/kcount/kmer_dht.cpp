@@ -122,41 +122,32 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t m
   BarrierTimer timer(__FILEFUNC__);
   auto node0_cores = upcxx::local_team().rank_n();
   // check if we have enough memory to run
-  // FIXME: determine the correct adjustment factor from sampling reads
+  // FIXME: determine the sequencing depth from sampling reads
   double adjustment_factor = 1.0 / sequencing_depth;
   auto my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
-  double required_space = estimate_hashtable_memory(my_adjusted_num_kmers, sizeof(Kmer<MAX_K>) + sizeof(KmerCounts)) * node0_cores;
-  auto max_reqd_space = upcxx::reduce_all(required_space, upcxx::op_fast_max).wait();
+  // FIXME: this is a crude calculation based on an assumed error rate per base
+  double kmer_error_rate = 1.0 - pow(1.0 - BASE_ERROR_RATE, Kmer<MAX_K>::get_k());
+  SLOG_VERBOSE("Estimated kmer error rate ", fixed, setprecision(3), kmer_error_rate, "\n");
+  size_t my_num_errors = my_num_kmers * kmer_error_rate;
+  // upper threshold on inaccuracies in ctg element calculations
+  my_num_ctg_kmers *= 0.8;
+
   auto free_mem = get_free_mem(true);
   auto lowest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_min).wait();
   auto highest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_max).wait();
 
-  auto est_supermer_size =
-      sizeof(kmer_count_t) + 8 + (2 * Kmer<MAX_K>::get_k() - minimizer_len + 1) / 2;  // 4-bit packed 1 minimize less than 2 k long
+  // 4-bit packed 1 minimize less than 2 k long
+  auto est_supermer_size = sizeof(kmer_count_t) + 8 + (2 * Kmer<MAX_K>::get_k() - minimizer_len + 1) / 2;
   max_kmer_store_bytes = max_kmer_store_bytes * sizeof(Supermer) / est_supermer_size;
-
-  SLOG_VERBOSE("With assumed sequencing depth of ", sequencing_depth, " require ", get_size_str(max_reqd_space), " per node (",
-               my_adjusted_num_kmers, " kmers per rank), and there is ", get_size_str(lowest_free_mem), " to ",
-               get_size_str(highest_free_mem), " available on the nodes. sizeof(Supermer)=", sizeof(Supermer),
-               " est_size=", est_supermer_size, " max_kmer_store_bytes=", get_size_str(max_kmer_store_bytes), "\n");
-
-  if (lowest_free_mem * 0.80 < max_reqd_space)
-    SWARN("Insufficient memory available: this could crash with OOM (lowest=", get_size_str(lowest_free_mem),
-          " vs reqd=", get_size_str(max_reqd_space), ")");
-
   kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, my_num_kmers);
-
   barrier();
-  double kmers_space_reserved = my_adjusted_num_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts));
-  SLOG_VERBOSE("Reserving at least ", get_size_str(node0_cores * kmers_space_reserved), " for kmer hash tables with ",
-               node0_cores * my_adjusted_num_kmers, " entries on node 0\n");
   if (my_adjusted_num_kmers <= 0) DIE("no kmers to reserve space for");
   kmer_store.set_update_func(
       [&ht_inserter = this->ht_inserter, &num_supermer_inserts = this->num_supermer_inserts](Supermer supermer) {
         num_supermer_inserts++;
         ht_inserter->insert_supermer(supermer.seq, supermer.count);
       });
-  ht_inserter->init(my_adjusted_num_kmers, my_num_ctg_kmers, use_qf, sequencing_depth);
+  ht_inserter->init(my_adjusted_num_kmers, my_num_ctg_kmers, my_num_errors, use_qf, sequencing_depth);
   barrier();
 }
 

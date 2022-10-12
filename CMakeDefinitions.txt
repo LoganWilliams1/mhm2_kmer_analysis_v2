@@ -54,8 +54,6 @@ add_definitions(-DKCOUNT_KMER_CACHE_MAX_LOAD=0.8)
 add_definitions(-DKCOUNT_SEQ_BLOCK_SIZE=3000000)
 add_definitions(-DKCOUNT_GPU_HASHTABLE_BLOCK_SIZE=1000000)
 add_definitions(-DKCOUNT_MAX_KMER_COUNT=10000)
-# for CPU-only code - this is the fraction of free memory than can be used for the main hash table
-add_definitions(-DKCOUNT_CPU_HT_MEM_FRACTION=0.6)
 # used in both cpu and gpu code
 add_definitions(-DKCOUNT_HT_MAX_PROBE=100)
 # the threshold over which to record high frequency kmers in the logs
