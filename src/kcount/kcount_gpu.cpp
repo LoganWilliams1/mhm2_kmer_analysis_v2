@@ -49,8 +49,8 @@
 #include "kcount-gpu/parse_and_pack.hpp"
 #include "kcount-gpu/gpu_hash_table.hpp"
 
-#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
-//#define SLOG_GPU SLOG_VERBOSE
+//#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+#define SLOG_GPU SLOG_VERBOSE
 
 using namespace std;
 using namespace upcxx_utils;
@@ -206,8 +206,10 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, bool
   SLOG_GPU("Initializing read kmers hash table with max ", max_elems, " elems (with max ", max_ctg_elems,
            " elems for ctg hash table}\n");
   assert(state != nullptr);
-  state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, max_ctg_elems, gpu_avail_mem_per_rank, init_time,
-                            ht_bytes_used, qf_bytes_used, use_qf, sequencing_depth);
+  auto driver_msgs =
+      state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, max_ctg_elems, gpu_avail_mem_per_rank,
+                                init_time, ht_bytes_used, qf_bytes_used, use_qf, sequencing_depth);
+  SLOG_GPU(driver_msgs);
   auto capacity = state->ht_gpu_driver.get_capacity();
   SLOG_GPU("GPU read kmers hash table has capacity per rank of ", capacity, "\n");
   SLOG_GPU("Using ", get_size_str(ht_bytes_used), " for the GPU hash table and ", get_size_str(qf_bytes_used), " for the QF\n");
