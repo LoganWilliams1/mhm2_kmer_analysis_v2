@@ -398,8 +398,8 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
     SWARN("CPU kmer counts not equal to gpu kmer counts: ", all_kmers_size, " != ", (all_num_entries - all_invalid),
           " all_num_entries: ", all_num_entries, " all_invalid: ", all_invalid);
   auto all_sum_kmer_counts = reduce_all(sum_kmer_counts, op_fast_add).wait();
-  SLOG_GPU("For ", all_kmers_size, " kmers, average kmer count (depth): ", fixed, setprecision(2),
-           (double)all_sum_kmer_counts / all_kmers_size, "\n");
+  double avg_kmer_count = (double)all_sum_kmer_counts / all_kmers_size;
+  SLOG_GPU("For ", all_kmers_size, " kmers, average kmer count (depth): ", fixed, setprecision(2), avg_kmer_count, "\n");
   double gpu_insert_time = 0, gpu_kernel_time = 0;
   state->ht_gpu_driver.get_elapsed_time(gpu_insert_time, gpu_kernel_time);
   auto avg_gpu_insert_time = reduce_one(gpu_insert_time, op_fast_add, 0).wait() / rank_n();
@@ -413,7 +413,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   SLOG_GPU("  kernel: ", fixed, setprecision(3), avg_gpu_kernel_time, " avg, ", max_gpu_kernel_time, " max\n");
   barrier();
   LOG_MEM("After insert_into_local_hashtable inserts");
-  return (double)all_sum_kmer_counts / all_kmers_size;
+  return avg_kmer_count;
 }
 
 #define seq_block_inserter_K(KMER_LEN) template struct SeqBlockInserter<KMER_LEN>;

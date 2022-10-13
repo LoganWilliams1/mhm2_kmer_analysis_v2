@@ -124,11 +124,13 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t m
   // check if we have enough memory to run
   // FIXME: determine the sequencing depth from sampling reads
   double adjustment_factor = 1.0 / sequencing_depth;
-  auto my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
+  size_t my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
   // FIXME: this is a crude calculation based on an assumed error rate per base
   double kmer_error_rate = 1.0 - pow(1.0 - BASE_ERROR_RATE, Kmer<MAX_K>::get_k());
-  SLOG_VERBOSE("Estimated kmer error rate ", fixed, setprecision(3), kmer_error_rate, "\n");
+  SLOG(KLMAGENTA "Estimated kmer error rate ", fixed, setprecision(3), kmer_error_rate, KNORM "\n");
   size_t my_num_errors = my_num_kmers * kmer_error_rate;
+  SLOG(KLMAGENTA "Initial counts for read kmers ", my_adjusted_num_kmers, " ctg kmers ", my_num_ctg_kmers, " num errors ",
+       my_num_errors, KNORM "\n");
   // upper threshold on inaccuracies in ctg element calculations
   my_num_ctg_kmers *= 0.8;
 
