@@ -584,8 +584,6 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   log_msgs << "Adjusted element counts by " << fixed << setprecision(3) << mem_ratio << ": read kmers " << max_read_kmers << ", qf "
            << max_qf_kmers << ", ctg kmers " << max_ctg_kmers << ", compact ht " << max_compact_kmers << "\n";
 
-  max_qf_kmers /= 10;
-
   size_t qf_bytes_used = 0;
   if (use_qf) {
     qf_bytes_used = two_choice_filter::estimate_memory(max_qf_kmers);
