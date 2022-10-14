@@ -574,7 +574,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   //  for the total size, the read kmer hash table must exist with just the QF, then just the ctg kmers, then just the compact kmers
   //  so we choose the largest of these options
   size_t tot_size = read_kmers_size + max(qf_size, max(ctg_kmers_size, compact_kmers_size));
-  log_msgs << "Hash table sizes: read kmers " << read_kmers_size << ", qf " << qf_size << ", ctg kmers" << ctg_kmers_size
+  log_msgs << "Hash table sizes: read kmers " << read_kmers_size << ", qf " << qf_size << ", ctg kmers " << ctg_kmers_size
            << ", compact ht " << compact_kmers_size << ", total " << tot_size << "\n";
 
   // keep some in reserve as a buffer
@@ -603,7 +603,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   auto ht_capacity = prime.get();
   auto ht_bytes_used = ht_capacity * elem_size;
 
-  log_msgs << "GPU read kmers hash table has capacity per rank of " << ht_capacity << " and uses " << ht_bytes_used << "(QF uses "
+  log_msgs << "GPU read kmers hash table has capacity per rank of " << ht_capacity << " and uses " << ht_bytes_used << " (QF uses "
            << qf_bytes_used << ")\n";
 
   // uncomment to debug OOMs

@@ -221,11 +221,12 @@ class KmerMapExts {
     primes::Prime prime;
     prime.set(max_elems, true);
     capacity = prime.get();
-    SLOG_CPU_HT("Capacity is set to ", capacity, " for ", max_elems, " max elements\n");
     num_elems = 0;
     keys.resize(capacity);
     memset((void *)keys.data(), 0xff, sizeof(Kmer<MAX_K>) * capacity);
     counts.resize(capacity, {0});
+    SLOG_CPU_HT("Capacity is set to ", capacity, " for ", max_elems, " max elements, size ",
+                get_size_str(capacity * (sizeof(Kmer<MAX_K>) + sizeof(KmerExtsCounts))), "\n");
   }
 
   pair<KmerExtsCounts *, bool> insert(const Kmer<MAX_K> &kmer, bool override_singletons) {
@@ -461,7 +462,6 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   SLOG_CPU_HT("Adjusted element counts by ", fixed, setprecision(3), mem_ratio, ": read kmers ", max_read_kmers, " compact ht ",
               max_compact_kmers, "\n");
   state->kmers->reserve(max_read_kmers);
-  barrier();
   auto free_mem_after = get_free_mem(true);
   double used_mem = free_mem - free_mem_after;
   SLOG_CPU_HT("Memory available after hash table allocation: ", get_size_str(free_mem_after), ", used ", get_size_str(used_mem),
@@ -531,15 +531,14 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
       num_good_kmers--;
   }
   LOG_MEM("Before inserting into local hashtable");
-  DBGLOG("Reserving ", num_good_kmers, " size is ", local_kmers->size(), "\n");
+  SLOG_CPU_HT("Reserving compact hash table for ", num_good_kmers, " elements, requires ",
+              get_size_str(num_good_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts))), "\n");
   auto free_mem = get_free_mem(true);
-  barrier();
   local_kmers->reserve(num_good_kmers);
-  barrier();
   auto free_mem_after = get_free_mem(true);
   double used_mem = free_mem - free_mem_after;
-  SLOG_CPU_HT("Memory available after hash table allocation: ", get_size_str(free_mem_after), ", used ", get_size_str(used_mem),
-              "\n");
+  SLOG_CPU_HT("Memory available after compact hash table allocation: ", get_size_str(free_mem_after), ", used ",
+              get_size_str(used_mem), "\n");
   LOG_MEM("After reserving for local hashtable");
   int64_t num_purged = 0, num_inserted = 0;
   state->kmers->begin_iterate();
