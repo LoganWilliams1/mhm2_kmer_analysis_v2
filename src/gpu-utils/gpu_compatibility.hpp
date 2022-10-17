@@ -64,7 +64,7 @@
 #define HostAlloc hipHostAlloc
 #define HostFree hipHostFree
 #define FreeHost hipHostFree
-#define MallocHost hipMallocHost
+#define MallocHost hipHostMalloc
 
 #define GetDeviceCount hipGetDeviceCount
 #define DeviceProp hipDeviceProp_t
