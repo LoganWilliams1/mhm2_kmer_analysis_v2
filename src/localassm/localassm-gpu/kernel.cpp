@@ -61,7 +61,7 @@ __device__ int bcast_warp(int arg) {
 #ifdef HIP_GPU
   value = __shfl(value, 0);  // Get "value" from lane 0
 #endif
-  if (value != arg && laneId == 0) printf("failed to bcast_warp\n");
+  //if (value != arg && laneId == 0) printf("failed to bcast_warp\n");
   return value;
 }
 
