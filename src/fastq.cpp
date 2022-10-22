@@ -151,6 +151,10 @@ FastqReader &FastqReader::get_fqr2() {
     return *fqr2;
   }
 
+bool FastqReader::is_sep(const char &sep) const {
+  return ((sep == '/') | (sep == '.') | (sep == 'R') | (sep == ':')); // possible paired read separators
+}
+
 int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // first record is the first record, include it.  Every other partition will be at least 1 full record after offset.
   // but read the first few lines anyway
@@ -285,12 +289,14 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       }
 
       // need this to be the second of the pair
+      bool has_sep = header.length() > 2 ? is_sep(header[header.length() - 2]) : false;
       this_pair = header[header.length() - 1];
-      DBG("Found possible pair ", (char)this_pair, ", header: ", header, "\n");
-      if (last_pair == this_pair) {
+      if (has_sep) DBG("Found possible pair ", (char)this_pair, ", header: ", header, "\n");
+      bool is_same_header = last_header.compare(possible_header) == 0;
+      if (has_sep && last_pair == this_pair) {
         if (_fix_paired_name) {
-          if (last_header.compare(possible_header) == 0) {
-            DBG("Second indistinguishable pair, so keep at the first record\n");
+          if (is_same_header) {
+            LOG("Second indistinguishable pair, so keep at the first record\n");
             break;
           }
         } else if (is_interleaved()) {
@@ -303,9 +309,12 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
           DBG("Unpaired so ignore any pair id keep at the first record\n");
           break;
         }
-      } else if (last_pair == '1' && this_pair == '2') {
+      } else if (has_sep && last_pair == '1' && this_pair == '2') {
         // proper pair
         DBG("Found proper pair 1&2\n");
+        break;
+      } else if (!has_sep && is_same_header) {
+        LOG("Second indistinguishable pair (with no pair separator), so keep at the first record\n");
         break;
       }
 
