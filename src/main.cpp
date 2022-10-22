@@ -68,6 +68,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                  bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
 
 int main(int argc, char **argv) {
+  BaseTimer total_timer("Total Time", nullptr); // no PromiseReduce possible
+  total_timer.start();
   // capture the free memory and timers before upcxx::init is called
   auto starting_free_mem = get_free_mem();
   char *proc_id = getenv("SLURM_PROCID");
@@ -398,20 +400,29 @@ int main(int argc, char **argv) {
   upcxx_utils::Timings::wait_pending();         // ensure all outstanding timing summaries have printed
   LOG("Done waiting for all pending.\n");
   barrier();
-  LOG("All ranks done.\n");
-  auto am_root = !rank_n();
-
+  LOG("All ranks done. Flushing logs and finalizing.\n");
+  auto am_root = !rank_me();
+  
+  BaseTimer flush_logs_timer("flush_logger", nullptr); // no PromiseReduce possible
+  flush_logs_timer.start();
 #ifdef DEBUG
   _dbgstream.flush();
   while (close_dbg())
     ;
 #endif
-  LOG("All ranks closed DBG.\n");
-  upcxx_utils::flush_logger();
+  LOG("closed DBG.\n");
+  if (!am_root) upcxx_utils::flush_logger();
+  flush_logs_timer.stop();
+  auto sh_flush_timings = flush_logs_timer.reduce_timings().wait();
   barrier();
-  SLOG_VERBOSE("All ranks flushed log.\n");
-
+  SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
+  
+  BaseTimer finalize_timer("upcxx::finalize", nullptr); // no PromiseReduce possible
+  finalize_timer.start();
   upcxx::finalize();
-  if (am_root) cout << "Finalized and Finished" << endl;
+  finalize_timer.stop();
+  total_timer.stop();
+  if (am_root) cout << "Total time: " << total_timer.get_elapsed() << " s. (upcxx::finalize in " << finalize_timer.get_elapsed() << " s)" << endl;
+  
   return 0;
 }

@@ -8,3 +8,6 @@
 [submodule "test/googletest"]
 	path = test/googletest
 	url = https://github.com/google/googletest/
+[submodule "contrib/seqtk"]
+	path = contrib/seqtk
+	url = https://github.com/lh3/seqtk.git
