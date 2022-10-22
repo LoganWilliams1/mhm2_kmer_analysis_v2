@@ -239,7 +239,7 @@ void CtgsWithReadsDHT::flush_ctg_updates() {
 
 void CtgsWithReadsDHT::prep_ctg_read_store(int64_t num_reads, int64_t num_read_bases) {
   // read seq + qual sequences
-  int est_update_size = sizeof(CtgReadData) + 2 * (num_read_bases + num_reads - 1) / num_reads + 13 + 8 * 3;
+  int est_update_size = sizeof(CtgReadData) + 2 * (num_read_bases + num_reads - 1) / (num_reads > 0 ? num_reads : 1) + 13 + 8 * 3;
   auto l_ranks = local_team().rank_n();
   int64_t mem_to_use = 0.10 * get_free_mem(true) / l_ranks;
   mem_to_use = mem_to_use * sizeof(CtgReadData) / est_update_size;

@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
 
   if(  argc != 4  || !strcmp(argv[1], "-h") ||  !strcmp(argv[1], "-help") ) {
    printf("\nThe fast program to interleave two possibly gzipped FASTQ files into one\n");
-   printf("(Version 1.7)  Process the read length up to 4,096,000 \n"); 
+   printf("(Version 1.7)  Process the read length up to 4,096,000 \n");
    printf("Usage :  %s <Read1_Fastq_file_name>[.gz] <Read2_Fastq_file_name>[.gz] <Interleaved_Fastq_file_name>\n", argv[0]);
    printf("Input file: Read1_Fastq_file_name[.gz]\n");
    printf("Input file: Read2_Fastq_file_name[.gz]\n");
@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
    if (argc <= 1 || !strcmp(argv[1], "-h") ||  !strcmp(argv[1], "-help")) exit(0);
    else exit(1);
   }
- 
+
   gzFile FQ1, FQ2;
   FILE *IFQ;
   kseq_t *kseq1, *kseq2;
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
   const char * empty = "";
   const char * p1 = "/1";
   const char * p2 = "/2";
-  while((len = kseq_read(kseq1)) > 0) 
+  while((len = kseq_read(kseq1)) > 0)
   {
     if ((len = kseq_read(kseq2)) <= 0) {
       fprintf(stderr, "Read 1 and Read 2 have different record counts!\n");
