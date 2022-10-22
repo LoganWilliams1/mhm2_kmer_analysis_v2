@@ -17,7 +17,7 @@ which CC
 which g++
 which gcc
 which nvcc
-which upcxx/nightly
+which upcxx
 
 CC --version
 upcxx --version

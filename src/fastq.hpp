@@ -122,6 +122,8 @@ class FastqReader {
 
   bool get_fq_name(string &header);
 
+  bool is_sep(const char &sep) const;
+
   int64_t get_fptr_for_next_record(int64_t offset);
 
  public:
