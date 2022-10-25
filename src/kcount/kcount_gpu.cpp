@@ -276,11 +276,6 @@ void HashTableInserter<MAX_K>::flush_inserts() {
     double qf_avg_load = (double)qf_tot_load / rank_n();
     SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
              " balance\n");
-    uint64_t qf_failures = (uint64_t)state->ht_gpu_driver.get_qf_failures();
-    // if (qf_failures) WARN("GQF failed to insert ", qf_failures, " items, load factor ",
-    // state->ht_gpu_driver.get_qf_load_factor());
-    auto all_qf_failures = reduce_one(qf_failures, op_fast_add, 0).wait();
-    if (all_qf_failures) SWARN("GQF failed to insert ", all_qf_failures, " items");
     uint64_t num_dropped_qf_elems = reduce_one((uint64_t)insert_stats.dropped_qf, op_fast_add, 0).wait();
     if (num_dropped_qf_elems)
       SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf_elems, num_attempted_inserts), " elements");

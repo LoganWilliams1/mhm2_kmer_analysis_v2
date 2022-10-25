@@ -56,7 +56,6 @@
 #include "gpu-utils/gpu_utils.hpp"
 #include "gpu_hash_table.hpp"
 #include "prime.hpp"
-#include "gqf.hpp"
 
 #include "gpu_hash_funcs.cpp"
 
@@ -476,7 +475,6 @@ template <int MAX_K>
 struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
   cudaEvent_t event;
   QuickTimer insert_timer, kernel_timer;
-  quotient_filter::QF *qf = nullptr;
   two_choice_filter::TCF *tcf = nullptr;
 };
 
@@ -528,7 +526,6 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   pass_type = READ_KMERS_PASS;
   gpu_utils::set_gpu_device(upcxx_rank_me);
   dstate = new HashTableDriverState();
-  dstate->qf = nullptr;
 
   // reserve space for the fixed size buffer for passing data to the GPU
   size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (3 + sizeof(count_t));
@@ -624,9 +621,6 @@ template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_mem) {
   pass_type = CTG_KMERS_PASS;
   // free up space
-  if (dstate->qf) quotient_filter::qf_destroy_device(dstate->qf);
-  dstate->qf = nullptr;
-
   if (dstate->tcf) two_choice_filter::TCF::free_on_device(dstate->tcf);
   dstate->tcf = nullptr;
 
@@ -647,7 +641,6 @@ template <int MAX_K>
 HashTableGPUDriver<MAX_K>::~HashTableGPUDriver() {
   if (dstate) {
     // this happens when there is no ctg kmers pass
-    if (dstate->qf) quotient_filter::qf_destroy_device(dstate->qf);
     if (dstate->tcf) two_choice_filter::TCF::free_on_device(dstate->tcf);
     delete dstate;
   }
@@ -849,20 +842,8 @@ int HashTableGPUDriver<MAX_K>::get_num_gpu_calls() {
 
 template <int MAX_K>
 double HashTableGPUDriver<MAX_K>::get_qf_load_factor() {
-  if (dstate->tcf) {
-    return (double)dstate->tcf->get_fill() / dstate->tcf->get_num_slots();
-  }
-
+  if (dstate->tcf) return (double)dstate->tcf->get_fill() / dstate->tcf->get_num_slots();
   return 0;
-
-  // if (!dstate->qf) return 0;
-  // return (double)quotient_filter::host_qf_get_num_occupied_slots(dstate->qf) / quotient_filter::host_qf_get_nslots(dstate->qf);
-}
-
-template <int MAX_K>
-uint64_t HashTableGPUDriver<MAX_K>::get_qf_failures() {
-  if (!dstate->qf) return 0;
-  return quotient_filter::host_qf_get_failures(dstate->qf);
 }
 
 template class kcount_gpu::HashTableGPUDriver<32>;
