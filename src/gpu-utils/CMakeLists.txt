@@ -23,7 +23,7 @@ if(ENABLE_HIP)
     install(TARGETS GPU_UTILS_LIBRARY_static ARCHIVE DESTINATION lib)
   endif()
 
-elseif(ENABLE_CUDA) 
+elseif(ENABLE_CUDA)
   message(STATUS "building GPU_UTILS using CUDA")
   add_library(GPU_UTILS_LIBRARY_obj OBJECT gpu_utils.cpp gpu_common.cpp)
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)

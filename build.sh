@@ -45,9 +45,9 @@ elif [ "$1" == "clean" ]; then
 else
     mkdir -p $rootdir/.build
     cd $rootdir/.build
-    testing=1
-    if [ "$1" == "Release" ] ; then
-      testing=0
+    testing=0
+    if [ "$1" == "Debug" ] || "$1" == "RelWithDepInfo" ; then
+      testing=1
     fi
     if [ "$1" == "Debug" ] || [ "$1" == "Release" ] || [ "$1" == "RelWithDebInfo" ]; then
         rm -rf *

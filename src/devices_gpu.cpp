@@ -58,9 +58,9 @@ static future<> detect_gpu_fut;
 static double gpu_startup_duration = 0;
 static int num_gpus_on_node = 0;
 
-size_t get_gpu_avail_mem_per_rank() { 
+size_t get_gpu_avail_mem_per_rank() {
   barrier(local_team());
-  auto avail_mem = (gpu_utils::get_gpu_avail_mem() * num_gpus_on_node) / local_team().rank_n(); 
+  auto avail_mem = (gpu_utils::get_gpu_avail_mem() * num_gpus_on_node) / local_team().rank_n();
   barrier(local_team());
   return avail_mem;
 }
@@ -75,21 +75,22 @@ static vector<string> &get_gpu_uuids() {
 }
 
 void init_devices() {
+  SLOG("Initializing GPUS\n");
   init_gpu_thread = true;
   // initialize the GPU and first-touch memory and functions in a new thread as this can take many seconds to complete
   detect_gpu_fut = execute_in_thread_pool([]() {
-    DBG("Initializing GPUs\n");
-    gpu_utils::initialize_gpu(gpu_startup_duration, rank_me());
-    stringstream ss;
-    ss << "Done initializing GPU: " << (gpu_utils::gpus_present() ? "Found" : "NOT FOUND");
-    if (gpu_utils::gpus_present()) {
-      auto uuids = get_gpu_uuids();
-      ss << " with " << uuids.size() << " uuids:\t";
-      for(auto &uuid : uuids) ss << uuid << "\t";
-    }
-    ss << "\n";
-    DBG(ss.str());
-  }).then([](){
+                     DBG("Initializing GPUs\n");
+                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me());
+                     stringstream ss;
+                     ss << "Done initializing GPU: " << (gpu_utils::gpus_present() ? "Found" : "NOT FOUND");
+                     if (gpu_utils::gpus_present()) {
+                       auto uuids = get_gpu_uuids();
+                       ss << " with " << uuids.size() << " uuids:\t";
+                       for (auto &uuid : uuids) ss << uuid << "\t";
+                     }
+                     ss << "\n";
+                     DBG(ss.str());
+                   }).then([]() {
     BaseTimer t;
     t.start();
     // also set the device in the master personna thread for any direct calls this should take practically no time
@@ -105,7 +106,11 @@ void done_init_devices() {
     init_gpu_thread = false;
     detect_gpu_fut.wait();
     auto have_gpus = reduce_all(gpu_utils::gpus_present() ? 1 : 0, op_fast_add).wait();
-    if (have_gpus && have_gpus != rank_n()) { if (!gpu_utils::gpus_present()) WARN("Found no GPUs\n"); barrier(); SDIE("Not all ranks found GPUs: ", have_gpus, " out of ", rank_n(), "\n"); }
+    if (have_gpus && have_gpus != rank_n()) {
+      if (!gpu_utils::gpus_present()) WARN("Found no GPUs\n");
+      barrier();
+      SDIE("Not all ranks found GPUs: ", have_gpus, " out of ", rank_n(), "\n");
+    }
     if (have_gpus == rank_n()) {
       barrier(local_team());
       int num_uuids = 0;
@@ -135,9 +140,9 @@ void done_init_devices() {
       // WARN("Num GPUs on node ", num_gpus_on_node, " gpu avail mem per rank is ", get_size_str(get_avail_gpu_mem_per_rank()),
       //     " memory for gpu ", gpu_utils::get_gpu_uuid(), " is ", gpu_utils::get_gpu_avail_mem());
       SLOG_GPU("Available number of GPUs on this node ", num_gpus_on_node, "\n");
-      SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ",
-               get_size_str(gpu_avail_mem), " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()),
-               " per rank). Detected in ", gpu_startup_duration, " s\n");
+      SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
+               " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()), " per rank). Detected in ",
+               gpu_startup_duration, " s\n");
       SLOG_GPU(gpu_utils::get_gpu_device_descriptions());
       LOG("Using GPU device: ", gpu_utils::get_gpu_device_name(), " - ", gpu_utils::get_gpu_uuid(), "\n");
       barrier(local_team());

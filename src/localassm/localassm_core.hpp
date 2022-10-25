@@ -200,4 +200,4 @@ void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsT
                    CtgsWithReadsDHT &ctgs_dht);
 void process_alns(const Alns &alns, ReadsToCtgsDHT &reads_to_ctgs, int insert_avg, int insert_stddev);
 
-}
+}  // namespace localassm_core
