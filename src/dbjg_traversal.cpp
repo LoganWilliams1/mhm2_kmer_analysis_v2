@@ -299,6 +299,7 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
   WalkTermStats walk_term_stats = {0};
   int64_t num_walks = 0;
   barrier();
+  IntermittentTimer traverse_dirn_timer("traverse direction");
   ProgressBar progbar(kmer_dht->get_local_num_kmers(), "DeBruijn graph traversal to construct uutig fragments");
   for (auto it = kmer_dht->local_kmers_begin(); it != kmer_dht->local_kmers_end(); it++) {
     progress();
@@ -312,8 +313,10 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
     string uutig;
     int64_t sum_depths = 0;
     global_ptr<FragElem> frag_elem_gptr = new_<FragElem>();
+    traverse_dirn_timer.start();
     auto left_gptr = traverse_dirn(kmer_dht, kmer, frag_elem_gptr, Dirn::LEFT, uutig, sum_depths, walk_term_stats);
     auto right_gptr = traverse_dirn(kmer_dht, kmer, frag_elem_gptr, Dirn::RIGHT, uutig, sum_depths, walk_term_stats);
+    traverse_dirn_timer.stop();
     FragElem *frag_elem = frag_elem_gptr.local();
     frag_elem->frag_seq = new_array<char>(uutig.length() + 1);
     strcpy(frag_elem->frag_seq.local(), uutig.c_str());
@@ -334,6 +337,7 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
                perc_str(tot_node_rpcs, tot_rpcs), " were intra-node, and ", perc_str(tot_rpcs - tot_node_rpcs, tot_rpcs),
                " were inter-node\n");
   walk_term_stats.print();
+  traverse_dirn_timer.done();
 }
 
 static int64_t print_link_stats(int64_t num_links, int64_t num_overlaps, int64_t num_overlaps_rc, const string &dirn_str) {
