@@ -53,7 +53,7 @@
 
 using namespace std;
 
-static void revcomp(char *str, char *str_rc, int size) {
+static void revcomp(char *str, char *str_rc, unsigned int size) {
   if (size == FULL || size == EMPTY) {
     printf("Bad revcomp\n");
     return;
