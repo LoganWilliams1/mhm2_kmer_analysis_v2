@@ -59,7 +59,10 @@ do
   RWDI=$inst-RelWithDebInfo/bin/mhm2.py
   OPTS="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
   echo "Submitting job on ${nodes} $arch nodes"
+  old=${SLURM_MEM_PER_CPU}
+  unset SLURM_MEM_PER_CPU
   job=$(sbatch --parsable ${slurm_opts} --nodes=$nodes --wrap="${REL} $OPTS -o ${RUN_PREFIX}/$arch-rel && echo Good")
+  export SLURM_MEM_PER_CPU=${old}
   echo "${arch} JOB ${job}"
   slurm_jobs="$slurm_jobs $job"
 done
