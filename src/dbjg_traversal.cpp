@@ -344,6 +344,7 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
   walk_term_stats.print();
   traverse_dirn_timer.done();
   traverse_rpc_timer.done();
+  traverse_rpc_timer.clear();
 }
 
 static int64_t print_link_stats(int64_t num_links, int64_t num_overlaps, int64_t num_overlaps_rc, const string &dirn_str) {
