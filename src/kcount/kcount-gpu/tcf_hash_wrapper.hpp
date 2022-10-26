@@ -49,8 +49,6 @@
 
 #include <cooperative_groups.h>
 
-#include "gpu_hash_funcs.cpp"
-
 namespace cg = cooperative_groups;
 
 namespace poggers {

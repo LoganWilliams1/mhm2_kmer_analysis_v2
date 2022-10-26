@@ -56,8 +56,7 @@
 #include "gpu-utils/gpu_utils.hpp"
 #include "gpu_hash_table.hpp"
 #include "prime.hpp"
-
-#include "gpu_hash_funcs.cpp"
+#include "gpu_hash_funcs.hpp"
 
 #include "tcf_wrapper.hpp"
 

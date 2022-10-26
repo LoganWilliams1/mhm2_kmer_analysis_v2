@@ -46,7 +46,7 @@
 #define ROTL64(x, r) ((x << r) | (x >> (64 - r)))
 
 // Finalization mix - force all bits of a hash block to avalanche
-__device__ uint64_t fmix64(uint64_t k) {
+inline __device__ uint64_t fmix64(uint64_t k) {
   k ^= k >> 33;
   k *= BIG_CONSTANT(0xff51afd7ed558ccd);
   k ^= k >> 33;
@@ -56,7 +56,7 @@ __device__ uint64_t fmix64(uint64_t k) {
   return k;
 }
 
-__device__ uint64_t gpu_murmurhash3_64(const void *key, const uint32_t len) {
+inline __device__ uint64_t gpu_murmurhash3_64(const void *key, const uint32_t len) {
   const uint8_t *data = (const uint8_t *)key;
   const uint32_t nblocks = len / 16;
   const uint32_t seed = 313;
