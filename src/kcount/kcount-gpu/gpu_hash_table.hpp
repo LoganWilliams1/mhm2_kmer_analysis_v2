@@ -153,7 +153,7 @@ class HashTableGPUDriver {
   ~HashTableGPUDriver();
 
   void init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, size_t max_elems, size_t max_ctg_elems, size_t num_errors,
-            size_t gpu_avail_mem, std::string &msgs, std::string &warnings, bool use_qf, int sequencing_depth);
+            size_t gpu_avail_mem, std::string &msgs, std::string &warnings, bool use_qf);
 
   void init_ctg_kmers(int max_elems, size_t gpu_avail_mem);
 

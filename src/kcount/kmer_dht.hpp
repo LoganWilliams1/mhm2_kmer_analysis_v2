@@ -102,7 +102,7 @@ class HashTableInserter {
   HashTableInserter();
   ~HashTableInserter();
 
-  void init(size_t num_elems, size_t num_ctg_elems, size_t num_errors, bool use_qf, int sequencing_depth);
+  void init(size_t num_elems, size_t num_ctg_elems, size_t num_errors, bool use_qf);
 
   void init_ctg_kmers(size_t max_elems);
 

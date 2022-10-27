@@ -149,7 +149,7 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t m
         num_supermer_inserts++;
         ht_inserter->insert_supermer(supermer.seq, supermer.count);
       });
-  ht_inserter->init(my_adjusted_num_kmers, my_num_ctg_kmers, my_num_errors, use_qf, sequencing_depth);
+  ht_inserter->init(my_adjusted_num_kmers, my_num_ctg_kmers, my_num_errors, use_qf);
   barrier();
 }
 

@@ -425,7 +425,7 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf, int sequencing_depth) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf) {
   state = new HashTableInserterState();
   state->using_ctg_kmers = false;
   double free_mem = get_free_mem(true);

@@ -191,7 +191,7 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf, int sequencing_depth) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf) {
   barrier(local_team());
   this->use_qf = use_qf;
   state = new HashTableInserterState();
@@ -208,7 +208,7 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   BaseTimer t;
   t.start();
   state->ht_gpu_driver.init(rank_me(), rank_n(), Kmer<MAX_K>::get_k(), max_elems, max_ctg_elems, num_errors, gpu_avail_mem_per_rank,
-                            driver_msgs, driver_warnings, use_qf, sequencing_depth);
+                            driver_msgs, driver_warnings, use_qf);
   t.stop();
   SLOG_GPU(driver_msgs);
   if (!driver_warnings.empty()) SWARN(driver_warnings);
