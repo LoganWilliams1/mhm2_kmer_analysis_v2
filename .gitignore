@@ -7,4 +7,5 @@ scripts
 nbproject
 install
 .vscode
+.DS_Store
 contrib/collect_comm_stats
