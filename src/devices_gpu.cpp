@@ -117,7 +117,7 @@ void done_init_devices() {
       unordered_set<string> unique_ids;
       dist_object<vector<string>> gpu_uuids(get_gpu_uuids(), local_team());
       for (auto uuid : *gpu_uuids) unique_ids.insert(uuid);
-      auto gpu_avail_mem = 0;
+      //auto gpu_avail_mem = 0;
       if (!local_team().rank_me()) {
         for (int i = 1; i < local_team().rank_n(); i++) {
           auto gpu_uuids_i = gpu_uuids.fetch(i).wait();
@@ -127,22 +127,20 @@ void done_init_devices() {
           }
         }
         num_gpus_on_node = unique_ids.size();
-        SLOG_GPU("Found UUIDs:\n");
-        for (auto uuid : unique_ids) {
-          SLOG_GPU(uuid, "\n");
-        }
-        gpu_avail_mem = gpu_utils::get_gpu_avail_mem() * num_gpus_on_node;
+        //SLOG_GPU("Found GPU UUIDs:\n");
+        //for (auto uuid : unique_ids) {
+        //  SLOG_GPU("    ", uuid, "\n");
+        //}
+        //gpu_utils::set_gpu_device(rank_me());
+        //gpu_avail_mem = gpu_utils::get_gpu_avail_mem() * num_gpus_on_node;
       }
       barrier(local_team());
       num_gpus_on_node = broadcast(num_gpus_on_node, 0, local_team()).wait();
-      gpu_avail_mem = broadcast(gpu_avail_mem, 0, local_team()).wait();
-      // gpu_utils::set_gpu_device(rank_me());
-      // WARN("Num GPUs on node ", num_gpus_on_node, " gpu avail mem per rank is ", get_size_str(get_avail_gpu_mem_per_rank()),
-      //     " memory for gpu ", gpu_utils::get_gpu_uuid(), " is ", gpu_utils::get_gpu_avail_mem());
-      SLOG_GPU("Available number of GPUs on this node ", num_gpus_on_node, "\n");
-      SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
-               " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()), " per rank). Detected in ",
-               gpu_startup_duration, " s\n");
+      //gpu_avail_mem = broadcast(gpu_avail_mem, 0, local_team()).wait();
+      SLOG_GPU("Available number of GPUs on this node ", num_gpus_on_node, ". Detected in ", gpu_startup_duration, " s\n");
+      //SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
+      //         " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()), " per rank). Detected in ",
+      //         gpu_startup_duration, " s\n");
       SLOG_GPU(gpu_utils::get_gpu_device_descriptions());
       LOG("Using GPU device: ", gpu_utils::get_gpu_device_name(), " - ", gpu_utils::get_gpu_uuid(), "\n");
       barrier(local_team());
