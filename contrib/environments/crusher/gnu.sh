@@ -6,7 +6,7 @@ module load cmake
 
 module rm xl
 module load gcc
-module load rocm/4.5.2
+module load rocm
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
 module rm upcxx
 module load upcxx/nightly
