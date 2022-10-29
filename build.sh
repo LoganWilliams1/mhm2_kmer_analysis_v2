@@ -46,7 +46,7 @@ else
     mkdir -p $rootdir/.build
     cd $rootdir/.build
     testing=0
-    if [ "$1" == "Debug" ] || "$1" == "RelWithDepInfo" ; then
+    if [ "$1" == "Debug" ] || [ "$1" == "RelWithDepInfo" ]; then
       testing=1
     fi
     if [ "$1" == "Debug" ] || [ "$1" == "Release" ] || [ "$1" == "RelWithDebInfo" ]; then
