@@ -108,6 +108,7 @@ struct KmerExtsMap {
 
 struct InsertStats {
   unsigned int dropped = 0;
+  unsigned int dropped_qf = 0;
   unsigned int attempted = 0;
   unsigned int new_inserts = 0;
   unsigned int num_unique_qf = 0;
@@ -151,8 +152,8 @@ class HashTableGPUDriver {
   HashTableGPUDriver();
   ~HashTableGPUDriver();
 
-  void init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, int max_elems, size_t gpu_avail_mem, double &init_time,
-            size_t &gpu_bytes_reqd, size_t &ht_bytes_used, size_t &qf_bytes_used, bool use_qf);
+  void init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, size_t max_elems, size_t max_ctg_elems, size_t num_errors,
+            size_t gpu_avail_mem, std::string &msgs, std::string &warnings, bool use_qf);
 
   void init_ctg_kmers(int max_elems, size_t gpu_avail_mem);
 

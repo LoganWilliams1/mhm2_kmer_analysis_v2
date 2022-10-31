@@ -423,6 +423,7 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::IsMember({"cpu", "core", "numa", "none"}));
   add_flag_def(app, "--use-qf", use_qf,
                "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
+  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError &e) {
@@ -447,7 +448,7 @@ bool Options::load(int argc, char **argv) {
   }
 
   if (!unpaired_fnames.empty()) {
-    // append a ':' to the file name, signaling to FastqReader that this is a unpaired/single file
+    // append a ':' to the file name, signaling to FastqReader that this is a unpaired/sinngle file
     // a paired file would have another name after the ':'
     for (auto name : unpaired_fnames) {
       reads_fnames.push_back(name + ":");

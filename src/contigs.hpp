@@ -92,4 +92,6 @@ class Contigs {
   void dump_contigs(const string &fname, unsigned min_ctg_len);
 
   void load_contigs(const string &ctgs_fname);
+
+  size_t get_num_ctg_kmers(int kmer_len);
 };
