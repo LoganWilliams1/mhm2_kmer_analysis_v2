@@ -42,87 +42,51 @@
  form.
 */
 
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <vector>
+#include <cuda.h>
+#include <cuda_runtime_api.h>
+#include <stdio.h>
+#include <assert.h>
 
-#include "version.h"
+#include <cooperative_groups.h>
 
-using std::cout;
-using std::endl;
-using std::string;
-using std::vector;
+namespace cg = cooperative_groups;
 
-class Options {
-  vector<string> splitter(string in_pattern, string &content);
+namespace poggers {
 
-  template <typename T>
-  string vec_to_str(const vector<T> &vec, const string &delimiter = ",") {
-    std::ostringstream oss;
-    for (auto elem : vec) {
-      oss << elem;
-      if (elem != vec.back()) oss << delimiter;
-    }
-    return oss.str();
+namespace hashers {
+
+// hashers should always hash an arbitrary type to uint64_t
+template <typename Key, std::size_t Partition_size = 1>
+struct __attribute__((__packed__)) mhm_hasher {
+  // tag bits change based on the #of bytes allocated per block
+ private:
+ public:
+  using key_type = Key;
+  // using internal_paritition_size = Partition_size;
+
+  // typedef key_val_pair<Key> Key;
+
+  // init happens by a single thread on CPU/GPU
+  // no cg needed
+
+  __host__ __device__ void init(uint64_t ext_seed) {}
+
+  __host__ __device__ uint64_t hash(Key key_to_hash) {
+    Key copy_key = key_to_hash;
+
+    return gpu_murmurhash3_64(&copy_key, sizeof(Key));
   }
 
-  bool extract_previous_lens(vector<unsigned> &lens, unsigned k);
+  // all participate
+  __device__ uint64_t hash(Key key_to_hash, cg::thread_block_tile<Partition_size> group) {
+    Key copy_key = key_to_hash;
 
-  void get_restart_options();
+    return gpu_murmurhash3_64(&copy_key, sizeof(Key));
+  }
 
-  double setup_output_dir();
-
-  double setup_log_file();
-
-  bool find_restart(string stage_type, int k);
-
-  static string get_job_id();
-
- public:
-  vector<string> reads_fnames;
-  vector<string> paired_fnames;
-  vector<string> unpaired_fnames;
-  string adapter_fname;
-  vector<unsigned> kmer_lens = {21, 33, 55, 77, 99};
-  int min_kmer_len = -1;
-  int max_kmer_len = 0;
-  int prev_kmer_len = 0;
-  vector<unsigned> scaff_kmer_lens = {99, 33};
-  int qual_offset = 33;
-  bool verbose = false;
-  int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
-  int max_rpcs_in_flight = 100;
-  int dmin_thres = 2.0;
-  int subsample_fastq_pct = 100;  // percentage of fastq files to read
-  bool checkpoint = true;
-  bool dump_merged = false;
-  bool klign_kmer_cache = false;
-  bool post_assm_aln = false;
-  bool post_assm_abundances = false;
-  bool post_assm_only = false;
-  bool dump_gfa = false;
-  bool show_progress = false;
-  string pin_by = "numa";
-  int max_worker_threads = 3;
-  string ctgs_fname;
-  vector<int> insert_size = {0, 0};
-  int min_ctg_print_len = 500;
-  int break_scaff_Ns = 10;
-  string output_dir;
-  string setup_time;
-  bool restart = false;
-  bool shuffle_reads = true;
-  bool dump_kmers = false;
-  bool use_qf = true;
-  // very conservative so as not to drop kmers for low depth datasets
-  int sequencing_depth = 4;
-  string optimize_for = "default";
-
-  Options();
-  ~Options();
-
-  void cleanup();
-
-  bool load(int argc, char **argv);
+  // no need for explicit destructor struct hash no memory components
 };
+
+}  // namespace hashers
+
+}  // namespace poggers

@@ -58,6 +58,7 @@ add_library(KCOUNT_LIBRARY ${KCOUNT_TARGET_FILES} ${KCOUNT_TARGET_OBJECTS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 if(ENABLE_CUDA)
+  add_definitions(-DUSE_TCF)
   set_property(TARGET KCOUNT_LIBRARY PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
   include_directories("kcount-gpu")
   add_subdirectory(kcount-gpu)

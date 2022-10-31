@@ -96,6 +96,7 @@ void Contigs::print_stats(unsigned min_ctg_len) {
   vector<pair<unsigned, uint64_t>> length_sums({{1, 0}, {5, 0}, {10, 0}, {25, 0}, {50, 0}});
   int64_t num_ctgs = 0;
   int64_t num_ns = 0;
+  double tot_depth_per_base = 0;
   vector<unsigned> lens;
   lens.reserve(contigs.size());
   for (auto ctg : contigs) {
@@ -104,6 +105,7 @@ void Contigs::print_stats(unsigned min_ctg_len) {
     num_ctgs++;
     tot_len += len;
     tot_depth += ctg.depth;
+    tot_depth_per_base += (ctg.depth * len);
     max_len = max(max_len, static_cast<int64_t>(len));
     for (auto &length_sum : length_sums) {
       if (len >= length_sum.first * 1000) length_sum.second += len;
@@ -146,12 +148,14 @@ void Contigs::print_stats(unsigned min_ctg_len) {
   int64_t all_max_len = reduce_one(max_len, op_fast_max, 0).wait();
   double all_tot_depth = reduce_one(tot_depth, op_fast_add, 0).wait();
   int64_t all_num_ns = reduce_one(num_ns, op_fast_add, 0).wait();
+  double all_tot_depth_per_base = reduce_one(tot_depth_per_base, op_fast_add, 0).wait() / all_tot_len;
   // int64_t all_n50s = reduce_one(n50, op_fast_add, 0).wait();
 
   SLOG("Assembly statistics (contig lengths >= ", min_ctg_len, ")\n");
   SLOG("    Number of contigs:       ", all_num_ctgs, "\n");
   SLOG("    Total assembled length:  ", all_tot_len, "\n");
   SLOG("    Average contig depth:    ", all_tot_depth / all_num_ctgs, "\n");
+  SLOG("    Average depth per base:  ", all_tot_depth_per_base, "\n");
   SLOG("    Number of Ns/100kbp:     ", (double)all_num_ns * 100000.0 / all_tot_len, " (", all_num_ns, ")", KNORM, "\n");
   // SLOG("    Approx N50 (average):    ", all_n50s / rank_n(), " (rank 0 only ", n50, ")\n");
   // SLOG("    Approx N50:              ", median_n50, "\n");
@@ -259,4 +263,12 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   barrier();
   SLOG_VERBOSE("Loaded ", reduce_one(contigs.size(), op_fast_add, 0).wait(), " contigs (",
                get_size_str(reduce_one(tot_len, op_fast_add, 0).wait()), ") from ", ctgs_fname, "\n");
+}
+
+size_t Contigs::get_num_ctg_kmers(int kmer_len) {
+  size_t num_ctg_kmers = 0;
+  for (auto &ctg : contigs) {
+    if (ctg.seq.length() > kmer_len) num_ctg_kmers += (ctg.seq.length() - kmer_len + 1);
+  }
+  return num_ctg_kmers;
 }

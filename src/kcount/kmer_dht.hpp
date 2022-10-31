@@ -102,7 +102,7 @@ class HashTableInserter {
   HashTableInserter();
   ~HashTableInserter();
 
-  void init(size_t num_elems, bool use_qf);
+  void init(size_t num_elems, size_t num_ctg_elems, size_t num_errors, bool use_qf);
 
   void init_ctg_kmers(size_t max_elems);
 
@@ -110,7 +110,7 @@ class HashTableInserter {
 
   void flush_inserts();
 
-  void insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers);
+  double insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers);
 
   void get_elapsed_time(double &insert_time, double &kernel_time);
 };
@@ -124,8 +124,10 @@ class KmerDHT {
   upcxx_utils::ThreeTierAggrStore<Supermer> kmer_store;
   int64_t max_kmer_store_bytes;
   int64_t my_num_kmers;
+  size_t my_num_ctg_kmers;
   int max_rpcs_in_flight;
   int64_t num_supermer_inserts;
+  double avg_kmer_count;
   std::chrono::time_point<std::chrono::high_resolution_clock> start_t;
 
   int minimizer_len = 15;
@@ -133,13 +135,14 @@ class KmerDHT {
  public:
   bool using_ctg_kmers = false;
 
-  KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf);
+  KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool use_qf,
+          int sequencing_depth);
 
   void clear_stores();
 
   ~KmerDHT();
 
-  void init_ctg_kmers(int64_t max_elems);
+  void init_ctg_kmers();
 
   int get_minimizer_len();
 
@@ -152,6 +155,8 @@ class KmerDHT {
   KmerCounts *get_local_kmer_counts(Kmer<MAX_K> &kmer);
 
   int64_t get_num_supermer_inserts();
+
+  double get_avg_kmer_count();
 
   bool kmer_exists(Kmer<MAX_K> kmer);
 
