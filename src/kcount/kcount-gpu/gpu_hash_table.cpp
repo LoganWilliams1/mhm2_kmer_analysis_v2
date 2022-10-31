@@ -54,25 +54,27 @@
 #include "gpu-utils/gpu_utils.hpp"
 #include "gpu_hash_table.hpp"
 #include "prime.hpp"
+#include "gpu_hash_funcs.hpp"
 #ifdef USE_TCF
 #include "tcf_wrapper.hpp"
 #else
 // quotient filter calls stubbed out
-namespace quotient_filter {
-struct QF;
-enum qf_returns { QF_ITEM_INSERTED, QF_ITEM_FOUND, QF_FULL };
-__device__ qf_returns insert_kmer(QF *qf, uint64_t hash, char forward, char backward, char &returnedfwd, char &returnedback) {
-  return QF_FULL;
-}
-void qf_malloc_device(QF **qf, int nbits) {}
-uint64_t qf_estimate_memory(int nbits) { return 0; }
-void qf_destroy_device(QF *qf) {}
-uint64_t host_qf_get_nslots(const QF *qf) { return 0; }
-uint64_t host_qf_get_num_occupied_slots(const QF *qf) { return 0; }
-uint64_t host_qf_get_failures(const QF *qf) { return 0; }
-}  // namespace quotient_filter
+namespace two_choice_filter {
+#define TCF_RESULT uint8_t
+  struct TCF {
+    static TCF* generate_on_device(bool *, int) {return nullptr;}
+    static void free_on_device(TCF *) {}
+    __device__ bool get_my_tile() {return false;}
+    __device__ bool insert_if_not_exists(bool b, uint64_t, bool, TCF_RESULT, bool) {return false;}
+    int get_fill() {return 0;}
+    int get_num_slots() {return 0;}
+  };
+  __device__ uint8_t pack_extensions(char left, char right) {return 0;}
+  __device__ bool unpack_extensions(uint8_t storage, char& left, char& right) {return false;}
+  static uint64_t estimate_memory(uint64_t max_num_kmers) {return 0;}
+  static bool get_tcf_sizing_from_mem(uint64_t available_bytes) {return false;}
+}  // namespace two_choice_filter
 #endif
-#include "gpu_hash_funcs.hpp"
 
 using namespace std;
 using namespace gpu_common;
@@ -446,11 +448,7 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
         auto packed = two_choice_filter::pack_extensions(left_ext, right_ext);
 
         TCF_RESULT result = 0;
-#if TCF_DELETE
-        bool success = tcf->insert_if_not_exists_delete(tcf->get_my_tile(), hash_val, packed, result, found);
-#else
         bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
-#endif
 
         if (success) {
           if (!found) {

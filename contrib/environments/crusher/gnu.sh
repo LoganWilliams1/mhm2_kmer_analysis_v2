@@ -10,7 +10,7 @@ module load rocm
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
 module rm upcxx
 module load upcxx/nightly
-module list
+#module list
 which upcxx
 
 module load cray-python

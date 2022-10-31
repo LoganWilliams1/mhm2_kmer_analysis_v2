@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
 if [ -n "$MHM2_BUILD_ENV" ]; then
+    echo "Source $MHM2_BUILD_ENV"
     source $MHM2_BUILD_ENV
 fi
 
 upcxx_exec=`which upcxx`
+
 
 if [ -z "$upcxx_exec" ]; then
     echo "upcxx not found. Please install or set path."
@@ -16,6 +18,8 @@ if [ "$upcxx_exec_canonical" != "$upcxx_exec" ]; then
     echo "Found symlink for upcxx - using target at $upcxx_exec_canonical"
     export PATH=`dirname $upcxx_exec_canonical`:$PATH
 fi
+
+
 
 set -e
 
