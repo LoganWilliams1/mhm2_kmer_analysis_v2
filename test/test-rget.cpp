@@ -20,18 +20,13 @@ int main(int argc, char **argv) {
     return 1;
   }
   size_t buf_size = atoi(argv[1]);
-  if (!rank_me()) cout << "Running test of rgets with " << buf_size << " buffer size\n";
+  barrier();
+  if (!rank_me()) cerr << "Running test of rgets with " << buf_size << " buffer size\n";
+  barrier();
   dist_object<global_ptr<char>> buf(new_array<char>(buf_size));
-  char *local_ptr = buf->local();
-  string my_str(buf_size, rank_me());
-  memcpy(local_ptr, my_str.c_str(), buf_size);
-
   vector<global_ptr<char>> other_bufs(rank_n());
   barrier();
-  for (int i = 0; i < rank_n(); i++) {
-    other_bufs[i] = buf.fetch(i).wait();
-  }
-  if (!rank_me()) cerr << "setup done\n";
+  for (int i = 0; i < rank_n(); i++) other_bufs[i] = buf.fetch(i).wait();
   barrier();
   char *receive_buf = new char[buf_size];
   size_t num_rounds = 10000000;
@@ -47,9 +42,9 @@ int main(int argc, char **argv) {
   barrier();
   
   auto t_elapsed = ((duration_seconds)(now() - t)).count();
-  double bandwidth = (double)(num_gets * buf_size * rank_n()) / 1024.0 / 1024.0 / t_elapsed / rank_n();
+  double bandwidth = (double)(num_gets * buf_size) / 1024.0 / 1024.0 / t_elapsed;
   
-  if (!rank_me()) {
+ if (!rank_me()) {
     cout << "Test took " << t_elapsed << " seconds\n";
     cout << "Average rget time is " << fixed << setprecision(3)
          << (1000000.0 * (double)t_elapsed / num_gets) << " us\n";
