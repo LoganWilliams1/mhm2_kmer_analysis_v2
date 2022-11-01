@@ -31,10 +31,9 @@ int main(int argc, char **argv) {
   for (int i = 0; i < rank_n(); i++) {
     other_bufs[i] = buf.fetch(i).wait();
   }
+  if (!rank_me()) cerr << "setup done\n";
   barrier();
   char *receive_buf = new char[buf_size];
-  // set buf so that we can check for correct receive from any rank
-  for (int i = 0; i < min(buf_size, (size_t)rank_n()); i++) receive_buf[i] = i;
   size_t num_rounds = 10000000;
   vector<size_t> get_counts(rank_n(), 0);
   auto t = now();
@@ -44,25 +43,17 @@ int main(int argc, char **argv) {
     get_counts[target]++;
     rget(other_bufs[target], receive_buf, buf_size).wait();
     num_gets++;
-    if (target < 128) {
-      for (int i = 0; i < buf_size; i++) {
-        if (receive_buf[i] != target) {
-          cout << "rank " << rank_me() << ": error in rget from " << target << " at position " << i << "\n";
-          break;
-        }
-      }
-    }
   }
   barrier();
   
   auto t_elapsed = ((duration_seconds)(now() - t)).count();
-  double bandwidth = (double)(num_gets * buf_size * rank_n()) / 1024.0 / 1024.0 / 1024.0 / t_elapsed;
+  double bandwidth = (double)(num_gets * buf_size * rank_n()) / 1024.0 / 1024.0 / t_elapsed / rank_n();
   
   if (!rank_me()) {
     cout << "Test took " << t_elapsed << " seconds\n";
     cout << "Average rget time is " << fixed << setprecision(3)
          << (1000000.0 * (double)t_elapsed / num_gets) << " us\n";
-    cout << "Total bandwidth " << fixed << setprecision(4) << bandwidth << " GB/s\n";
+    cout << "Bandwidth per rank " << fixed << setprecision(4) << bandwidth << " MB/s\n";
     double tot = 0;
     size_t max_count = 0;
     for (int i = 0; i < rank_n(); i++) {
@@ -74,6 +65,7 @@ int main(int argc, char **argv) {
     cout << "Rank 0 received on average " << fixed << setprecision(2) << avg
          << " rgets per rank, max " << max_count << " (balance " << balance << ")" << endl;
   }
+  barrier();
   upcxx::finalize();
   return 0;
 }
