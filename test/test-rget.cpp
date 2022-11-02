@@ -12,6 +12,8 @@ using duration_seconds = std::chrono::duration<double>;
 
 timepoint_t now() { return std::chrono::high_resolution_clock::now(); }
 
+#define ASYNC
+
 int main(int argc, char **argv) {
   upcxx::init();
   if (argc != 2) {
@@ -33,12 +35,19 @@ int main(int argc, char **argv) {
   vector<size_t> get_counts(rank_n(), 0);
   auto t = now();
   size_t num_gets = 0;
+  auto f = make_future<>();
   for (size_t round = 0; round < num_rounds; round++) {
     int target = rand() % rank_n();
     get_counts[target]++;
-    rget(other_bufs[target], receive_buf, buf_size).wait();
+    auto frget = rget(other_bufs[target], receive_buf, buf_size);
+#ifdef ASYNC
+    f = when_all(f, frget);
+#else
+    fget.wait();
+#endif
     num_gets++;
   }
+  f.wait();
   barrier();
   
   auto t_elapsed = ((duration_seconds)(now() - t)).count();
