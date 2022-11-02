@@ -28,8 +28,9 @@ echo "Loading GPU environment"
 source ${MHM2_SOURCE}/contrib/environments/perlmutter/gnu.sh
 module list
 env | grep '\(GASNET\|FI_\|UPC\)'
+env | grep TMP
 
-echo "Copying source from ${MHM2_SOURCE}/ to ${CI_SCRATCH}/src/"
+df -h $TMPDIR
 
 for t in Debug RelWithDebug RelWithDebInfo Release
 do
