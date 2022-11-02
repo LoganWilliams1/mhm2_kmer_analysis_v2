@@ -36,7 +36,7 @@ Perlmutter:build:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${PSCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - mkdir -p ${BASE}
     - rm -rf ${CI_SCRATCH}
@@ -63,7 +63,7 @@ Perlmutter:validation:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - dt=$(date '+%Y%m%d_%H%M%S')
     - exec >  >(tee -ia ${CI_SCRATCH}/validation-${dt}.log)
@@ -85,7 +85,7 @@ Perlmutter:accuracy:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - dt=$(date '+%Y%m%d_%H%M%S')
     - exec >  >(tee -ia ${CI_SCRATCH}/validation-$dt.log)
@@ -113,7 +113,7 @@ Cori:build:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -189,7 +189,7 @@ Cori:validation:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -262,7 +262,7 @@ Cori:accuracy:
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -344,7 +344,7 @@ HULK:build:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
@@ -370,7 +370,7 @@ HULK:validation:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
@@ -393,7 +393,7 @@ HULK:accuracy:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install to PATH"
@@ -429,7 +429,7 @@ Bacteria:build:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -456,7 +456,7 @@ Bacteria:validation:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -480,7 +480,7 @@ Bacteria:accuracy:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install, cuda and quast to path"
@@ -525,7 +525,7 @@ Fungi:build:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
@@ -551,7 +551,7 @@ Fungi:validation:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -574,7 +574,7 @@ Fungi:accuracy:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_JOB_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install and quast to path"
