@@ -346,7 +346,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   SLOG_GPU("GPU hash table: purged ", perc_str(all_num_purged, prepurge_num_entries), " singleton kmers out of ",
            prepurge_num_entries, "\n");
   SLOG_GPU("GPU hash table final size is ", (all_num_entries / rank_n()), " entries and final load factor is ",
-           ((double)all_num_entries / all_capacity / rank_n()), "\n");
+           ((double)all_num_entries / all_capacity), "\n");
   barrier();
 
   // add some space for the ctg kmers
