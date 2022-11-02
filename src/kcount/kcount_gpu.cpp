@@ -49,8 +49,8 @@
 #include "kcount-gpu/parse_and_pack.hpp"
 #include "kcount-gpu/gpu_hash_table.hpp"
 
-#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
-//#define SLOG_GPU SLOG_VERBOSE
+//#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+#define SLOG_GPU SLOG_VERBOSE
 
 using namespace std;
 using namespace upcxx_utils;
