@@ -28,9 +28,12 @@ echo "Loading GPU environment"
 source ${MHM2_SOURCE}/contrib/environments/perlmutter/gnu.sh
 module list
 env | grep '\(GASNET\|FI_\|UPC\)'
+env | grep SLURM || true
 env | grep TMP
 
 df -h $TMPDIR
+df -h /dev/shm
+export TMPDIR=/dev/shm
 
 for t in Debug RelWithDebug RelWithDebInfo Release
 do
