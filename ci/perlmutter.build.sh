@@ -42,7 +42,7 @@ do
   cd $MHM2_BUILD
   echo "Building gpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-gpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
-  make -j 12 all check install
+  make -j 4 all check install
 done
 
 echo "Loading CPU-only environment"
@@ -57,7 +57,7 @@ do
   cd $MHM2_BUILD
   echo "Building cpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-cpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
-  make -j 12 all check install
+  make -j 4 all check install
 done
 
 echo "Done building $(date) in ${SECONDS}"
