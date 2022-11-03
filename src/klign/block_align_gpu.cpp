@@ -66,10 +66,10 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     // align query_seqs, ref_seqs, max_query_size, max_ref_size
     gpu_driver->run_kernel_forwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
                                     aln_block_data->max_clen);
-    gpu_driver->kernel_block();
+    gpu_driver->kernel_block_fwd();
     gpu_driver->run_kernel_backwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
                                      aln_block_data->max_clen);
-    gpu_driver->kernel_block();
+    gpu_driver->kernel_block_rev();
     aln_kernel_timer.stop();
 
     auto aln_results = gpu_driver->get_aln_results();

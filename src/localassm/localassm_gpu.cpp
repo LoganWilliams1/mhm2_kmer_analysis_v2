@@ -145,9 +145,9 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   loc_assem_kernel_timer.start();
   unsigned max_read_size = 300;
 
-  auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank(); // implicit local_team barier
-  future<> fut_outlier =
-      upcxx_utils::execute_in_thread_pool([&outlier_slice, max_read_size, walk_len_limit, qual_offset, max_kmer_len, kmer_len, gpu_avail_mem_per_rank]() {
+  auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();  // implicit local_team barier
+  future<> fut_outlier = upcxx_utils::execute_in_thread_pool(
+      [&outlier_slice, max_read_size, walk_len_limit, qual_offset, max_kmer_len, kmer_len, gpu_avail_mem_per_rank]() {
         if (outlier_slice.ctg_vec.size() > 0)
           localassm_driver::localassm_driver(outlier_slice.ctg_vec, outlier_slice.max_contig_sz, max_read_size, outlier_slice.r_max,
                                              outlier_slice.l_max, kmer_len, max_kmer_len, outlier_slice.sizes_vec, walk_len_limit,
@@ -166,7 +166,7 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   auto cpu_exts{tot_mids - mid_slice.ctg_vec.size()};
   LOG("Number of Local Contig Extensions processed on CPU:", cpu_exts, "\n");
 
-  auto remaining_gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank(); // implicit local_team barier
+  auto remaining_gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();  // implicit local_team barier
   if (mid_slice.ctg_vec.size() > 0) {
     localassm_driver::localassm_driver(mid_slice.ctg_vec, mid_slice.max_contig_sz, max_read_size, mid_slice.r_max, mid_slice.l_max,
                                        kmer_len, max_kmer_len, mid_slice.sizes_vec, walk_len_limit, qual_offset,

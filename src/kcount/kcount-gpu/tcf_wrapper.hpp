@@ -76,8 +76,6 @@ __constant__ char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
 
 #define TCF_SMALL 1
 
-#define TCF_DELETE 0
-
 #if TCF_SMALL
 
 using backing_table = poggers::tables::bucketed_table<

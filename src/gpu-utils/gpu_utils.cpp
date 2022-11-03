@@ -45,12 +45,10 @@
 #include <chrono>
 #include <array>
 #include <iomanip>
-#include <cuda_runtime_api.h>
-#include <cuda.h>
-#include <thread>
 
-#include "gpu_utils.hpp"
 #include "upcxx_utils/colors.h"
+#include "gpu_compatibility.hpp"
+#include "gpu_utils.hpp"
 #include "gpu_common.hpp"
 
 using namespace std;
@@ -61,9 +59,11 @@ static int _rank_me = -1;
 static int get_gpu_device_count() {
   static bool tested = false;
   if (!_device_count && !tested) {
-    auto res = cudaGetDeviceCount(&_device_count);
+    bool success = false;
+    auto res = GetDeviceCount(&_device_count);
+    if (res == Success) success = true;
     tested = true;
-    if (res != cudaSuccess) {
+    if (!success) {
       _device_count = 0;
       return 0;
     }
@@ -73,15 +73,15 @@ static int get_gpu_device_count() {
 
 // singleton to cache and avoid overloading calls to get properties that do not change
 // defaults to the current device that is set
-static cudaDeviceProp &get_gpu_properties(int device_id = -1) {
-  static vector<cudaDeviceProp> _{};
+static DeviceProp &get_gpu_properties(int device_id = -1) {
+  static vector<DeviceProp> _{};
   auto num_devs = get_gpu_device_count();
   if (num_devs <= 0) {
     std::cerr << KLRED "Cannot get GPU properties when there are no GPUs\n" KNORM;
     exit(1);
   }
   if (device_id == -1) {
-    cudaErrchk(cudaGetDevice(&device_id));
+    ERROR_CHECK(GetDevice(&device_id));
   }
   if (device_id < 0 || device_id >= num_devs) {
     std::cerr << KLRED "Cannot get GPU properties for device " << device_id << " when there are " << num_devs << " GPUs\n" KNORM;
@@ -90,8 +90,8 @@ static cudaDeviceProp &get_gpu_properties(int device_id = -1) {
   if (_.empty()) {
     _.resize(get_gpu_device_count());
     for (int i = 0; i < num_devs; ++i) {
-      auto idx = (1+i+_rank_me)%num_devs; // stagger access to devices, end on delegated device
-      cudaErrchk(cudaGetDeviceProperties(&_[idx], idx));
+      auto idx = (1 + i + _rank_me) % num_devs;  // stagger access to devices, end on delegated device
+      ERROR_CHECK(GetDeviceProperties(&_[idx], idx));
     }
   }
   return _[device_id];
@@ -106,10 +106,10 @@ void gpu_utils::set_gpu_device(int rank_me) {
   int num_devs = get_gpu_device_count();
   if (num_devs == 0) return;
   auto mod = rank_me % num_devs;
-  cudaErrchk(cudaGetDevice(&current_device));
+  ERROR_CHECK(GetDevice(&current_device));
   if (current_device != mod) {
-    cudaErrchk(cudaSetDevice(mod));
-    cudaErrchk(cudaGetDevice(&current_device));
+    ERROR_CHECK(SetDevice(mod));
+    ERROR_CHECK(GetDevice(&current_device));
     if (current_device != mod) {
       std::cerr << KLRED "Did not set device to " << mod << " rank_me=" << rank_me << "\n" KNORM;
       exit(1);
@@ -125,7 +125,7 @@ size_t gpu_utils::get_gpu_tot_mem() {
 size_t gpu_utils::get_gpu_avail_mem() {
   set_gpu_device(_rank_me);
   size_t free_mem, tot_mem;
-  cudaErrchk(cudaMemGetInfo(&free_mem, &tot_mem));
+  ERROR_CHECK(MemGetInfo(&free_mem, &tot_mem));
   return free_mem;
 }
 
@@ -146,15 +146,20 @@ vector<string> gpu_utils::get_gpu_uuids() {
   vector<string> uuids;
   int num_devs = get_gpu_device_count();
   for (int i = 0; i < num_devs; ++i) {
-    cudaDeviceProp &prop = get_gpu_properties(i);
+    DeviceProp &prop = get_gpu_properties(i);
+    bool set_dev = false;
+#ifdef CUDA_GPU
 #if (CUDA_VERSION >= 10000)
     uuids.push_back(get_uuid_str(prop.uuid.bytes));
-#else
-    ostringstream os;
-    os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID << ':' << prop.pciDomainID << ':'
-       << prop.multiGpuBoardGroupID;
-    uuids.push_back(os.str());
+    set_dev = true;
 #endif
+#endif
+    if (!set_dev) {
+      ostringstream os;
+      os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;
+      uuids.push_back(os.str());
+      set_dev = true;
+    }
   }
   return uuids;
 }
@@ -163,13 +168,13 @@ string gpu_utils::get_gpu_uuid() {
   set_gpu_device(_rank_me);
   auto uuids = get_gpu_uuids();
   int current_device = -1;
-  cudaErrchk(cudaGetDevice(&current_device));
+  ERROR_CHECK(GetDevice(&current_device));
   return uuids[current_device] + " device" + to_string(current_device) + "of" + to_string(get_gpu_device_count());
 }
 
 bool gpu_utils::gpus_present() { return get_gpu_device_count(); }
 
-void gpu_utils::initialize_gpu(double& time_to_initialize, int rank_me) {
+void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me) {
   using timepoint_t = chrono::time_point<chrono::high_resolution_clock>;
   timepoint_t t = chrono::high_resolution_clock::now();
   chrono::duration<double> elapsed;
@@ -177,33 +182,37 @@ void gpu_utils::initialize_gpu(double& time_to_initialize, int rank_me) {
   if (!gpus_present()) return;
   _rank_me = rank_me;
   set_gpu_device(_rank_me);
-  cudaErrchk(cudaDeviceReset());
+  ERROR_CHECK(DeviceReset());
   elapsed = chrono::high_resolution_clock::now() - t;
   time_to_initialize = elapsed.count();
 }
 
 string gpu_utils::get_gpu_device_descriptions() {
-  
   int num_devs = get_gpu_device_count();
   ostringstream os;
   os << "Number of GPU devices visible: " << num_devs << "\n";
+  auto uuids = get_gpu_uuids();
   for (int i = 0; i < num_devs; ++i) {
-    cudaDeviceProp &prop = get_gpu_properties(i);
+    DeviceProp &prop = get_gpu_properties(i);
 
     os << "GPU Device number: " << i << "\n";
     os << "  Device name: " << prop.name << "\n";
     os << "  PCI device ID: " << prop.pciDeviceID << "\n";
     os << "  PCI bus ID: " << prop.pciBusID << "\n";
+    os << "  UUID: " << uuids[i] << "\n";
     os << "  PCI domainID: " << prop.pciDomainID << "\n";
-    os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
-#if (CUDA_VERSION >= 10000)
-    os << "  UUID: " << get_uuid_str(prop.uuid.bytes) << "\n";
-#endif
     os << "  Compute capability: " << prop.major << "." << prop.minor << "\n";
     os << "  Clock Rate: " << prop.clockRate << "kHz\n";
     os << "  Total SMs: " << prop.multiProcessorCount << "\n";
+#ifdef CUDA_GPU
+    os << "  MultiGPUBoardGroupID: " << prop.multiGpuBoardGroupID << "\n";
     os << "  Shared Memory Per SM: " << prop.sharedMemPerMultiprocessor << " bytes\n";
     os << "  Registers Per SM: " << prop.regsPerMultiprocessor << " 32-bit\n";
+#endif
+#ifdef HIP_GPU
+    os << "  Max Shared Memory Per SM: " << prop.maxSharedMemoryPerMultiProcessor << " bytes\n";
+    os << "  Registers Per Block: " << prop.regsPerBlock << " 32-bit\n";
+#endif
     os << "  Max threads per SM: " << prop.maxThreadsPerMultiProcessor << "\n";
     os << "  L2 Cache Size: " << prop.l2CacheSize << " bytes\n";
     os << "  Total Global Memory: " << prop.totalGlobalMem << " bytes\n";

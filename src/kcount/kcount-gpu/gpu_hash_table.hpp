@@ -178,8 +178,6 @@ class HashTableGPUDriver {
   int get_num_gpu_calls();
 
   double get_qf_load_factor();
-
-  uint64_t get_qf_failures();
 };
 
 }  // namespace kcount_gpu
