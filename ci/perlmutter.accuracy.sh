@@ -26,10 +26,6 @@ git describe
 cd -
 
 export GASNET_BACKTRACE=1
-echo "Loading GPU modules for upcxx on perlmutter which should still work on cpu nodes"
-source ${MHM2_SOURCE}/contrib/environments/perlmutter/gnu.sh
-module list
-env | grep '\(GASNET\|FI_\|UPC\)'
 
 cd $CI_SCRATCH
 
@@ -61,7 +57,7 @@ do
   echo "Submitting job on ${nodes} $arch nodes"
   old=${SLURM_MEM_PER_CPU}
   unset SLURM_MEM_PER_CPU
-  job=$(sbatch --parsable ${slurm_opts} --nodes=$nodes --wrap="${REL} $OPTS -o ${RUN_PREFIX}/$arch-rel && echo Good")
+  job=$(sbatch --parsable ${slurm_opts} --nodes=$nodes --wrap="source $inst/Release/env.sh; module list; env|grep SLURM; env|grep UPC; env|grep FI; ${REL} $OPTS -o ${RUN_PREFIX}/$arch-rel && echo Good")
   export SLURM_MEM_PER_CPU=${old}
   echo "${arch} JOB ${job}"
   slurm_jobs="$slurm_jobs $job"

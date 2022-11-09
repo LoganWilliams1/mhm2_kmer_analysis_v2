@@ -24,8 +24,10 @@ cd upcxx-utils
 git describe
 cd -
 
+(
 echo "Loading GPU environment"
-source ${MHM2_SOURCE}/contrib/environments/perlmutter/gnu.sh
+envir=${MHM2_SOURCE}/contrib/environments/perlmutter/gnu.sh
+source $envir
 module list
 env | grep '\(GASNET\|FI_\|UPC\)'
 env | grep SLURM || true
@@ -41,10 +43,14 @@ do
   echo "Building gpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-gpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
   make -j 1 all check install
+  cp -p $envir ${INSTALL_PREFIX}-gpu-${t}/env.sh # store environment to support execution
 done
+)
 
+(
 echo "Loading CPU-only environment"
-source ${MHM2_SOURCE}/contrib/environments/perlmutter/gnu-cpuonly.sh
+envir=${MHM2_SOURCE}/contrib/environments/perlmutter/gnu-cpuonly.sh
+source $envir
 module list
 env | grep '\(GASNET\|FI_\|UPC\)'
 
@@ -56,7 +62,9 @@ do
   echo "Building cpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-cpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
   make -j 1 all check install
+  cp -p $envir ${INSTALL_PREFIX}-cpu-${t}/env.sh # store environment to support execution
 done
+)
 
 echo "Done building $(date) in ${SECONDS}"
 

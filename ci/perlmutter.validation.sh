@@ -25,15 +25,11 @@ cd upcxx-utils
 git describe
 cd -
 
+export ARCTIC=${SCRATCH}/GitlabCIData/
 export GASNET_BACKTRACE=1
-echo "Loading GPU modules for upcxx on perlmutter which should still work on cpu nodes"
-source ${MHM2_SOURCE}/contrib/environments/perlmutter/gnu.sh
-module list
-env | grep '\(GASNET\|FI_\|UPC\)'
 
 cd $CI_SCRATCH
 
-export ARCTIC=${SCRATCH}/GitlabCIData/
 for f in arctic_sample_0.fq  arctic_samples.fq  arcticsynth-refs.fa
 do
   if [ ! -f ${ARCTIC}/$f ]
@@ -43,15 +39,18 @@ do
   fi
 done
 
-export GASNET_BACKTRACE=1
 slurm_jobs=
 echo "Testing builds on perlmutter"
 
 for arch in gpu cpu
 do
   slurm_opts="-C $arch --qos=debug --time=30:00 --account=m2865"
-  nodes=3
-  if [ "$arch" == "gpu" ] ; then nodes=5 ; slurm_opts="${slurm_opts}_g -G $((4*nodes))" ; fi
+  nodes=5
+  if [ "$arch" == "gpu" ]
+  then
+    nodes=2
+    slurm_opts="${slurm_opts}_g -G $((4*nodes))"
+  fi
   inst=${INSTALL_PREFIX}-${arch}
   DBG=$inst-Debug/bin/mhm2.py
   REL=$inst-Release/bin/mhm2.py
@@ -61,7 +60,7 @@ do
   echo "Submitting job on ${nodes} $arch nodes"
   old=${SLURM_MEM_PER_CPU}
   unset SLURM_MEM_PER_CPU
-  job=$(sbatch --parsable --job-name="CImvg-${CI_COMMIT_SHORT_SHA}" ${slurm_opts} --nodes=${nodes} --wrap="${RWDI} $OPTS -o ${RUN_PREFIX}/$arch-rwdi-0 && echo 'sleeping for 90s so that srun can recover' && sleep 90 && ${DBG} ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/$arch-dbg-0-k63 && echo Good")
+  job=$(sbatch --parsable --job-name="CImvg-${CI_COMMIT_SHORT_SHA}" ${slurm_opts} --nodes=${nodes} --wrap="source $inst-Release/env.sh ; module list ; env|grep SLURM; env|grep GAS; env|grep UPC; env|grep FI; ${RWDI} $OPTS -o ${RUN_PREFIX}/$arch-rwdi-0 && echo 'sleeping for 90s so that srun can recover' && sleep 90 && ${DBG} ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/$arch-dbg-0-k63 && echo Good")
   export SLURM_MEM_PER_CPU=${old}
   slurm_jobs="$slurm_jobs $job"
 done
@@ -95,7 +94,7 @@ do
     if [ ! -f $d/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta in $d" ; fi
   done
   $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d1} --expected-quals ${inst}-Release/share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on ${d1}"
-  # FIXME THIS FAILS FOR SOME REASON: $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d2} --expected-quals ${inst}-Release/share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on ${d2}"
+  $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d2} --expected-quals ${inst}-Release/share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on ${d2}"
 done
 
 if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
