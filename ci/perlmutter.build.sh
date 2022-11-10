@@ -17,6 +17,8 @@ fi
 export INSTALL_PREFIX=${CI_SCRATCH}/install
 export BUILD_PREFIX=${CI_SCRATCH}/build
 export RUN_PREFIX=${CI_SCRATCH}/runs
+export TMPDIR=${CI_SCRATCH}/tmp
+mkdir -p ${CI_SCRATCH}/tmp
 
 cd ${MHM2_SOURCE}
 git describe
