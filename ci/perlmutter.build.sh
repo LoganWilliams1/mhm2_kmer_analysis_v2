@@ -44,7 +44,7 @@ do
   cd $MHM2_BUILD
   echo "Building gpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-gpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
-  make -j 1 all check install
+  make -j 1 VERBOSE=1 all check install
   cp -p $envir ${INSTALL_PREFIX}-gpu-${t}/env.sh # store environment to support execution
 done
 )
@@ -63,7 +63,7 @@ do
   cd $MHM2_BUILD
   echo "Building cpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-cpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
-  make -j 1 all check install
+  make -j 1 VERBOSE=1 all check install
   cp -p $envir ${INSTALL_PREFIX}-cpu-${t}/env.sh # store environment to support execution
 done
 )
