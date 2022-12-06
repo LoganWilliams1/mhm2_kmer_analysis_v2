@@ -44,30 +44,45 @@
 
 #include <stdio.h>
 #include <iostream>
-#include <cuda.h>
-#define EMPTY 0xFFFFFFFF
+
+#include "gpu-utils/gpu_compatibility.hpp"
+#include "gpu-utils/gpu_common.hpp"
+
+#define FULL 0xFFFFFFFF
+#define EMPTY 0xFFFFFFFE
 #define FULL_MASK 0xffffffff
+
+#ifdef CUDA_GPU
+#define WARP_SIZE 32
+#endif
+#ifdef HIP_GPU
+#define WARP_SIZE 64
+#endif
 
 struct cstr_type {
   char* start_ptr;
   int length;
-  __device__ cstr_type() {}
+  __device__ cstr_type() {
+    start_ptr = nullptr;
+    length = 0;
+  }
   __device__ cstr_type(char* ptr, int len) {
     start_ptr = ptr;
     length = len;
   }
 
   __device__ bool operator==(const cstr_type& in2) {
-    bool str_eq = true;
-    if (length != EMPTY && in2.length != EMPTY)
+    bool str_eq = (length == in2.length) & (length != EMPTY) & (length != FULL);
+    if (str_eq)
       for (int i = 0; i < in2.length; i++) {
         if (start_ptr[i] != in2.start_ptr[i]) {
           str_eq = false;
           break;
         }
       }
-    return (str_eq && (length == in2.length));
+    return str_eq;
   }
+
 };
 
 __device__ void cstr_copy(cstr_type& str1, cstr_type& str2);
@@ -198,24 +213,29 @@ struct MerFreqs {
 struct loc_ht {
   cstr_type key;
   gpu_loc_assem::MerFreqs val;
+  __device__ loc_ht() : key{}, val{} {}
   __device__ loc_ht(cstr_type in_key, gpu_loc_assem::MerFreqs in_val) {
     key = in_key;
     val = in_val;
   }
+  __device__ static bool is_valid(const loc_ht& x) { return x.key.length != FULL; } // EMPTY is valid
 };
 
 struct loc_ht_bool {
   cstr_type key;
   bool val;
+  __device__ loc_ht_bool() : key{}, val{} {}
   __device__ loc_ht_bool(cstr_type in_key, bool in_val) {
     key = in_key;
     val = in_val;
   }
+  __device__ static bool is_valid(const loc_ht_bool& x) { return x.key.length != FULL; } // EMPTY is valid
 };
 
 __device__ void print_mer(cstr_type& mer);
 __global__ void ht_kernel(loc_ht* ht, char* contigs, int* offset_sum, int kmer_size);
-__device__ void ht_insert(loc_ht* thread_ht, cstr_type kmer_key, cstr_type ctg_val, uint32_t max_size);
+__device__ bool ht_insert(loc_ht* thread_ht, cstr_type kmer_key, cstr_type ctg_val, uint32_t max_size);
+__device__ bool ht_insert(loc_ht_bool* thread_ht, cstr_type kmer_key, bool bool_val, uint32_t max_size);
 __device__ void ht_delete(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
 __device__ loc_ht& ht_get(loc_ht* thread_ht, cstr_type kmer_key, uint32_t max_size);
 __device__ unsigned hash_func(cstr_type key, uint32_t max_size);

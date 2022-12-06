@@ -174,7 +174,7 @@ CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs, int64_t num_ctg_bases)
     , ctg_store()
     , ctg_read_store() {
   // pad the local ctg count a bit for this estimate
-  ctgs_map->reserve(num_ctgs * 1.2+100);
+  ctgs_map->reserve(num_ctgs * 1.2 + 100);
 
   ctg_store.set_update_func([&ctgs_map = this->ctgs_map](CtgData &&ctg_data) {
     auto it = ctgs_map->find(ctg_data.cid);
@@ -190,7 +190,7 @@ CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs, int64_t num_ctg_bases)
     DBG_VERBOSE("Added contig cid=", it->first, ": ", it->second.seq, " depth=", it->second.depth, "\n");
   });
   // with contig sequence
-  int est_update_size = sizeof(CtgData) + 8 + (num_ctgs > 0 ? (num_ctg_bases+num_ctgs-1) / num_ctgs : 100);
+  int est_update_size = sizeof(CtgData) + 8 + (num_ctgs > 0 ? (num_ctg_bases + num_ctgs - 1) / num_ctgs : 100);
   // approx 5% of free memory for each store
   auto l_ranks = local_team().rank_n();
   int64_t mem_to_use = 0.05 * get_free_mem(true) / l_ranks * sizeof(CtgData) / est_update_size;

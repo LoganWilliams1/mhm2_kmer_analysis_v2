@@ -1,3 +1,5 @@
+#pragma once
+
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -40,8 +42,6 @@
  form.
 */
 
-#pragma once
-
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -79,8 +79,9 @@ class GPUDriver {
                            unsigned maxContigSize);
   void run_kernel_backwards(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
                             unsigned maxContigSize);
-  // bool kernel_is_done();
-  void kernel_block();
+
+  void kernel_block_fwd();
+  void kernel_block_rev();
 
   AlignmentResults &get_aln_results() { return alignments; }
 };

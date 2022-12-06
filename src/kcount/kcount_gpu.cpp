@@ -193,7 +193,11 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 template <int MAX_K>
 void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf) {
   barrier(local_team());
+#ifdef USE_TCF
   this->use_qf = use_qf;
+#else
+  this->use_qf = false;
+#endif
   state = new HashTableInserterState();
   // calculate total slots for hash table. Reserve space for parse and pack
   size_t bytes_for_pnp = KCOUNT_SEQ_BLOCK_SIZE * (2 + Kmer<MAX_K>::get_N_LONGS() * sizeof(uint64_t) + sizeof(int));
@@ -268,17 +272,19 @@ void HashTableInserter<MAX_K>::flush_inserts() {
                "\n");
   }
   if (use_qf && state->ht_gpu_driver.pass_type == kcount_gpu::READ_KMERS_PASS) {
-    uint64_t num_unique_qf = reduce_one((uint64_t)insert_stats.num_unique_qf, op_fast_add, 0).wait();
-    // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
-    SLOG_GPU("  QF filtered out ", perc_str((num_unique_qf - num_inserts) / rank_n(), num_unique_qf / rank_n()), " singletons\n");
-    auto qf_max_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_max, 0).wait();
-    auto qf_tot_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_add, 0).wait();
-    double qf_avg_load = (double)qf_tot_load / rank_n();
-    SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
-             " balance\n");
-    uint64_t num_dropped_qf_elems = reduce_one((uint64_t)insert_stats.dropped_qf, op_fast_add, 0).wait();
-    if (num_dropped_qf_elems)
-      SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf_elems, num_attempted_inserts), " elements");
+    uint64_t num_unique_qf = reduce_all((uint64_t)insert_stats.num_unique_qf, op_fast_add).wait();
+    if (num_unique_qf) {
+      // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
+      SLOG_GPU("  QF filtered out ", perc_str(num_unique_qf - num_inserts, num_unique_qf), " singletons\n");
+      auto qf_max_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_max, 0).wait();
+      auto qf_tot_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_add, 0).wait();
+      double qf_avg_load = (double)qf_tot_load / rank_n();
+      SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
+               " balance\n");
+      uint64_t num_dropped_qf_elems = reduce_one((uint64_t)insert_stats.dropped_qf, op_fast_add, 0).wait();
+      if (num_dropped_qf_elems)
+        SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf_elems, num_attempted_inserts), " elements");
+    }
   }
   double load = (double)(insert_stats.new_inserts) / capacity;
   double avg_load_factor = reduce_one(load, op_fast_add, 0).wait() / rank_n();
@@ -340,7 +346,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   SLOG_GPU("GPU hash table: purged ", perc_str(all_num_purged, prepurge_num_entries), " singleton kmers out of ",
            prepurge_num_entries, "\n");
   SLOG_GPU("GPU hash table final size is ", (all_num_entries / rank_n()), " entries and final load factor is ",
-           ((double)all_num_entries / all_capacity / rank_n()), "\n");
+           ((double)all_num_entries / all_capacity), "\n");
   barrier();
 
   // add some space for the ctg kmers
