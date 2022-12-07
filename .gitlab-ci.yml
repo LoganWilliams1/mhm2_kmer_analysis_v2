@@ -47,7 +47,7 @@ Perlmutter:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build-${dt}.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build-${dt}.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/build-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
-    - sbatch --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
+    - sbatch --account=m2865 --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
     - echo "Perlmutter build done"
 
 Perlmutter:validation:
