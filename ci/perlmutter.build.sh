@@ -18,6 +18,7 @@ export INSTALL_PREFIX=${CI_SCRATCH}/install
 export BUILD_PREFIX=${CI_SCRATCH}/build
 export RUN_PREFIX=${CI_SCRATCH}/runs
 export TMPDIR=${CI_SCRATCH}/tmp
+export MHM2_BUILD_THREADS=${MHM2_BUILD_THREADS:=64}
 mkdir -p ${CI_SCRATCH}/tmp
 
 cd ${MHM2_SOURCE}
@@ -44,7 +45,7 @@ do
   cd $MHM2_BUILD
   echo "Building gpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-gpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
-  make -j 1 VERBOSE=1 all check install
+  make -j ${MHM2_BUILD_THREADS} VERBOSE=1 all check install
   cp -p $envir ${INSTALL_PREFIX}-gpu-${t}/env.sh # store environment to support execution
 done
 )
@@ -63,7 +64,7 @@ do
   cd $MHM2_BUILD
   echo "Building cpu GNU ${t}"
   CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-cpu-${t} -DCMAKE_BUILD_TYPE=${t} ${MHM2_CMAKE_EXTRAS} ${MHM2_SOURCE}
-  make -j 1 VERBOSE=1 all check install
+  make -j ${MHM2_BUILD_THREADS} VERBOSE=1 all check install
   cp -p $envir ${INSTALL_PREFIX}-cpu-${t}/env.sh # store environment to support execution
 done
 )

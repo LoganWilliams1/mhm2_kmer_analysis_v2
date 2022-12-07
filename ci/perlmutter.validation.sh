@@ -84,6 +84,8 @@ do
   if [ -z "$wasgood" ] ; then  true ; else  echo "job ${job} failed somehow - ${wasgood}"; false ; fi
 done
 
+cmds=""
+waits="/bin/true"
 for arch in gpu cpu
 do
   d1=${arch}-rwdi-0 
@@ -93,9 +95,12 @@ do
     d=${RUN_PREFIX}/$r
     if [ ! -f $d/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta in $d" ; fi
   done
-  $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d1} --expected-quals ${inst}-Release/share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on ${d1}"
-  $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d2} --expected-quals ${inst}-Release/share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on ${d2}"
+  cmds="$cmds $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d1} --expected-quals ${inst}-Release/share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa & $inst-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${d2} --expected-quals ${inst}-Release/share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa &"
+  waits="$waits && wait -n && wait -n "
 done
+
+echo "Submitting $cmds $waits"
+sbatch --wait --qos=debug --time=30:00 --account=m342 -C cpu -c 16 --wrap="$cmds $waits"
 
 if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
 
