@@ -138,7 +138,7 @@ Cori:validation:
     - export OPTS="-r ${ARCTIC}/arctic_sample_0.fq -v --checkpoint=yes"
     - export GASNET_BACKTRACE=1
     - echo "Submitting job on 3 nodes - on 2 nodes roughly RWDI=400s, DBG --kmer-lens 63 =456s  ...REL=170s"
-    - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=mp2865 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/knl-rwdi-0 && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/knl-dbg-0-k63 && echo Good")
+    - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/knl-rwdi-0 && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/knl-dbg-0-k63 && echo Good")
     - echo "KNL JOB ${knl_job}"
     - echo "Submitting build on cori gpu"
     - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 -c 5 -G 1 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; mkdir -p build-cori-gpu && cd build-cori-gpu && cmake \$MHM2_CMAKE_EXTRAS -DCMAKE_INSTALL_PREFIX=install ${CI_SCRATCH}/src && make VERBOSE=1 -j 10 all install && srun install/bin/mhm2_test")
@@ -206,10 +206,10 @@ Cori:accuracy:
     - export ARCTIC=/global/cscratch1/sd/regan/GitlabCIData/
     - export OPTS="-r ${ARCTIC}/arctic_sample_0.fq --checkpoint=no"
     - echo "Submitting job on 6 nodes rwdi build... on 2 nodes rel build is roughly REL=170s"
-    - knl_job=$(sbatch --parsable --job-name="CImha-${CI_COMMIT_SHORT_SHA}" --account=mp2865 -C knl --nodes=6 --qos=debug --time=10:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/rel && echo Good")
+    - knl_job=$(sbatch --parsable --job-name="CImha-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=6 --qos=debug --time=10:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/rel && echo Good")
     - echo "Submitting full arctic job on 15 nodes"
     - export OPTS2="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
-    - knl_job2=$(sbatch --parsable --job-name="CI-mhm2-${CI_COMMIT_SHORT_SHA}" --account=mp2865 -C knl --nodes=15 --qos=debug --time=30:00 --wrap="${REL}/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-full && echo Good")
+    - knl_job2=$(sbatch --parsable --job-name="CI-mhm2-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=15 --qos=debug --time=30:00 --wrap="${REL}/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-full && echo Good")
     - echo "Submitting GPU full arctic job on 2 cori GPU nodes"
     - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 --exclusive --nodes=2 -G 16 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; build-cori-gpu/install/bin/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-gpu && echo Good")
     - echo "Waiting for knl job $knl_job"
