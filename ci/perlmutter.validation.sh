@@ -27,6 +27,7 @@ cd -
 
 export ARCTIC=${SCRATCH}/GitlabCIData/
 export GASNET_BACKTRACE=1
+export GASNET_USE_HUGEPAGES=0
 
 cd $CI_SCRATCH
 
