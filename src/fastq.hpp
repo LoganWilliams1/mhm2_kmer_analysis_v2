@@ -132,7 +132,7 @@ class FastqReader {
   FastqReader(const FastqReader &copy) = delete;  // no copy
   FastqReader(FastqReader &&move) = default;
   FastqReader &operator=(const FastqReader &copy) = delete;  // no copy
-  FastqReader &operator=(FastqReader &&move) = default;
+  FastqReader &operator=(FastqReader &&move) = delete;
 
   void set_subsample_pct(int pct) {
     assert(subsample_pct > 0 && subsample_pct <= 100);
