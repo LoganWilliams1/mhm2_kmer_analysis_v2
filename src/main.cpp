@@ -136,6 +136,7 @@ int main(int argc, char **argv) {
   auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
 
   SLOG_VERBOSE("Process 0 on node 0 is initially pinned to ", get_proc_pin(), "\n");
+  
   // pin ranks only in production
   if (options->pin_by == "cpu")
     pin_cpu();
@@ -143,6 +144,21 @@ int main(int argc, char **argv) {
     pin_core();
   else if (options->pin_by == "numa")
     pin_numa();
+  
+  if (!upcxx::rank_me()) {
+    // Log the pinnings for the first node to rank0
+    future<> chain_fut = make_future();
+    for(int i = 0; i < upcxx::local_team().rank_n(); i++) {
+      auto fut_pin = rpc(upcxx::local_team(), i, [](){
+        return get_proc_pin();
+      });
+      chain_fut = when_all(chain_fut, fut_pin).then([i](string proc_pin){
+        LOG("Rank ", i, " pin: ", proc_pin, "\n");
+      });
+    }
+    chain_fut.wait();
+  }
+  barrier(upcxx::local_team());
 
   // update rlimits on RLIMIT_NOFILE files if necessary
   auto num_input_files = options->reads_fnames.size();
