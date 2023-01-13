@@ -68,7 +68,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                  bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
 
 int main(int argc, char **argv) {
-  BaseTimer total_timer("Total Time", nullptr); // no PromiseReduce possible
+  BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   total_timer.start();
   // capture the free memory and timers before upcxx::init is called
   auto starting_free_mem = get_free_mem();
@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
   auto init_entry_msm_fut = init_timer.reduce_start();
   init_timer.stop();
   auto init_timings_fut = init_timer.reduce_timings();
-  upcxx::promise<> report_init_timings(1);
+  upcxx::promise<> prom_report_init_timings(1);
 
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
@@ -106,17 +106,19 @@ int main(int argc, char **argv) {
   auto msm_starting_free_mem_fut = min_sum_max_reduce_one((float)starting_free_mem / ONE_GB, 0);
   auto msm_post_init_free_mem_fut = min_sum_max_reduce_one((float)post_init_free_mem / ONE_GB, 0);
 
-  when_all(report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings(),
-           msm_starting_free_mem_fut, msm_post_init_free_mem_fut)
-      .then([](upcxx_utils::MinSumMax<double> entry_msm, upcxx_utils::ShTimings sh_timings,
-               upcxx_utils::ShTimings sh_first_barrier_timings, upcxx_utils::MinSumMax<float> starting_mem_msm,
-               upcxx_utils::MinSumMax<float> post_init_mem_msm) {
-        SLOG_VERBOSE("upcxx::init Before=", entry_msm.to_string(), "\n");
-        SLOG_VERBOSE("upcxx::init After=", sh_timings->to_string(), "\n");
-        SLOG_VERBOSE("upcxx::init FirstBarrier=", sh_first_barrier_timings->to_string(), "\n");
-        SLOG_VERBOSE("upcxx::init Starting RAM=", starting_mem_msm.to_string(), " GB\n");
-        SLOG_VERBOSE("upcxx::init Post RAM=", post_init_mem_msm.to_string(), " GB\n");
-      });
+  auto fut_report_init_timings =
+      when_all(prom_report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings(),
+               msm_starting_free_mem_fut, msm_post_init_free_mem_fut)
+          .then([&total_timer](upcxx_utils::MinSumMax<double> entry_msm, upcxx_utils::ShTimings sh_timings,
+                               upcxx_utils::ShTimings sh_first_barrier_timings, upcxx_utils::MinSumMax<float> starting_mem_msm,
+                               upcxx_utils::MinSumMax<float> post_init_mem_msm) {
+            SLOG_VERBOSE("upcxx::init Before=", entry_msm.to_string(), "\n");
+            SLOG_VERBOSE("upcxx::init After=", sh_timings->to_string(), "\n");
+            SLOG_VERBOSE("upcxx::init FirstBarrier=", sh_first_barrier_timings->to_string(), "\n");
+            SLOG_VERBOSE("upcxx::init Starting RAM=", starting_mem_msm.to_string(), " GB\n");
+            SLOG_VERBOSE("upcxx::init Post RAM=", post_init_mem_msm.to_string(), " GB\n");
+            LOG("Time since start including init, first barrier and reductions: ", total_timer.get_elapsed_since_start(), "\n");
+          });
   auto start_t = std::chrono::high_resolution_clock::now();
   auto init_start_t = start_t;
 
@@ -128,9 +130,10 @@ int main(int argc, char **argv) {
   // if we don't load, return "command not found"
   if (!options->load(argc, argv)) return 127;
   SLOG_VERBOSE("Executed as: ", executed, "\n");
-  report_init_timings.fulfill_anonymous(1);
-
   SLOG_VERBOSE(KLCYAN, "Timing reported as min/my/average/max, balance", KNORM, "\n");
+
+  prom_report_init_timings.fulfill_anonymous(1);
+  fut_report_init_timings.wait();
 
   ProgressBar::SHOW_PROGRESS = options->show_progress;
   auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
@@ -253,7 +256,7 @@ int main(int argc, char **argv) {
     init_t_elapsed = std::chrono::high_resolution_clock::now() - init_start_t;
     SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
          " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
-    
+
     { BarrierTimer("Start Contigging"); }
 
     // contigging loops
@@ -406,8 +409,8 @@ int main(int argc, char **argv) {
   barrier();
   LOG("All ranks done. Flushing logs and finalizing.\n");
   auto am_root = !rank_me();
-  
-  BaseTimer flush_logs_timer("flush_logger", nullptr); // no PromiseReduce possible
+
+  BaseTimer flush_logs_timer("flush_logger", nullptr);  // no PromiseReduce possible
   flush_logs_timer.start();
 #ifdef DEBUG
   _dbgstream.flush();
@@ -415,22 +418,26 @@ int main(int argc, char **argv) {
     ;
 #endif
   LOG("closed DBG.\n");
-  
-  if (am_root) upcxx_utils::flush_logger();
-  else upcxx_utils::close_logger();
-  
+
+  if (am_root)
+    upcxx_utils::flush_logger();
+  else
+    upcxx_utils::close_logger();
+
   flush_logs_timer.stop();
   auto sh_flush_timings = flush_logs_timer.reduce_timings().wait();
   barrier();
   SLOG("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
-  
-  BaseTimer finalize_timer("upcxx::finalize", nullptr); // no PromiseReduce possible
+
+  BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
   finalize_timer.start();
   upcxx::finalize();
   finalize_timer.stop();
   total_timer.stop();
-  if (am_root) cout << "Total time: " << total_timer.get_elapsed() << " s. (upcxx::finalize in " << finalize_timer.get_elapsed() << " s)" << endl;
-  
+  if (am_root)
+    cout << "Total time: " << total_timer.get_elapsed() << " s. (upcxx::finalize in " << finalize_timer.get_elapsed() << " s)"
+         << endl;
+
   return 0;
 }
