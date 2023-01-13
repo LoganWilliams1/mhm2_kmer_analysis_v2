@@ -193,6 +193,9 @@ int main(int argc, char **argv) {
   }
 
   init_devices();
+  if (options->post_assm_only) {
+    done_init_devices();
+  }
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
   Contigs ctgs;
@@ -247,10 +250,10 @@ int main(int argc, char **argv) {
 
     done_init_devices();
     auto post_init_dev_free_mem = get_free_mem(true);
+    init_t_elapsed = std::chrono::high_resolution_clock::now() - init_start_t;
     SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
          " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
-    { BarrierTimer("Start Contigging"); }
-
+    
     { BarrierTimer("Start Contigging"); }
 
     // contigging loops
@@ -388,6 +391,7 @@ int main(int argc, char **argv) {
   // post processing
   if (options->post_assm_aln || options->post_assm_only || options->post_assm_abundances) {
     memory_tracker.start();
+    BarrierTimer("Post Processing");
     LOG_MEM("Before Post-Processing");
     if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname);
     post_assembly(ctgs, options, max_expected_ins_size);
@@ -411,10 +415,14 @@ int main(int argc, char **argv) {
     ;
 #endif
   LOG("closed DBG.\n");
-  if (!am_root) upcxx_utils::flush_logger();
+  
+  if (am_root) upcxx_utils::flush_logger();
+  else upcxx_utils::close_logger();
+  
   flush_logs_timer.stop();
   auto sh_flush_timings = flush_logs_timer.reduce_timings().wait();
   barrier();
+  SLOG("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
   
   BaseTimer finalize_timer("upcxx::finalize", nullptr); // no PromiseReduce possible
