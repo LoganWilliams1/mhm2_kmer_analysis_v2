@@ -364,3 +364,28 @@ void pin_numa() {
        " cpus: process 0 on node 0 is pinned to cpus ", get_proc_pin(), "\n");
   DBGLOG("Pinned to numa domain ", my_numa_node, ": ", get_proc_pin(), "\n");
 }
+
+void log_pins() {
+  // Log the pinnings for the first node to rank0
+  upcxx::future<> chain_fut = make_future();
+  string ranks, pins;
+  for (int i = 0; i < upcxx::local_team().rank_n(); i++) {
+    auto fut_pin = rpc(upcxx::local_team(), i, []() { return get_proc_pin(); });
+    chain_fut = when_all(chain_fut, fut_pin).then([i, &ranks, &pins](string proc_pin) {
+      if (pins != proc_pin) {
+        if (!pins.empty()) {
+          LOG("Local Rank(s) ", ranks, ": CPUs ", pins, "\n");
+        }
+        pins = proc_pin;
+        ranks.clear();
+      }
+      if (ranks.empty())
+        ranks = to_string(i);
+      else
+        ranks += "," + to_string(i);
+    });
+  }
+  chain_fut.wait();
+  LOG("Local Rank(s) ", ranks, ": CPUs ", pins, "\n");
+  barrier(upcxx::local_team());
+}

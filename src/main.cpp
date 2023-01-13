@@ -145,20 +145,7 @@ int main(int argc, char **argv) {
   else if (options->pin_by == "numa")
     pin_numa();
   
-  if (!upcxx::rank_me()) {
-    // Log the pinnings for the first node to rank0
-    future<> chain_fut = make_future();
-    for(int i = 0; i < upcxx::local_team().rank_n(); i++) {
-      auto fut_pin = rpc(upcxx::local_team(), i, [](){
-        return get_proc_pin();
-      });
-      chain_fut = when_all(chain_fut, fut_pin).then([i](string proc_pin){
-        LOG("Rank ", i, " pin: ", proc_pin, "\n");
-      });
-    }
-    chain_fut.wait();
-  }
-  barrier(upcxx::local_team());
+  log_pins();
 
   // update rlimits on RLIMIT_NOFILE files if necessary
   auto num_input_files = options->reads_fnames.size();

@@ -95,6 +95,8 @@ void pin_core();
 
 void pin_numa();
 
+void log_pins();
+
 template <typename STL>
 class safe_stl : public STL {
   // implements assertion based bounds checks that, IMO should be enabled in all STLs
