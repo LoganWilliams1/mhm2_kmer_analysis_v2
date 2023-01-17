@@ -157,7 +157,7 @@ void log_gpu_uuid() {
   string ranks, uuid;
   if (!upcxx::local_team().rank_me()) {
     for (int i = 0; i < upcxx::local_team().rank_n(); i++) {
-      auto fut_uuid = rpc(upcxx::local_team(), i, []() { return get_gpu_uuid(); });
+      auto fut_uuid = rpc(upcxx::local_team(), i, []() { return gpu_utils::get_gpu_uuid(); });
       chain_fut = when_all(chain_fut, fut_uuid).then([i, &ranks, &uuid](string proc_uuid) {
         if (uuid != proc_uuid) {
           if (!uuid.empty()) {
