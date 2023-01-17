@@ -49,3 +49,4 @@ size_t get_gpu_avail_mem_per_rank();
 
 void init_devices();
 void done_init_devices();
+void log_gpu_uuid()
