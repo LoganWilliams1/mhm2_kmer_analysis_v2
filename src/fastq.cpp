@@ -130,8 +130,18 @@ bool FastqReader::get_fq_name(string &header) {
 int64_t FastqReader::tellg() { return in->tellg(); }
 
 void FastqReader::seekg(int64_t pos) {
+  assert(pos < file_size);
+  if (!(in && in->is_open() && in->good())) {
+    DIE("Did not seekg to ", pos, " fname=", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), ": ", strerror(errno));
+  }
   in->seekg(pos);
-  assert(tellg() == pos);
+  if (!(in && in->is_open() && in->good())) {
+    DIE("Could not seekg to ", pos, " fname=", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), ": ", strerror(errno));
+  }
+  auto new_pos = tellg();
+  if(new_pos != pos) {
+    DIE("seekg failed to change to pos=", pos, " tellg=", new_pos, " fname=", fname, "\n");
+  }
 }
 
 bool FastqReader::is_open() {
@@ -161,12 +171,17 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
 
   if (!in || !in->is_open()) DIE("Fastq ", fname, " is not open to find the next record after offset=", offset, "\n");
   // eof - do not read anything
-  if (offset >= file_size) return file_size;
+  if (offset > 0 && offset + 1024 >= file_size) {
+    io_t.stop();
+    DBG("offset=", offset, " is less than 1kb from end of file, returning eof file_size=", file_size, "\n");
+    return file_size;
+  }
 
   io_t.start();
 
   in->seekg(offset);
-  if (!in->good()) DIE("Could not fseek in ", fname, " to ", offset, ": ", strerror(errno));
+  if (!in->good() || in->tellg() != offset) DIE("Could not seekg to ", offset, " fname=", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), ": ", strerror(errno));
+
 
   if (offset != 0) {
     // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
@@ -178,6 +193,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     return file_size;
   }
   int64_t last_tell = tellg();
+  
 
   // read up to 20 lines and store tellg() at each line, then process them below...
   std::vector<string> lines;
@@ -325,7 +341,14 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     }
     if (i >= lines.size()) DIE("Could not find a valid line in the fastq file ", fname, ", last line: ", buf);
   }
+  if (!(in && in->is_open() && in->good())) {
+    DIE("get_fptr_for_next_record: file=", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), " offset=", offset, " last_tell=", last_tell, ": ", strerror(errno), "\n");
+  }
   io_t.stop();
+  if (offset > 0 && last_tell + 1024 >= file_size) {
+    DBG("Found record at less than 1kb from file end. last_tell=", last_tell, " returning eof file_size=", file_size, "\n");
+    return file_size;
+  }
   DBG("Found record at ", last_tell, " after offset ", offset, "\n");
   if (offset == 0 && last_tell != 0) {
     WARN("First rank to read really should return the first byte for ", fname, " offset=", offset, " last_tell=", last_tell, "\n");
@@ -569,13 +592,20 @@ future<> FastqReader::continue_open() {
   }
 
   io_t.start();
+  int attempts = 0;
   if (!in) {
-    in.reset(new ifstream(fname));
+    while (attempts < 3) {
+      in.reset(new ifstream(fname));
+      if (in && in->is_open() && in->good()) break;
+      attempts++;
+      upcxx_utils::ThreadPool::sleep_ns(500000000 + upcxx::local_team().rank_me() * 1000000);
+    }
     LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
   }
-  if (!in) {
-    SDIE("Could not open file ", fname, ": ", strerror(errno));
+  if (!(in && in->is_open() && in->good())) {
+    DIE("continue_open: file=", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), "\n");
   }
+  if (attempts > 0) WARN("It took ", attempts, " attempt(s) to open ", fname, "!\n");
   DBG("in.tell=", in->tellg(), "\n");
 
   io_t.stop();
@@ -818,13 +848,18 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
     }
   }
   if (!in || in->eof() || tellg() >= end_read) return 0;
+  if (!(in && in->is_open() && in->good())) {
+    DIE("get_next_fq_record: file=", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), "\n");
+  }
   io_t.start();
   size_t bytes_read = 0;
   id = "";
   char id2 = '\0';
   for (int i = 0; i < 4; i++) {
     std::getline(*in, buf);
-    if (!in->good()) DIE("Read record terminated on file ", fname, " before full record at position ", tellg());
+    if (!in->good()) {
+      DIE("Read record terminated on file ", fname, " is ", (in ? (in->is_open() ? (in->good() ? " good" : " NOT good") : " NOT open") : " NOT initialized"), " before full record at position tellg=", tellg(), " i=", i, "block_start=", block_start, " block_size=", block_size, " start_read=", start_read, " end_read=",end_read);
+    }
     if (i == 0)
       id.assign(buf);
     else if (i == 1)
