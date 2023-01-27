@@ -878,8 +878,10 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
       return bytes_read;
     }
   }
-  if (!in || in->eof() || tellg() >= end_read) return 0;
-  if (!(in && in->is_open() && in->good())) {
+  if (!in || in->eof()) return 0;
+  auto pos = tellg();
+  if (pos >= end_read) return 0;
+  if (pos < 0 || !in->good()) {
     DIE("get_next_fq_record: file=", get_ifstream_state(), "\n");
   }
   io_t.start();
@@ -889,7 +891,17 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   for (int i = 0; i < 4; i++) {
     std::getline(*in, buf);
     if (!in->good()) {
-      DIE("Read record terminated on file ", get_ifstream_state(), " before full record at position tellg=", tellg(), " i=", i, "block_start=", block_start, " block_size=", block_size, " start_read=", start_read, " end_read=",end_read);
+      // Issue175 try to re-open once!
+      static int reopens = 0;
+      if (reopens++ < 1) {
+        auto newpos = pos + bytes_read;
+        WARN("problem with file ", get_ifstream_state(), " block_start=", block_start, " block_size=", block_size, " start_read=", start_read, " end_read=", end_read, "... Attempting to reopen it at ", newpos, "\n");
+        in.reset(new ifstream(fname));
+        seekg(newpos);
+        std::getline(*in, buf);
+      }
+      if (!(in && in->is_open() && in->good()))
+        DIE("Read record terminated on file ", get_ifstream_state(), " before full record at position tellg=", tellg(), " i=", i, " block_start=", block_start, " block_size=", block_size, " start_read=", start_read, " end_read=",end_read);
     }
     if (i == 0)
       id.assign(buf);
