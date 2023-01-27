@@ -550,7 +550,7 @@ def main():
                     line = line.decode()
                 except:
                     print("WARNING could not decode binary output: ", line)
-                    pass
+                    continue
                 sys.stdout.write(line)
                 sys.stdout.flush()
                 if len(_output_dir) == 0 and ('  output = ' in line or 'Using output dir: ' in line):
