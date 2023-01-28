@@ -117,7 +117,7 @@ string revcomp(const string &seq) {
       case 'D':
       case 'H':
       case 'V': seq_rc += 'N'; break;
-      default: DIE("Illegal char at ", i, "'", seq[i], "' (", (int)seq[i], ") in revcomp of '", seq, "'");
+      default: DIE("Illegal char at ", i, "'", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' (", (int)seq[i], ") in revcomp of '", seq, "'");
     }
   }
   return seq_rc;
@@ -147,7 +147,7 @@ char comp_nucleotide(char ch) {
     case 'D':
     case 'H':
     case 'V': return 'N';
-    default: DIE("Illegal char '", ch, "' (", (int)ch, ") in comp nucleotide");
+    default: DIE("Illegal char '", ((ch >= 32 && ch <= 126) ? ch : ' '), "' (", (int)ch, ") in comp nucleotide");
   }
   return 0;
 }
