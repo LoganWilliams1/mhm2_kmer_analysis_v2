@@ -38,6 +38,9 @@
  # sublicense such enhancements or derivative works thereof, in binary and source code
  # form.
 
+# error rate per base, fraction
+add_definitions(-DBASE_ERROR_RATE=0.005)
+
 # quality cutoff for rejecting bases as bad during kmer counting
 # quality encoding is logarithmic, so the probability of an error is:
 # cutoff 10: 10% chance
@@ -51,10 +54,10 @@ add_definitions(-DKCOUNT_KMER_CACHE_MAX_LOAD=0.8)
 add_definitions(-DKCOUNT_SEQ_BLOCK_SIZE=3000000)
 add_definitions(-DKCOUNT_GPU_HASHTABLE_BLOCK_SIZE=1000000)
 add_definitions(-DKCOUNT_MAX_KMER_COUNT=10000)
-# for CPU-only code - this is the fraction of free memory than can be used for the main hash table
-add_definitions(-DKCOUNT_CPU_HT_MEM_FRACTION=0.6)
 # used in both cpu and gpu code
 add_definitions(-DKCOUNT_HT_MAX_PROBE=100)
+# the threshold over which to record high frequency kmers in the logs
+add_definitions(-DKCOUNT_HIGH_KMER_COUNT=10000)
 
 # dynamic min depth used in debruijn graph traversal
 add_definitions(-DDYN_MIN_DEPTH=0.9)
@@ -85,8 +88,6 @@ add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 # turns off code used for kmer caches (i.e. disables --klign-kmer-cache option)
 add_definitions(-DUSE_KMER_CACHE)
-# determine the output format of alignments when not using cigars
-add_definitions(-DBLAST6_OUTPUT_FORMAT)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
@@ -115,18 +116,9 @@ add_definitions(-DCGRAPH_MIN_TNF_CLEN=1000)
 # TNF probability threshold to choose one branch over another
 add_definitions(-DCGRAPH_WALK_TNF_THRES=0.75)
 
-# parameters for aligner
-add_definitions(-DALN_MATCH_SCORE=1)
-add_definitions(-DALN_MISMATCH_COST=1)
-add_definitions(-DALN_GAP_OPENING_COST=1)
-add_definitions(-DALN_GAP_EXTENDING_COST=1)
-add_definitions(-DALN_AMBIGUITY_COST=1)
-# BLASTN defaults
-# add_definitions(-DALN_MATCH_SCORE=2)
-# add_definitions(-DALN_MISMATCH_COST=3)
-# add_definitions(-DALN_GAP_OPENING_COST=5)
-# add_definitions(-DALN_GAP_EXTENDING_COST=2)
-# add_definitions(-DALN_AMBIGUITY_COST=1)
+# scoring parameters for aligner
+add_definitions(-DBLASTN_ALN_SCORES=23521)
+add_definitions(-DALTERNATE_ALN_SCORES=11111)
 
 # max and min kmer lengths for local assembly kmer walks
 add_definitions(-DLASSM_MAX_KMER_LEN=121)
@@ -147,3 +139,13 @@ add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
 # seed length used for post assembly alignment
 add_definitions(-DPOST_ASM_ALN_K=21)
+
+# Enabled by default, pre-allocate the data for PackedReads in a large block
+add_definitions(-DUSE_PACKED_READS_LINEAR_ALLOCATOR=1)
+
+# Disabled by default. enable to have each rank read every fastq file
+# add_definitions(-DNO_FASTQ_GLOBAL_BLOCKING)
+
+# Disabled by default. When reading fastqs within merge_reads, only read from 1 file at a time
+# ...will be very inefficient without also setting NO_FASTQ_GLOBAL_BLOCKING
+# add_definitions(-DONE_FASTQ_AT_A_TIME)

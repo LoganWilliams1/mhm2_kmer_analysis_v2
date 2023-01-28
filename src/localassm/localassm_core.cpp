@@ -87,7 +87,7 @@ struct ExtCounts {
 
 size_t ReadsToCtgsDHT::get_target_rank(const string &read_id) { return std::hash<string>{}(read_id) % rank_n(); }
 
-ReadsToCtgsDHT::ReadsToCtgsDHT(int64_t initial_size)
+ReadsToCtgsDHT::ReadsToCtgsDHT(int64_t initial_size, int64_t num_alns)
     : reads_to_ctgs_map({})
     , rtc_store() {
   reads_to_ctgs_map->reserve(initial_size);
@@ -98,10 +98,12 @@ ReadsToCtgsDHT::ReadsToCtgsDHT(int64_t initial_size)
     else
       it->second.push_back(std::move(read_ctg_info.ctg_info));
   });
+  auto l_ranks = local_team().rank_n();
   int est_update_size = sizeof(ReadCtgInfo) + 13;  // read_id
-  int64_t mem_to_use = 0.05 * get_free_mem() / local_team().rank_n();
+  int64_t mem_to_use = 0.05 * get_free_mem(true) / l_ranks;
+  mem_to_use = mem_to_use * sizeof(ReadCtgInfo) / est_update_size;
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  rtc_store.set_size("ReadsToContigs", max_store_bytes);
+  rtc_store.set_size("ReadsToContigs", max_store_bytes, l_ranks * 2, num_alns * 2);
 }
 
 void ReadsToCtgsDHT::clear() {
@@ -167,12 +169,12 @@ future<vector<vector<CtgInfo>>> ReadsToCtgsDHT::get_ctgs(intrank_t target_rank, 
 
 size_t CtgsWithReadsDHT::get_target_rank(int64_t cid) { return std::hash<int64_t>{}(cid) % rank_n(); }
 
-CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs)
+CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs, int64_t num_ctg_bases)
     : ctgs_map({})
     , ctg_store()
     , ctg_read_store() {
   // pad the local ctg count a bit for this estimate
-  ctgs_map->reserve(num_ctgs * 1.2);
+  ctgs_map->reserve(num_ctgs * 1.2 + 100);
 
   ctg_store.set_update_func([&ctgs_map = this->ctgs_map](CtgData &&ctg_data) {
     auto it = ctgs_map->find(ctg_data.cid);
@@ -188,11 +190,12 @@ CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs)
     DBG_VERBOSE("Added contig cid=", it->first, ": ", it->second.seq, " depth=", it->second.depth, "\n");
   });
   // with contig sequence
-  int est_update_size = sizeof(CtgData) + 400;
-  // approx 10% of free memory
-  int64_t mem_to_use = 0.05 * get_free_mem() / local_team().rank_n();
+  int est_update_size = sizeof(CtgData) + 8 + (num_ctgs > 0 ? (num_ctg_bases + num_ctgs - 1) / num_ctgs : 100);
+  // approx 5% of free memory for each store
+  auto l_ranks = local_team().rank_n();
+  int64_t mem_to_use = 0.05 * get_free_mem(true) / l_ranks * sizeof(CtgData) / est_update_size;
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
-  ctg_store.set_size("CtgsWithReads add ctg", max_store_bytes);
+  ctg_store.set_size("CtgsWithReads add ctg", max_store_bytes, l_ranks * 2, num_ctgs);
   ctg_read_store.set_update_func([&ctgs_map = this->ctgs_map](CtgReadData &&ctg_read_data) {
     const auto it = ctgs_map->find(ctg_read_data.cid);
     if (it == ctgs_map->end()) DIE("Could not find ctg ", ctg_read_data.cid);
@@ -232,11 +235,16 @@ void CtgsWithReadsDHT::add_reads(vector<CtgReadData> &_ctg_read_datas) {
 void CtgsWithReadsDHT::flush_ctg_updates() {
   ctg_store.flush_updates();
   ctg_store.clear();
+}
+
+void CtgsWithReadsDHT::prep_ctg_read_store(int64_t num_reads, int64_t num_read_bases) {
   // read seq + qual sequences
-  int est_update_size = sizeof(CtgReadData) + 500;
-  int64_t mem_to_use = 0.075 * get_free_mem() / local_team().rank_n();
-  auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 150);
-  ctg_read_store.set_size("CtgsWithReads add read", max_store_bytes);
+  int est_update_size = sizeof(CtgReadData) + 2 * (num_read_bases + num_reads - 1) / (num_reads > 0 ? num_reads : 1) + 13 + 8 * 3;
+  auto l_ranks = local_team().rank_n();
+  int64_t mem_to_use = 0.10 * get_free_mem(true) / l_ranks;
+  mem_to_use = mem_to_use * sizeof(CtgReadData) / est_update_size;
+  auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
+  ctg_read_store.set_size("CtgsWithReads add read", max_store_bytes, l_ranks * 2, num_reads);
 }
 
 void CtgsWithReadsDHT::flush_read_updates() {

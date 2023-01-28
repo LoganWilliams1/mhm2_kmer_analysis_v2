@@ -102,12 +102,15 @@ void Supermer::unpack() {
 int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 
 template <int MAX_K>
-KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight, bool useHHSS, bool use_qf)
+KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight,
+                        bool use_qf, int sequencing_depth)
     : local_kmers({})
     , ht_inserter({})
     , kmer_store()
     , max_kmer_store_bytes(max_kmer_store_bytes)
     , my_num_kmers(my_num_kmers)
+    , my_num_ctg_kmers(my_num_ctg_kmers)
+    , avg_kmer_count(0)
     , max_rpcs_in_flight(max_rpcs_in_flight)
     , num_supermer_inserts(0) {
   // minimizer len depends on k
@@ -118,42 +121,35 @@ KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t max_kmer_store_bytes, int 
   // main purpose of the timer here is to track memory usage
   BarrierTimer timer(__FILEFUNC__);
   auto node0_cores = upcxx::local_team().rank_n();
-  // check if we have enough memory to run - conservative because we don't want to run out of memory
-  double adjustment_factor = 0.2;
-  auto my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
-  double required_space = estimate_hashtable_memory(my_adjusted_num_kmers, sizeof(Kmer<MAX_K>) + sizeof(KmerCounts)) * node0_cores;
-  auto max_reqd_space = upcxx::reduce_all(required_space, upcxx::op_fast_max).wait();
-  auto free_mem = get_free_mem();
+  // check if we have enough memory to run
+  // FIXME: determine the sequencing depth from sampling reads
+  double adjustment_factor = 1.0 / sequencing_depth;
+  size_t my_adjusted_num_kmers = my_num_kmers * adjustment_factor;
+  // FIXME: this is a crude calculation based on an assumed error rate per base
+  double kmer_error_rate = 1.0 - pow(1.0 - BASE_ERROR_RATE, Kmer<MAX_K>::get_k());
+  SLOG_VERBOSE("Estimated kmer error rate ", fixed, setprecision(3), kmer_error_rate, KNORM "\n");
+  size_t my_num_errors = my_num_kmers * kmer_error_rate;
+  SLOG_VERBOSE("Initial counts for read kmers ", my_adjusted_num_kmers, " ctg kmers ", my_num_ctg_kmers, " num errors ",
+               my_num_errors, KNORM "\n");
+  // upper threshold on inaccuracies in ctg element calculations
+  my_num_ctg_kmers *= 0.8;
+
+  auto free_mem = get_free_mem(true);
   auto lowest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_min).wait();
   auto highest_free_mem = upcxx::reduce_all(free_mem, upcxx::op_fast_max).wait();
-  SLOG_VERBOSE("With adjustment factor of ", adjustment_factor, " require ", get_size_str(max_reqd_space), " per node (",
-               my_adjusted_num_kmers, " kmers per rank), and there is ", get_size_str(lowest_free_mem), " to ",
-               get_size_str(highest_free_mem), " available on the nodes\n");
-  if (lowest_free_mem * 0.80 < max_reqd_space)
-    SWARN("Insufficient memory available: this could crash with OOM (lowest=", get_size_str(lowest_free_mem),
-          " vs reqd=", get_size_str(max_reqd_space), ")");
 
-  kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, useHHSS);
-
+  // 4-bit packed 1 minimize less than 2 k long
+  auto est_supermer_size = sizeof(kmer_count_t) + 8 + (2 * Kmer<MAX_K>::get_k() - minimizer_len + 1) / 2;
+  max_kmer_store_bytes = max_kmer_store_bytes * sizeof(Supermer) / est_supermer_size;
+  kmer_store.set_size("kmers", max_kmer_store_bytes, max_rpcs_in_flight, my_num_kmers);
   barrier();
-  // in this case we have to roughly estimate the hash table size because the space is reserved now
-  // err on the side of excess because the whole point of doing this is speed and we don't want a
-  // hash table resize
-  // Unfortunately, this estimate depends on the depth of the sample - high depth means more wasted memory,
-  // but low depth means potentially resizing the hash table, which is very expensive
-  double kmers_space_reserved = my_adjusted_num_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts));
-  SLOG_VERBOSE("Reserving at least ", get_size_str(node0_cores * kmers_space_reserved), " for kmer hash tables with ",
-               node0_cores * my_adjusted_num_kmers, " entries on node 0\n");
-  double init_free_mem = get_free_mem();
   if (my_adjusted_num_kmers <= 0) DIE("no kmers to reserve space for");
   kmer_store.set_update_func(
       [&ht_inserter = this->ht_inserter, &num_supermer_inserts = this->num_supermer_inserts](Supermer supermer) {
         num_supermer_inserts++;
         ht_inserter->insert_supermer(supermer.seq, supermer.count);
       });
-  // this is conservative, actually varies from around 1/2 to 1/5
-  if (use_qf) my_num_kmers *= 0.6;
-  ht_inserter->init(my_num_kmers, use_qf);
+  ht_inserter->init(my_adjusted_num_kmers, my_num_ctg_kmers, my_num_errors, use_qf);
   barrier();
 }
 
@@ -170,9 +166,9 @@ KmerDHT<MAX_K>::~KmerDHT() {
 }
 
 template <int MAX_K>
-void KmerDHT<MAX_K>::init_ctg_kmers(int64_t max_elems) {
+void KmerDHT<MAX_K>::init_ctg_kmers() {
   using_ctg_kmers = true;
-  ht_inserter->init_ctg_kmers(max_elems);
+  ht_inserter->init_ctg_kmers(my_num_ctg_kmers);
 }
 
 template <int MAX_K>
@@ -212,6 +208,11 @@ int64_t KmerDHT<MAX_K>::get_num_supermer_inserts() {
 }
 
 template <int MAX_K>
+double KmerDHT<MAX_K>::get_avg_kmer_count() {
+  return avg_kmer_count;
+}
+
+template <int MAX_K>
 bool KmerDHT<MAX_K>::kmer_exists(Kmer<MAX_K> kmer_fw) {
   const Kmer<MAX_K> kmer_rc = kmer_fw.revcomp();
   const Kmer<MAX_K> *kmer = (kmer_rc < kmer_fw) ? &kmer_rc : &kmer_fw;
@@ -242,7 +243,7 @@ void KmerDHT<MAX_K>::flush_updates() {
 
 template <int MAX_K>
 void KmerDHT<MAX_K>::finish_updates() {
-  ht_inserter->insert_into_local_hashtable(local_kmers);
+  avg_kmer_count = ht_inserter->insert_into_local_hashtable(local_kmers);
   double insert_time, kernel_time;
   ht_inserter->get_elapsed_time(insert_time, kernel_time);
   stage_timers.kernel_kmer_analysis->inc_elapsed(kernel_time);

@@ -96,11 +96,16 @@ string revcomp(const string &seq) {
   seq_rc.reserve(seq.size());
   for (int i = seq.size() - 1; i >= 0; i--) {
     switch (seq[i]) {
-      case 'A': seq_rc += 'T'; break;
-      case 'C': seq_rc += 'G'; break;
-      case 'G': seq_rc += 'C'; break;
-      case 'T': seq_rc += 'A'; break;
-      case 'N': seq_rc += 'N'; break;
+      case 'A':
+      case 'a': seq_rc += 'T'; break;
+      case 'C':
+      case 'c': seq_rc += 'G'; break;
+      case 'G':
+      case 'g': seq_rc += 'C'; break;
+      case 'T':
+      case 't': seq_rc += 'A'; break;
+      case 'N':
+      case 'n': seq_rc += 'N'; break;
       case 'U':
       case 'R':
       case 'Y':
@@ -112,7 +117,7 @@ string revcomp(const string &seq) {
       case 'D':
       case 'H':
       case 'V': seq_rc += 'N'; break;
-      default: DIE("Illegal char at ", i, "'", seq[i], "' (", (int)seq[i], ") in revcomp of '", seq, "'");
+      default: DIE("Illegal char at ", i, "'", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' (", (int)seq[i], ") in revcomp of '", seq, "'");
     }
   }
   return seq_rc;
@@ -120,11 +125,16 @@ string revcomp(const string &seq) {
 
 char comp_nucleotide(char ch) {
   switch (ch) {
-    case 'A': return 'T';
-    case 'C': return 'G';
-    case 'G': return 'C';
-    case 'T': return 'A';
-    case 'N': return 'N';
+    case 'A':
+    case 'a': return 'T';
+    case 'C':
+    case 'c': return 'G';
+    case 'G':
+    case 'g': return 'C';
+    case 'T':
+    case 't': return 'A';
+    case 'N':
+    case 'n': return 'N';
     case '0': return '0';
     case 'U':
     case 'R':
@@ -137,7 +147,7 @@ char comp_nucleotide(char ch) {
     case 'D':
     case 'H':
     case 'V': return 'N';
-    default: DIE("Illegal char '", ch, "' (", (int)ch, ") in comp nucleotide");
+    default: DIE("Illegal char '", ((ch >= 32 && ch <= 126) ? ch : ' '), "' (", (int)ch, ") in comp nucleotide");
   }
   return 0;
 }

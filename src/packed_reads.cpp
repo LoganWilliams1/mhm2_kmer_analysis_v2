@@ -67,12 +67,17 @@ using namespace upcxx_utils;
 using std::max;
 
 PackedRead::PackedRead()
-    : read_id(0)
+    : is_allocated(0)
+    , read_id(0)
     , read_len(0)
-    , bytes(nullptr) {}
+    , bytes(nullptr) {
+  // DBG("Constructed empty ", (void *)this, "\n");
+}
 
-PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset) {
+PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals, int qual_offset, PackedReads *packed_reads)
+    : is_allocated(USE_PACKED_READS_LINEAR_ALLOCATOR && packed_reads) {
   read_id = strtol(id_str.c_str() + 1, nullptr, 10) + 1;
+  assert(labs(read_id) < MAX_READ_ID);
   if (id_str[id_str.length() - 1] == '1') read_id *= -1;
   // read_id = strtol(id_str.c_str() + 1, nullptr, 10);
   // this uses from_chars because it's the fastest option out there
@@ -83,14 +88,24 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
   // packed is same length as sequence. Set first 3 bits to represent A,C,G,T,N
   // set next five bits to represent quality (from 0 to 32). This doesn't cover the full quality range (only up to 32)
   // but it's all we need since once quality is greater than the qual_thres (20), we treat the base as high quality
-  bytes = new unsigned char[seq.length()];
-  for (unsigned i = 0; i < seq.length(); i++) {
+  if (is_allocated) {
+    bytes = packed_reads->allocate_read(seq.length());
+  } else {
+    bytes = new unsigned char[seq.length()];
+  }
+
+  for (unsigned i = 0, len = seq.length(); i < len; i++) {
     switch (seq[i]) {
-      case 'A': bytes[i] = 0; break;
-      case 'C': bytes[i] = 1; break;
-      case 'G': bytes[i] = 2; break;
-      case 'T': bytes[i] = 3; break;
-      case 'N': bytes[i] = 4; break;
+      case 'A':
+      case 'a': bytes[i] = 0; break;
+      case 'C':
+      case 'c': bytes[i] = 1; break;
+      case 'G':
+      case 'g': bytes[i] = 2; break;
+      case 'T':
+      case 't': bytes[i] = 3; break;
+      case 'N':
+      case 'n': bytes[i] = 4; break;
       case 'U':
       case 'R':
       case 'Y':
@@ -102,35 +117,65 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
       case 'D':
       case 'H':
       case 'V': bytes[i] = 4; break;
-      default: DIE("Illegal char in comp nucleotide of '", seq[i], "'\n");
+      default: DIE("Illegal char in comp nucleotide of '", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' int=", (int)seq[i], "\n");
     }
     bytes[i] |= ((unsigned char)std::min(quals[i] - qual_offset, 31) << 3);
   }
   read_len = (uint16_t)seq.length();
+  // DBG("Constructed ", (void *)this, " is_allocated=", is_allocated, " len=", read_len, " id=", read_id, "\n");
 }
 
-PackedRead::PackedRead(const PackedRead &copy)
-    : read_id(copy.read_id)
+PackedRead::PackedRead(const PackedRead &copy, PackedReads *packed_reads)
+    : is_allocated((USE_PACKED_READS_LINEAR_ALLOCATOR && packed_reads) ? 1 : 0)
+    , read_id(copy.read_id)
     , read_len(copy.read_len)
-    , bytes(new unsigned char[read_len]) {
+    , bytes(nullptr) {
+  if (is_allocated) {
+    bytes = packed_reads->allocate_read(read_len);
+  } else {
+    bytes = new unsigned char[read_len];
+  }
+  // DBG("Constructed copy ", (void *)this, " from ", (void *)&copy, " allocate=", is_allocated, " was_allocated=",
+  // copy.is_allocated,  " len=", read_len, " id=", read_id, "\n");
   memcpy(bytes, copy.bytes, read_len);
 }
 
-PackedRead::PackedRead(PackedRead &&move)
-    : read_id(move.read_id)
+PackedRead::PackedRead(const PackedRead &copy, bool no_new_allocation_ignored)
+    : is_allocated(1)
+    , read_id(copy.read_id)
+    , read_len(copy.read_len)
+    , bytes(copy.bytes) {
+  // DBG("Constructed non-allocated ", (void *)this, " from ", (void *)&copy, " allocate=", is_allocated,   " was_allocated=",
+  // copy.is_allocated, " len=", read_len, " id=", read_id, "\n");
+}
+
+PackedRead::PackedRead(PackedRead &&move, PackedReads *packed_reads)
+    : is_allocated((USE_PACKED_READS_LINEAR_ALLOCATOR && packed_reads) ? 1 : 0)
+    , read_id(move.read_id)
     , read_len(move.read_len)
-    , bytes(move.bytes) {
+    , bytes(nullptr) {
+  if (is_allocated || move.is_allocated) {
+    // copy
+    bytes = is_allocated ? packed_reads->allocate_read(read_len) : new unsigned char[read_len];
+    memcpy(bytes, move.bytes, read_len);
+  } else {
+    bytes = move.bytes;
+  }
+  // DBG("Constructed move ", (void *)this, " from ", (void *)&move, " allocate=", is_allocated, " was_allocated=",
+  // move.is_allocated,   " len=", read_len, " id=", read_id, "\n");
   move.bytes = nullptr;
   move.clear();
 }
 
 PackedRead &PackedRead::operator=(const PackedRead &copy) {
+  // DBG("copy assigned ", (void *)this, " from ", (void *)&copy, "\n");
   PackedRead pr(copy);
   std::swap(*this, pr);
   return *this;
 }
 
 PackedRead &PackedRead::operator=(PackedRead &&move) {
+  // DBG("move assigned ", (void *)this, " from ", (void *)&move, "\n");
   PackedRead pr(std::move(move));
   std::swap(*this, pr);
   return *this;
@@ -139,7 +184,7 @@ PackedRead &PackedRead::operator=(PackedRead &&move) {
 PackedRead::~PackedRead() { clear(); }
 
 void PackedRead::clear() {
-  if (bytes) delete[] bytes;
+  if (bytes && !is_allocated) delete[] bytes;
   bytes = nullptr;
   read_len = 0;
   read_id = 0;
@@ -162,6 +207,7 @@ void PackedRead::unpack(string &read_id_str, string &seq, string &quals, int qua
 int64_t PackedRead::get_id() { return read_id; }
 
 string PackedRead::get_str_id() {
+  assert(labs(read_id) < MAX_READ_ID);
   char pair_id = (read_id < 0 ? '1' : '2');
   return "@r" + to_string(labs(read_id)) + '/' + pair_id;
 }
@@ -170,28 +216,35 @@ int64_t PackedRead::to_packed_id(const string &id_str) {
   assert(id_str[0] == '@');
   int64_t read_id = strtol(id_str.c_str() + 2, nullptr, 10);
   if (id_str[id_str.length() - 1] == '1') read_id *= -1;
+  assert(labs(read_id) < MAX_READ_ID);
   return read_id;
 }
 
-uint16_t PackedRead::get_read_len() { return read_len; }
+uint16_t PackedRead::get_read_len() const { return read_len; }
 
 unsigned char *PackedRead::get_raw_bytes() { return bytes; }
 
 PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
-    : qual_offset(qual_offset)
+    : allocator(ALLOCATION_BLOCK_SIZE)
+    , qual_offset(qual_offset)
     , fname(fname)
     , str_ids(str_ids) {}
 
-PackedReads::PackedReads(int qual_offset, deque<PackedRead> &new_packed_reads)
-    : packed_reads(new_packed_reads)
+PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads)
+    : allocator(ALLOCATION_BLOCK_SIZE)
+    , packed_reads{}
     , index(0)
     , qual_offset(qual_offset)
     , fname("")
     , str_ids(false) {
   max_read_len = 0;
   // assert(!packed_reads.size());
-  for (auto &packed_read : new_packed_reads) {
-    // packed_reads.push_back(packed_read);
+  LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage\n");
+  uint64_t num_bases = 0;
+  for (auto &packed_read : new_packed_reads) num_bases += packed_read.get_read_len();
+  reserve(new_packed_reads.size(), num_bases);
+  for (const auto &packed_read : new_packed_reads) {
+    packed_reads.emplace_back(packed_read, this);  // copy to this PackedReads using the allocator
     max_read_len = max((unsigned)packed_read.get_read_len(), max_read_len);
   }
 }
@@ -207,6 +260,8 @@ bool PackedReads::get_next_read(string &id, string &seq, string &quals) {
   return true;
 }
 
+unsigned char *PackedReads::allocate_read(uint16_t read_len) { return (unsigned char *)allocator.Allocate(read_len); }
+
 uint64_t PackedReads::get_read_index() const { return index; }
 
 void PackedReads::get_read(uint64_t index, string &id, string &seq, string &quals) const {
@@ -220,8 +275,16 @@ void PackedReads::reset() { index = 0; }
 void PackedReads::clear() {
   index = 0;
   fname.clear();
-  deque<PackedRead>().swap(packed_reads);
+  PackedReadsContainer().swap(packed_reads);
+  allocator.Reset();
   if (str_ids) deque<string>().swap(read_id_idx_to_str);
+}
+
+void PackedReads::reserve(uint64_t num_reads, uint64_t num_bases) {
+  LOG("Reserving ", num_reads, " reads and ", num_bases, " bases: ", get_size_str(sizeof(PackedRead) * num_reads + num_bases),
+      " for ", get_basename(fname), "\n");
+  packed_reads.reserve(num_reads);
+  allocator.Reserve(num_bases);
 }
 
 string PackedReads::get_fname() const { return fname; }
@@ -248,7 +311,7 @@ int64_t PackedReads::get_total_local_num_reads(const PackedReadsList &packed_rea
 int PackedReads::get_qual_offset() { return qual_offset; }
 
 void PackedReads::add_read(const string &read_id, const string &seq, const string &quals) {
-  packed_reads.emplace_back(read_id, seq, quals, qual_offset);
+  packed_reads.emplace_back(read_id, seq, quals, qual_offset, this);
   if (str_ids) {
     read_id_idx_to_str.push_back(read_id);
     name_bytes += sizeof(string) + read_id.size();
@@ -260,9 +323,11 @@ void PackedReads::add_read(const string &read_id, const string &seq, const strin
 void PackedReads::load_reads(PackedReadsList &packed_reads_list) {
   BarrierTimer timer(__FILEFUNC__);
   upcxx::future<> all_done = upcxx::make_future();
+  vector<string> file_names;
   for (auto pr : packed_reads_list) {
-    FastqReaders::open(pr->fname);
+    file_names.push_back(pr->fname);
   }
+  FastqReaders::open_all(file_names);
   for (auto pr : packed_reads_list) {
     upcxx::discharge();
     upcxx::progress();
@@ -309,10 +374,12 @@ upcxx::future<> PackedReads::load_reads_nb() {
   int64_t underestimate = estimated_records - packed_reads.size();
   if (underestimate < 0 && reserve_records < packed_reads.size())
     LOG("NOTICE Underestimated by ", -underestimate, " estimated ", estimated_records, " found ", packed_reads.size(), "\n");
-  auto all_under_estimated_fut = upcxx::reduce_one(underestimate < 0 ? 1 : 0, upcxx::op_fast_add, 0);
-  auto all_estimated_records_fut = upcxx::reduce_one(estimated_records, upcxx::op_fast_add, 0);
-  auto all_num_records_fut = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
-  auto all_num_bases_fut = upcxx::reduce_one(bases, upcxx::op_fast_add, 0);
+  auto &pr = Timings::get_promise_reduce();
+  auto all_under_estimated_fut = pr.reduce_one(underestimate < 0 ? 1 : 0, upcxx::op_fast_add, 0);
+  auto all_estimated_records_fut = pr.reduce_one(estimated_records, upcxx::op_fast_add, 0);
+  auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
+  auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
+  Timings::wait_pending();
   return when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
       .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records, int64_t all_num_records,
                                                 int64_t all_num_bases) {
@@ -328,21 +395,30 @@ void PackedReads::load_reads() {
 }
 
 void PackedReads::report_size() {
-  auto all_num_records_fut = upcxx::reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
-  auto all_num_bases_fut = upcxx::reduce_one(bases, upcxx::op_fast_add, 0);
-  auto all_num_names_fut = upcxx::reduce_one(name_bytes, upcxx::op_fast_add, 0);
-  auto min_rank_fut = upcxx::reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
-  auto max_rank_fut = upcxx::reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
-  auto fut = when_all(Timings::get_pending(), all_num_records_fut,all_num_bases_fut,all_num_names_fut, min_rank_fut, max_rank_fut).then(
-    [&self=*this](size_t all_num_records, size_t all_num_bases, size_t all_num_names, int min_rank, int max_rank){
-    auto num_ranks = max_rank - min_rank + 1;
-    auto sz = all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names;
-    SLOG_VERBOSE("Loaded ", upcxx_utils::get_basename(self.fname), ": reads=", all_num_records, " tot_bases=", all_num_bases, " names=", get_size_str(all_num_names), " PackedReads: ",
-               get_size_str(sz), " active_ranks=", num_ranks, " (", min_rank, "-", max_rank, ") avg=", get_size_str(sz/num_ranks), "\n");
-  });
-  Timings::set_pending(fut); // include in reports
+  LOG("PackedReads num_reads=", get_local_num_reads(), " num_bases=", bases, " name_bytes=", name_bytes, ": ",
+      get_size_str(sizeof(PackedRead) * get_local_num_reads() + bases + name_bytes), " for ", upcxx_utils::get_basename(fname),
+      "\n");
+  auto &pr = Timings::get_promise_reduce();
+  auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
+  auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
+  auto all_num_names_fut = pr.reduce_one(name_bytes, upcxx::op_fast_add, 0);
+  auto min_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
+  auto max_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
+  auto fut_pr = pr.fulfill().then([](PromiseReduce::Vals ignore) {});
+  auto fut =
+      when_all(fut_pr, Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut,
+               max_rank_fut)
+          .then([&self = *this](size_t all_num_records, size_t all_num_bases, size_t all_num_names, int min_rank, int max_rank) {
+            auto num_ranks = max_rank - min_rank + 1;
+            auto sz = all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names;
+            SLOG_VERBOSE("Loaded ", upcxx_utils::get_basename(self.fname), ": reads=", all_num_records,
+                         " tot_bases=", all_num_bases, " names=", get_size_str(all_num_names), " PackedReads: ", get_size_str(sz),
+                         " active_ranks=", num_ranks, " (", min_rank, "-", max_rank, ") avg=", get_size_str(sz / num_ranks), "\n");
+          });
+  Timings::set_pending(fut);  // include in reports
 }
 
+int64_t PackedReads::get_local_bases() const { return bases; }
 int64_t PackedReads::get_bases() { return upcxx::reduce_one(bases, upcxx::op_fast_add, 0).wait(); }
 
 PackedRead &PackedReads::operator[](int index) {
@@ -370,12 +446,18 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
   }
   auto fut = progbar.set_done();
   DBG("This rank processed ", num_reads, " reads, and found ", num_kmers, " kmers\n");
-  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
-  auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
-  auto all_num_kmers = reduce_all(num_kmers, op_fast_add).wait();
-  fut.wait();
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_all_num_reads = pr.reduce_one(num_reads, op_fast_add, 0);
+  auto fut_all_tot_num_reads = pr.reduce_one(tot_num_reads, op_fast_add, 0);
+  auto fut_all_num_kmers = pr.reduce_all(num_kmers, op_fast_add);
 
-  SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
-               (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
+  auto fut_log = when_all(Timings::get_pending(), fut_all_num_reads, fut_all_tot_num_reads, fut_all_num_kmers)
+                     .then([](int64_t all_num_reads, int64_t all_tot_num_reads, int64_t all_num_kmers) {
+                       SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
+                                    (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
+                     });
+  Timings::set_pending(fut_log);
+  Timings::wait_pending();
+  fut.wait();
   return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
 }

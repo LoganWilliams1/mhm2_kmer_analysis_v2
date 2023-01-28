@@ -69,8 +69,7 @@ _err_thread = None
 _stop_thread = False
 
 def print_red(*args):
-    print("\033[91m", *args, sep='',  end='', file=sys.stderr)
-    print("\033[00m", file=sys.stderr)
+    print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
 
 _defaultCores = None
 def get_hdw_cores_per_node():
@@ -268,11 +267,13 @@ def which(file_name):
 def handle_interrupt(signum, frame):
     global _orig_sighdlr
     global _stop_thread
-    print_red('\n\nInterrupt received, signal', signum)
+    print_red('\n\nmhm2.py: Interrupt received, signal', signum)
     _stop_thread = True
     signal.signal(signal.SIGINT, _orig_sighdlr)
     exit_all(1)
 
+def log_signal(signum, frame):
+    print_red('\n\nmhm2.py: Received and ignoring signal', signum)
 
 def exit_all(status):
     global _proc
@@ -287,7 +288,7 @@ def exit_all(status):
 
 
 def die(*args):
-    print_red('\nFATAL ERROR: ', *args)
+    print_red('\nmhm2.py: FATAL ERROR: ', *args)
     sys.stdout.flush()
     sys.stderr.flush()
     exit_all(1)
@@ -321,7 +322,7 @@ def capture_err(err_msgs):
                 sys.stderr.flush()
         # FIXME: check for messages about memory failures
         if 'UPC++ could not allocate' in line:
-            print_red('ERROR: UPC++ memory allocation failure')
+            print_red('mhm2.py: ERROR: UPC++ memory allocation failure')
         err_msgs.append(line)
         if _stop_thread:
             return
@@ -364,7 +365,7 @@ def print_err_msgs(err_msgs, return_status):
         _output_dir = os.getcwd() + "/"
         # we have not yet entered the output directory, so this is a failure of the command line
         # and we need to dump all the error messages to the console
-        print_red("No output dir was created yet")
+        print_red("mhm2.py: No output dir was created yet")
         for msg in err_msgs:
             print(msg)
             sys.exit(return_status)
@@ -376,7 +377,7 @@ def print_err_msgs(err_msgs, return_status):
             if return_status == 9: # SIGKILL
                 suspect_oom = "Got SIGKILLed"
             err_msgs.append("Return status: %d\n" % (return_status))
-            print_red("MHM2 failed")
+            print_red("mhm2.py: MHM2 failed")
         # keep track of all msg copies so we don't print duplicates
         seen_msgs = {}
         per_rank_dir = _output_dir + 'per_rank/'
@@ -396,7 +397,7 @@ def print_err_msgs(err_msgs, return_status):
                         suspect_oom = clean_msg
             if suspect_oom is not None:
                 f.write("Out of memory is suspected because of: %s\n" %(suspect_oom))
-                print_red("Out of memory is suspected based on the errors in err.log such as: ", suspect_oom, "\n")
+                print_red("mhm2.py: Out of memory is suspected based on the errors in err.log such as: ", suspect_oom, "\n")
         if per_rank_dir != _output_dir:
             new_err_log = _output_dir + "err.log"
             if os.path.exists(new_err_log):
@@ -404,7 +405,7 @@ def print_err_msgs(err_msgs, return_status):
             os.link(err_log, new_err_log)
             err_log = new_err_log
         if num_problems > 0:
-            print_red("Check " + err_log + " for details")
+            print_red("mhm2.py: Check " + err_log + " for details")
 
 def main():
     global _orig_sighdlr
@@ -421,6 +422,7 @@ def main():
     argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument("--procs", default=0, type=int, help="Total numer of processes")
+    argparser.add_argument("--nodes", default=0, type=int, help="Override the default number of nodes as detected in job or scheduler")
     argparser.add_argument("--gasnet-stats", action="store_true", help="Collect GASNet communication statistics")
     argparser.add_argument("--gasnet-trace", action="store_true", help="Collect GASNet trace in separate files")
     argparser.add_argument("--preproc", default=None, help="Comma separated preprocesses and options like (valgrind,--leak-check=full) or options to upcxx-run before binary")
@@ -443,6 +445,10 @@ def main():
     num_nodes = get_job_nodes()
     if options.procs == 0:
         options.procs = num_nodes * get_job_cores_per_node()
+
+    if options.nodes != 0 and options.nodes != num_nodes:
+        print("Overriding to use", options.nodes, "nodes, instead of the detected", num_nodes)
+        num_nodes = options.nodes
 
     cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
 
@@ -467,7 +473,13 @@ def main():
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
         print("This is Perlmutter GPU partition - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
-        
+
+    # if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "crusher":
+    #     cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=8', '--gpu-bind=closest']
+    #     if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
+    #         os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
+    #     print("This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", \
+    #           os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
@@ -501,6 +513,8 @@ def main():
 
     if options.gasnet_trace:
         runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_TRACEMASK="U", GASNET_STATSMASK="", '
+        print("Ignoring SIGUSR2 as gasnet traces will be generated when that is sent")
+        signal.signal(signal.SIGUSR2, log_signal)
 
     runenv = eval('dict(os.environ, %s MHM2_RUNTIME_PLACEHOLDER="")' % (runtime_vars))
     #print("Runtime environment: ", runenv)
@@ -536,7 +550,7 @@ def main():
                     line = line.decode()
                 except:
                     print("WARNING could not decode binary output: ", line)
-                    pass
+                    continue
                 sys.stdout.write(line)
                 sys.stdout.flush()
                 if len(_output_dir) == 0 and ('  output = ' in line or 'Using output dir: ' in line):
@@ -547,12 +561,22 @@ def main():
                         _output_dir = _output_dir[:-3]
                     if _output_dir[-1] != '/':
                         _output_dir += '/'
+                    # try renaming the trace files so they do not pollute the cwd or get corrupted by other runs
+                    moved_traces = 0
+                    for trace in os.listdir('.'):
+                        if 'trace_' in trace:
+                            try:
+                                os.rename(trace, _output_dir + "/" + trace)
+                                moved_traces += 1
+                            except:
+                                pass
+                    print("mhm2.py: Renamed ", moved_traces, " per_rank traces from ", os.getcwd(), " to ", _output_dir)
                     # get rid of any leftover error logs if not restarting
                     try:
                         # always rename the error log if it already exists
                         new_err_log = _output_dir + 'err.log-' + str(datetime.datetime.now().isoformat())
                         os.rename(_output_dir + 'err.log', new_err_log)
-                        print("Renamed old err.log to ", new_err_log)
+                        print("mhm2.py: Renamed old err.log to ", new_err_log)
                         os.unlink(_output_dir + '/per_rank/err.log')
                     except:
                         pass
@@ -618,7 +642,7 @@ def main():
             else:
                 final_assembly = _output_dir + "final_assembly.fasta"
                 if os.path.exists(final_assembly):
-                    print("Final assembly can be found at ", final_assembly)
+                    print("Final assembly can be found at", os.path.abspath(final_assembly))
                 else:
                     err_msgs.append("Could not find the final assembly!  It should be at %s\n" % (final_assembly))
                 print_err_msgs(err_msgs, _proc.returncode)

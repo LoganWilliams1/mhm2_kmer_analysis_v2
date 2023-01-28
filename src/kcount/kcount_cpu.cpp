@@ -49,7 +49,7 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define SLOG_CPU_HT(...) SLOG(KLGREEN, __VA_ARGS__, KNORM)
+//#define SLOG_CPU_HT(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
 #define SLOG_CPU_HT(...) SLOG_VERBOSE(__VA_ARGS__)
 
 template <int MAX_K>
@@ -221,11 +221,12 @@ class KmerMapExts {
     primes::Prime prime;
     prime.set(max_elems, true);
     capacity = prime.get();
-    SLOG_CPU_HT("Capacity is set to ", capacity, " for ", max_elems, " max elements\n");
     num_elems = 0;
     keys.resize(capacity);
     memset((void *)keys.data(), 0xff, sizeof(Kmer<MAX_K>) * capacity);
     counts.resize(capacity, {0});
+    SLOG_CPU_HT("Capacity is set to ", capacity, " for ", max_elems, " max elements, size ",
+                get_size_str(capacity * (sizeof(Kmer<MAX_K>) + sizeof(KmerExtsCounts))), "\n");
   }
 
   pair<KmerExtsCounts *, bool> insert(const Kmer<MAX_K> &kmer, bool override_singletons) {
@@ -251,7 +252,7 @@ class KmerMapExts {
       // reset variables for search
       slot = start_slot;
       for (size_t i = 1; i <= MAX_PROBE; i++) {
-        assert(kmer != keys[slot]); // FIXME? probe_lens[slot] != 0
+        assert(kmer != keys[slot]);  // FIXME? probe_lens[slot] != 0
         if (counts[slot].count == 1) {
           num_singleton_overrides++;
           keys[slot] = kmer;
@@ -310,7 +311,7 @@ static void get_kmers_and_exts(Supermer &supermer, vector<KmerAndExt<MAX_K>> &km
   quals.resize(supermer.seq.length());
   for (int i = 0; i < supermer.seq.length(); i++) {
     quals[i] = isupper(supermer.seq[i]);
-    supermer.seq[i] = toupper(supermer.seq[i]);
+    if (supermer.seq[i] >= 'a' && supermer.seq[i] <= 'z') supermer.seq[i] += ('A' - 'a');
   }
   auto kmer_len = Kmer<MAX_K>::get_k();
   vector<Kmer<MAX_K>> kmers;
@@ -424,23 +425,47 @@ HashTableInserter<MAX_K>::~HashTableInserter() {
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::init(size_t num_elems, bool use_qf) {
+void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf) {
   state = new HashTableInserterState();
   state->using_ctg_kmers = false;
-  double free_mem = get_free_mem();
-  SLOG_CPU_HT("There is ", get_size_str(free_mem), " free memory\n");
-  // set aside a fraction of free mem for everything else, including the final hash table we copy across to
-  double avail_mem = KCOUNT_CPU_HT_MEM_FRACTION * free_mem / local_team().rank_n();
-  // double avail_mem = 0.05 * free_mem / local_team().rank_n();
+  double free_mem = get_free_mem(true);
+  SLOG_CPU_HT("There is ", get_size_str(free_mem), " free memory for hash table allocations\n");
+  double avail_mem = free_mem / local_team().rank_n();
+
   size_t elem_size = sizeof(Kmer<MAX_K>) + sizeof(KmerExtsCounts);
-  size_t max_elems = avail_mem / elem_size;
-  SLOG_CPU_HT("Request for ", num_elems, " elements and space available for ", max_elems, " elements of size ", elem_size, "\n");
-  // don't make too many extra elems because that takes longer to initialize
-  if (max_elems > 3 * num_elems) max_elems = 3 * num_elems;
-  SLOG_CPU_HT("Allocating ", max_elems, " elements\n");
-  state->kmers->reserve(max_elems);
-  double used_mem = free_mem - get_free_mem();
-  SLOG_CPU_HT("Memory available: ", get_size_str(get_free_mem()), ", used ", get_size_str(used_mem), "\n");
+  // expected size of compact hash table
+  size_t compact_elem_size = sizeof(Kmer<MAX_K>) + sizeof(KmerCounts);
+  double elem_size_ratio = (double)compact_elem_size / (double)elem_size;
+  SLOG_CPU_HT("Element size for main HT ", elem_size, " and for compact HT ", compact_elem_size, " (ratio ", fixed, setprecision(3),
+              elem_size_ratio, ")\n");
+
+  double target_load_factor = 0.66;
+  double load_multiplier = 1.0 / target_load_factor;
+  size_t max_read_kmers = load_multiplier * (max_elems + max_ctg_elems + num_errors);
+  size_t read_kmers_size = max_read_kmers * elem_size;
+  size_t max_compact_kmers = load_multiplier * (max_elems + max_ctg_elems);
+  size_t compact_kmers_size = max_compact_kmers * compact_elem_size;
+
+  SLOG_CPU_HT("Element counts for a target load factor of ", fixed, setprecision(3), target_load_factor, ": read kmers ",
+              max_read_kmers, ", compact ht ", max_compact_kmers, "\n");
+  size_t tot_size = read_kmers_size + compact_kmers_size;
+  SLOG_CPU_HT("Hash table sizes: read kmers ", read_kmers_size, ", compact ht ", compact_kmers_size, ", total ", tot_size, "\n");
+
+  // keep some in reserve for all the various other requirements, e.g. rpcs, local allocs, etc
+  double mem_ratio = (double)(0.8 * avail_mem) / tot_size;
+  if (mem_ratio > 3.0) mem_ratio = 3.0;
+  if (mem_ratio < 0.9)
+    SWARN("Insufficent memory for ", fixed, setprecision(3), target_load_factor,
+          " load factor across all data structures; reducing by a factor of ", mem_ratio, ". This may result in an OOM\n");
+  max_read_kmers *= mem_ratio;
+  max_compact_kmers *= mem_ratio;
+  SLOG_CPU_HT("Adjusted element counts by ", fixed, setprecision(3), mem_ratio, ": read kmers ", max_read_kmers, " compact ht ",
+              max_compact_kmers, "\n");
+  state->kmers->reserve(max_read_kmers);
+  auto free_mem_after = get_free_mem(true);
+  double used_mem = free_mem - free_mem_after;
+  SLOG_CPU_HT("Memory available after hash table allocation: ", get_size_str(free_mem_after), ", used ", get_size_str(used_mem),
+              "\n");
 }
 
 template <int MAX_K>
@@ -453,7 +478,8 @@ void HashTableInserter<MAX_K>::insert_supermer(const std::string &supermer_seq, 
   Supermer supermer = {.seq = supermer_seq, .count = supermer_count};
   state->kernel_timer.start();
   for (int i = 0; i < supermer.seq.length(); i++) {
-    char base = toupper(supermer.seq[i]);
+    char base = supermer.seq[i];
+    if (base >= 'a' && base <= 'z') base += ('A' - 'a');
     if (base != 'A' && base != 'C' && base != 'G' && base != 'T' && base != 'N')
       DIE("bad char '", supermer.seq[i], "' in supermer seq int val ", (int)supermer.seq[i], " length ", supermer.seq.length(),
           " supermer ", supermer.seq);
@@ -468,30 +494,32 @@ void HashTableInserter<MAX_K>::insert_supermer(const std::string &supermer_seq, 
 template <int MAX_K>
 void HashTableInserter<MAX_K>::flush_inserts() {
   int64_t tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
-  SLOG_CPU_HT("Number of elements in hash table: ", tot_num_kmers, "\n");
+  SLOG_CPU_HT("After inserting ", state->using_ctg_kmers ? "ctg kmers" : "read kmers", " in hash table:\n");
+  SLOG_CPU_HT("  Number of elements: ", tot_num_kmers, "\n");
   auto avg_load_factor = reduce_one(state->kmers->load_factor(), op_fast_add, 0).wait() / upcxx::rank_n();
   auto max_load_factor = reduce_one(state->kmers->load_factor(), op_fast_max, 0).wait();
-  SLOG_CPU_HT("kmer DHT load factor: ", avg_load_factor, " avg, ", max_load_factor, " max, load balance\n");
+  SLOG_CPU_HT("  load factor: ", avg_load_factor, " avg, ", max_load_factor, " max, load balance ", fixed, setprecision(3),
+              (double)avg_load_factor / max_load_factor, "\n");
   auto avg_probe_len = (double)reduce_one(state->kmers->get_sum_probe_lens(), op_fast_add, 0).wait() / tot_num_kmers;
   auto max_probe_len = (double)reduce_one(state->kmers->get_max_probe_len(), op_fast_max, 0).wait();
-  SLOG_CPU_HT("kmer DHT probe lengths: ", avg_probe_len, " avg, ", max_probe_len, " max\n");
+  SLOG_CPU_HT("  probe lengths: ", avg_probe_len, " avg, ", max_probe_len, " max\n");
   auto tot_num_dropped = reduce_one(state->kmers->get_num_dropped(), op_fast_add, 0).wait();
   state->kmers->clear_num_dropped();
   auto tot_kmers = tot_num_kmers + tot_num_dropped;
-  if (tot_num_dropped) SLOG_CPU_HT("Number dropped ", perc_str(tot_num_dropped, tot_kmers), "\n");
+  if (tot_num_dropped) SLOG_CPU_HT("  Number dropped ", perc_str(tot_num_dropped, tot_kmers), "\n");
   auto tot_num_overrides = reduce_one(state->kmers->get_num_singleton_overrides(), op_fast_add, 0).wait();
-  if (tot_num_overrides) SLOG_CPU_HT("Number singleton overrides ", perc_str(tot_num_overrides, tot_kmers), "\n");
+  if (tot_num_overrides) SLOG_CPU_HT("  Number singleton overrides ", perc_str(tot_num_overrides, tot_kmers), "\n");
   if (100.0 * tot_num_dropped / tot_kmers > 0.1)
     SWARN("Lack of memory caused ", perc_str(tot_num_dropped, tot_kmers), " kmers to be dropped (singleton overrides ",
           perc_str(tot_num_overrides, tot_kmers), ")\n");
   barrier();
   auto avg_kmers_processed = reduce_one(state->kmers->size(), op_fast_add, 0).wait() / rank_n();
   auto max_kmers_processed = reduce_one(state->kmers->size(), op_fast_max, 0).wait();
-  SLOG_CPU_HT("Avg kmers per rank ", avg_kmers_processed, " (balance ", (double)avg_kmers_processed / max_kmers_processed, ")\n");
+  SLOG_CPU_HT("  Avg kmers per rank ", avg_kmers_processed, " (balance ", (double)avg_kmers_processed / max_kmers_processed, ")\n");
 }
 
 template <int MAX_K>
-void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers) {
+double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_good_kmers = state->kmers->size();
   state->insert_timer.start();
@@ -503,17 +531,27 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
       num_good_kmers--;
   }
   LOG_MEM("Before inserting into local hashtable");
-  DBGLOG("Reserving ", num_good_kmers, " size is ", local_kmers->size(), "\n");
+  SLOG_CPU_HT("Reserving compact hash table for ", num_good_kmers, " elements, requires ",
+              get_size_str(num_good_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts))), "\n");
+  auto free_mem = get_free_mem(true);
   local_kmers->reserve(num_good_kmers);
+  auto free_mem_after = get_free_mem(true);
+  double used_mem = free_mem - free_mem_after;
+  SLOG_CPU_HT("Memory available after compact hash table allocation: ", get_size_str(free_mem_after), ", used ",
+              get_size_str(used_mem), "\n");
   LOG_MEM("After reserving for local hashtable");
   int64_t num_purged = 0, num_inserted = 0;
   state->kmers->begin_iterate();
+  uint64_t sum_kmer_counts = 0;
   while (true) {
     auto [kmer, kmer_ext_counts] = state->kmers->get_next();
     if (!kmer) break;
     if (kmer_ext_counts->count < 2) {
       num_purged++;
       continue;
+    }
+    if (kmer_ext_counts->count >= KCOUNT_HIGH_KMER_COUNT) {
+      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
     }
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = kmer_ext_counts->count,
@@ -529,6 +567,7 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
            kmer_counts.count);
     local_kmers->insert({*kmer, kmer_counts});
     num_inserted++;
+    sum_kmer_counts += kmer_counts.count;
   }
   state->insert_timer.stop();
   if (num_inserted > num_good_kmers) WARN("Inserted ", num_inserted, " but was expecting only ", num_good_kmers, "\n");
@@ -537,6 +576,15 @@ void HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<M
   auto tot_num_purged = reduce_one(num_purged, op_fast_add, 0).wait();
   auto tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
   SLOG_CPU_HT("Purged ", tot_num_purged, " kmers ( ", perc_str(tot_num_purged, tot_num_kmers), ")\n");
+  auto final_load_factor = (double)reduce_one(local_kmers->load_factor(), op_fast_add, 0).wait() / rank_n();
+  auto max_final_load_factor = (double)reduce_one(local_kmers->load_factor(), op_fast_max, 0).wait();
+  auto all_kmers_inserted = reduce_all(num_inserted, op_fast_add).wait();
+  SLOG_CPU_HT("Compact hash table has ", num_inserted, " kmers and load factor ", fixed, setprecision(3), final_load_factor,
+              " avg ", max_final_load_factor, " max\n");
+  auto all_sum_kmer_counts = reduce_all(sum_kmer_counts, op_fast_add).wait();
+  double avg_kmer_count = (double)all_sum_kmer_counts / all_kmers_inserted;
+  SLOG_CPU_HT("For ", all_kmers_inserted, " kmers, average kmer count (depth): ", fixed, setprecision(2), avg_kmer_count, "\n");
+  return avg_kmer_count;
 }
 
 template <int MAX_K>

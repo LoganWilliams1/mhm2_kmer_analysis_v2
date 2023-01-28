@@ -60,7 +60,7 @@ using std::vector;
 
 void traverse_ctg_graph(int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len, int min_ctg_print_len,
                         PackedReadsList &packed_reads_list, int break_scaffolds, Contigs &ctgs, Alns &alns,
-                        const string &graph_fname);
+                        const string &graph_fname, bool use_blastn_scores);
 
 template <int MAX_K>
 void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
@@ -91,8 +91,9 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     int seed_space = KLIGN_SEED_SPACE;
     if (options->dump_gfa && scaff_i == options->scaff_kmer_lens.size() - 1) seed_space = 1;
     begin_gasnet_stats("alignment sk = " + to_string(scaff_kmer_len));
-    double kernel_elapsed = find_alignments<MAX_K>(scaff_kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight,
-                                                   ctgs, alns, seed_space, rlen_limit, false, false, 0);
+    double kernel_elapsed =
+        find_alignments<MAX_K>(scaff_kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
+                               seed_space, rlen_limit, false, false, options->optimize_for == "contiguity", 0);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.alignments->stop();
@@ -102,7 +103,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
 #endif
     begin_gasnet_stats("alignment_depths sk = " + to_string(scaff_kmer_len));
     vector<string> read_group_names;
-    for(auto pr : packed_reads_list) {
+    for (auto pr : packed_reads_list) {
       read_group_names.push_back(pr->get_fname());
     }
     compute_aln_depths("", ctgs, alns, max_kmer_len, 0, read_group_names, true);
@@ -117,7 +118,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     stage_timers.cgraph->start();
     begin_gasnet_stats("traverse_ctg_graph sk = " + to_string(scaff_kmer_len));
     traverse_ctg_graph(ins_avg, ins_stddev, max_kmer_len, scaff_kmer_len, options->min_ctg_print_len, packed_reads_list,
-                       break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""));
+                       break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""), options->optimize_for == "contiguity");
     end_gasnet_stats();
     stage_timers.cgraph->stop();
     LOG_MEM("Traverse ctg graph");
@@ -137,4 +138,6 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
        fixed, loop_t_elapsed.count(), " s at ", get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)",
        KNORM, "\n");
   LOG_MEM("Scaffolding completed");
+  Timings::wait_pending();
+  barrier();
 }

@@ -65,9 +65,21 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
 void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_list, int insert_avg, int insert_stddev,
                int qual_offset, Contigs &ctgs, const Alns &alns) {
   BarrierTimer timer(__FILEFUNC__);
-  CtgsWithReadsDHT ctgs_dht(ctgs.size());
+  // get the contig count for ctgs_dht size hints
+  int64_t num_ctg_bases = 0;
+  for (auto &ctg : ctgs) num_ctg_bases += ctg.seq.length();
+  // get the read and base counts for reads_to_ctgs size hints
+  int64_t num_reads = 0;
+  int64_t num_read_bases = 0;
+  for (auto &packed_reads : packed_reads_list) {
+    auto l_reads = packed_reads->get_local_num_reads();
+    num_reads += l_reads;
+    num_read_bases += l_reads * packed_reads->get_max_read_len();
+  }
+  CtgsWithReadsDHT ctgs_dht(ctgs.size(), num_ctg_bases);
   add_ctgs(ctgs_dht, ctgs);
-  ReadsToCtgsDHT reads_to_ctgs(100);
+  ctgs_dht.prep_ctg_read_store(num_reads, num_read_bases);
+  ReadsToCtgsDHT reads_to_ctgs(100, alns.size());
   // extract read id to ctg id mappings from alignments
   process_alns(alns, reads_to_ctgs, insert_avg, insert_stddev);
   // extract read seqs and add to ctgs
