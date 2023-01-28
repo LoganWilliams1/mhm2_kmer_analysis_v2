@@ -82,7 +82,7 @@ static void revcomp(char *str, char *str_rc, unsigned int size) {
       case 'D':
       case 'H':
       case 'V': str_rc[size_rc] = 'N'; break;
-      default: std::cout << "Illegal char:" << str[i] << "\n"; break;
+      default: std::cerr << "Illegal revcomp char " << ((str[i] >= 32 && str[i] <= 126) ? str[i] : ' ') << " int=" << (int) str[i] << "\n"; break;
     }
     size_rc++;
   }
@@ -117,7 +117,7 @@ static std::string revcomp(std::string instr) {
       case 'D':
       case 'H':
       case 'V': str_rc += 'N'; break;
-      default: std::cout << "Illegal char:" << instr[i] << "\n"; break;
+      default: std::cerr << "Illegal revcomp char:" << ((instr[i] >= 32 && instr[i] <= 126) ? instr[i] : ' ') << " int=" << (int) instr[i] << "\n"; break;
     }
   }
   return str_rc;

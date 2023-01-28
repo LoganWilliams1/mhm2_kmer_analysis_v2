@@ -117,7 +117,7 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
       case 'D':
       case 'H':
       case 'V': bytes[i] = 4; break;
-      default: DIE("Illegal char in comp nucleotide of '", seq[i], "'\n");
+      default: DIE("Illegal char in comp nucleotide of '", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' int=", (int)seq[i], "\n");
     }
     bytes[i] |= ((unsigned char)std::min(quals[i] - qual_offset, 31) << 3);
   }

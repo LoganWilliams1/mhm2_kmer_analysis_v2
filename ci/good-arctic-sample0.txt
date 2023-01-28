@@ -19,7 +19,7 @@ Total length                 27652023
 Reference length             102521842     
 N50                          1918          
 N90                          664           
-auN                          5007.8        
+auN                          4950
 L50                          3266          
 L90                          13520         
 # misassemblies              19            
