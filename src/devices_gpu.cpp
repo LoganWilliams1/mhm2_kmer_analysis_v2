@@ -117,7 +117,7 @@ void done_init_devices() {
       unordered_set<string> unique_ids;
       dist_object<vector<string>> gpu_uuids(get_gpu_uuids(), local_team());
       for (auto uuid : *gpu_uuids) unique_ids.insert(uuid);
-      //auto gpu_avail_mem = 0;
+      // auto gpu_avail_mem = 0;
       if (!local_team().rank_me()) {
         for (int i = 1; i < local_team().rank_n(); i++) {
           auto gpu_uuids_i = gpu_uuids.fetch(i).wait();
@@ -127,25 +127,54 @@ void done_init_devices() {
           }
         }
         num_gpus_on_node = unique_ids.size();
-        //SLOG_GPU("Found GPU UUIDs:\n");
-        //for (auto uuid : unique_ids) {
+        // SLOG_GPU("Found GPU UUIDs:\n");
+        // for (auto uuid : unique_ids) {
         //  SLOG_GPU("    ", uuid, "\n");
         //}
-        //gpu_utils::set_gpu_device(rank_me());
-        //gpu_avail_mem = gpu_utils::get_gpu_avail_mem() * num_gpus_on_node;
+        // gpu_utils::set_gpu_device(rank_me());
+        // gpu_avail_mem = gpu_utils::get_gpu_avail_mem() * num_gpus_on_node;
       }
       barrier(local_team());
       num_gpus_on_node = broadcast(num_gpus_on_node, 0, local_team()).wait();
-      //gpu_avail_mem = broadcast(gpu_avail_mem, 0, local_team()).wait();
+      // gpu_avail_mem = broadcast(gpu_avail_mem, 0, local_team()).wait();
       SLOG_GPU("Available number of GPUs on this node ", num_gpus_on_node, ". Detected in ", gpu_startup_duration, " s\n");
-      //SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
+      // SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
       //         " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()), " per rank). Detected in ",
       //         gpu_startup_duration, " s\n");
       SLOG_GPU(gpu_utils::get_gpu_device_descriptions());
       LOG("Using GPU device: ", gpu_utils::get_gpu_device_name(), " - ", gpu_utils::get_gpu_uuid(), "\n");
+      log_gpu_uuid();
       barrier(local_team());
     } else {
       SDIE("No GPUs available - this build requires GPUs");
     }
   }
 }
+
+void log_gpu_uuid() {
+  // Log the UUIDs for the GPUs used on the first node to rank0
+  upcxx::future<> chain_fut = make_future();
+  string ranks, uuid;
+  if (!upcxx::local_team().rank_me()) {
+    for (int i = 0; i < upcxx::local_team().rank_n(); i++) {
+      auto fut_uuid = rpc(upcxx::local_team(), i, []() { return gpu_utils::get_gpu_uuid(); });
+      chain_fut = when_all(chain_fut, fut_uuid).then([i, &ranks, &uuid](string proc_uuid) {
+        if (uuid != proc_uuid) {
+          if (!uuid.empty()) {
+            LOG("Local Rank(s) ", ranks, ": GPU UUID ", uuid, "\n");
+          }
+          uuid = proc_uuid;
+          ranks.clear();
+        }
+        if (ranks.empty())
+          ranks = to_string(i);
+        else
+          ranks += "," + to_string(i);
+      });
+    }
+    chain_fut.wait();
+    LOG("Local Rank(s) ", ranks, ": GPU UUID ", uuid, "\n");
+  }
+  barrier(upcxx::local_team());
+}
+
