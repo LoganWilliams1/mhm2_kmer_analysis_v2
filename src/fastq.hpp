@@ -146,9 +146,11 @@ class FastqReader {
 
   ~FastqReader();
 
-  string get_fname();
+  string get_fname() const;
 
-  size_t my_file_size(bool include_file_2 = true);
+  string get_ifstream_state() const;
+
+  size_t my_file_size(bool include_file_2 = true) const;
 
   upcxx::future<int64_t> get_file_size(bool include_file2 = false) const;
 
