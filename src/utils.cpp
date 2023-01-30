@@ -353,14 +353,41 @@ void pin_numa() {
   // pack onto numa nodes
   int hdw_threads_per_numa_node = num_cpus / numa_node_list.size();
   int cores_per_numa_node = hdw_threads_per_numa_node / hdw_threads_per_core;
-  int numa_nodes_to_use = upcxx::local_team().rank_n() / cores_per_numa_node;
+  int numa_nodes_to_use = (upcxx::local_team().rank_n() + cores_per_numa_node - 1) / cores_per_numa_node;
   if (numa_nodes_to_use > numa_node_list.size()) numa_nodes_to_use = numa_node_list.size();
   if (numa_nodes_to_use == 0) numa_nodes_to_use = 1;
-  int my_numa_node = upcxx::local_team().rank_me() % numa_nodes_to_use;
+  int my_numa_node = upcxx::local_team().rank_me() / cores_per_numa_node;
   vector<int> my_cpu_list = numa_node_list[my_numa_node].second;
   sort(my_cpu_list.begin(), my_cpu_list.end());
   pin_proc(my_cpu_list);
   SLOG("Pinning to ", numa_nodes_to_use, " NUMA domains each with ", cores_per_numa_node, " cores, ", hdw_threads_per_numa_node,
        " cpus: process 0 on node 0 is pinned to cpus ", get_proc_pin(), "\n");
-  DBG("Pinned to ", get_proc_pin(), "\n");
+  DBGLOG("Pinned to numa domain ", my_numa_node, ": ", get_proc_pin(), "\n");
+}
+
+void log_pins() {
+  // Log the pinnings for the first node to rank0
+  upcxx::future<> chain_fut = make_future();
+  string ranks, pins;
+  if (!upcxx::local_team().rank_me()) {
+    for (int i = 0; i < upcxx::local_team().rank_n(); i++) {
+      auto fut_pin = rpc(upcxx::local_team(), i, []() { return get_proc_pin(); });
+      chain_fut = when_all(chain_fut, fut_pin).then([i, &ranks, &pins](string proc_pin) {
+        if (pins != proc_pin) {
+          if (!pins.empty()) {
+            LOG("Local Rank(s) ", ranks, ": CPUs ", pins, "\n");
+          }
+          pins = proc_pin;
+          ranks.clear();
+        }
+        if (ranks.empty())
+          ranks = to_string(i);
+        else
+          ranks += "," + to_string(i);
+      });
+    }
+    chain_fut.wait();
+    LOG("Local Rank(s) ", ranks, ": CPUs ", pins, "\n");
+  }
+  barrier(upcxx::local_team());
 }

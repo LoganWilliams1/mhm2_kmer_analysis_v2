@@ -139,6 +139,7 @@ int main(int argc, char **argv) {
   auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
 
   SLOG_VERBOSE("Process 0 on node 0 is initially pinned to ", get_proc_pin(), "\n");
+  
   // pin ranks only in production
   if (options->pin_by == "cpu")
     pin_cpu();
@@ -146,6 +147,8 @@ int main(int argc, char **argv) {
     pin_core();
   else if (options->pin_by == "numa")
     pin_numa();
+  
+  log_pins();
 
   // update rlimits on RLIMIT_NOFILE files if necessary
   auto num_input_files = options->reads_fnames.size();
