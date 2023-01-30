@@ -19,7 +19,7 @@ Total length                 27652023
 Reference length             102521842     
 N50                          1918          
 N90                          664           
-auN                          4950
+auN                          4929.9
 L50                          3266          
 L90                          13520         
 # misassemblies              19            
@@ -40,6 +40,6 @@ Largest alignment            66311
 Total aligned length         27645842      
 NA50                         1914          
 NA90                         664           
-auNA                         4993.7        
+auNA                         4923.7
 LA50                         3273          
 LA90                         13539         
