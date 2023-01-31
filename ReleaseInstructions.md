@@ -1,15 +1,18 @@
 # Instructions on how to deploy a tagged release
 
 ## Choose version X.Y.Z
+   * git checkout -b VersionX.Y.Z
    * update ChangeLog.md
    * update VERSION to be X.Y.Z
    * git commit
    * git tag -a vX.Y.Z
    * git push
-   * git push -a
+   * git push --tags
+   * check CI and optionally merge to master
 
 ## Make a new clone with submodules included
    * git clone git@bitbucket.org:berkeleylab/mhm2.git mhm2-vX.Y.Z
+   * git checkout VersionX.Y.Z
    * cd mhm2-vX.Y.Z
    * git submodule init
    * git submodule update

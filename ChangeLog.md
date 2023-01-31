@@ -3,7 +3,17 @@
 
 This is the ChangeLog for MetaHipMer with development at [bitbucket](https://bitbucket.org/berkeleylab/mhm2)
 
-### 2.1.0.1 2022-01-24
+### 2.1.0.2 2023-01-31
+   * Added first versions of HIP code for kcount, klign and localassm
+   * TCF filtering in kcount improves memory use and performance
+   * Optional adapter trimming in merge_reads and interleave_fastq preprocesing
+   * Log counts of high frequency kmers
+   * Applied fixes from upcxx_utils
+   * Major bug fixes Issue #121, #125, #131, #128, #153, #139,
+   * Minor bug fixes Issue #117, #120, #123, #101, #124, #74, #75, #163, #175, #177, #169, #141, #140
+   
+
+### 2.1.0.1 2022-01-24 / 2022-07-19
    * Major updates to GPU offloading in kcount - PR #48
       * Removed bloom filters from CPU & GPU kcount
    * Counting quotient filter in kcount (GPU only) - PR #54
