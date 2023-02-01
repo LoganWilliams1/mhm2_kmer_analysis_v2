@@ -469,10 +469,12 @@ def main():
 
     # special spawning for perlmutter GPU nodes that requires srun, not upcxx-run for now
     if 'NERSC_HOST' in os.environ and os.environ['NERSC_HOST'] == 'perlmutter' and 'SLURM_JOB_PARTITION' in os.environ and 'gpu' in os.environ['SLURM_JOB_PARTITION']:
-        cmd = ['srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
+        cmd = ['upcxx-srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
-        print("This is Perlmutter GPU partition - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        if 'GASNET_MAX_SEGSIZE' not in os.environ:
+            os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']
+        print("This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], " and GASNET_MAX_SEGSIZE=", os.environ['GASNET_MAX_SEGSIZE'], ":", cmd)
 
     # if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "crusher":
     #     cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=8', '--gpu-bind=closest']
