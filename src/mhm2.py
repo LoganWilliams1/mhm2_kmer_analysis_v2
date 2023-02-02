@@ -474,14 +474,17 @@ def main():
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
         if 'GASNET_MAX_SEGSIZE' not in os.environ:
             os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']
-        print("This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], " and GASNET_MAX_SEGSIZE=", os.environ['GASNET_MAX_SEGSIZE'], ":", cmd)
+        print("This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=", \
+            os.environ['UPCXX_SHARED_HEAP_SIZE'], " and GASNET_MAX_SEGSIZE=", os.environ['GASNET_MAX_SEGSIZE'], ":", cmd)
 
     # if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "crusher":
     #     cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=8', '--gpu-bind=closest']
     #     if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
     #         os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
+    #     if 'GASNET_MAX_SEGSIZE' not in os.environ:
+    #         os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']
     #     print("This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", \
-    #           os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+    #           os.environ['UPCXX_SHARED_HEAP_SIZE'], , " and GASNET_MAX_SEGSIZE=", os.environ['GASNET_MAX_SEGSIZE'], ":", cmd)
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
