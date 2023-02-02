@@ -462,6 +462,7 @@ def main():
         else:
             # default to split ranks by gpu
             cmd.extend(['--by-gpu'])
+            os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal for summit
         print("This is Summit - executing custom script upcxx-jsrun to spawn the job", cmd)
 
     if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
