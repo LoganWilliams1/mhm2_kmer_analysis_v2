@@ -417,6 +417,7 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 10000));
   app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
       ->check(CLI::Range(0, 16));
+  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN"); // get default from the environment if it exists
   app.add_option("--pin", pin_by,
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
