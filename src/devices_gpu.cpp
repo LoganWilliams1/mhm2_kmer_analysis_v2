@@ -45,6 +45,7 @@
 #include "upcxx_utils/thread_pool.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 #include "devices_gpu.hpp"
+#include "utils.hpp"
 
 using namespace std;
 using namespace upcxx;
@@ -153,28 +154,6 @@ void done_init_devices() {
 
 void log_gpu_uuid() {
   // Log the UUIDs for the GPUs used on the first node to rank0
-  upcxx::future<> chain_fut = make_future();
-  string ranks, uuid;
-  if (!upcxx::local_team().rank_me()) {
-    for (int i = 0; i < upcxx::local_team().rank_n(); i++) {
-      auto fut_uuid = rpc(upcxx::local_team(), i, []() { return gpu_utils::get_gpu_uuid(); });
-      chain_fut = when_all(chain_fut, fut_uuid).then([i, &ranks, &uuid](string proc_uuid) {
-        if (uuid != proc_uuid) {
-          if (!uuid.empty()) {
-            LOG("Local Rank(s) ", ranks, ": GPU UUID ", uuid, "\n");
-          }
-          uuid = proc_uuid;
-          ranks.clear();
-        }
-        if (ranks.empty())
-          ranks = to_string(i);
-        else
-          ranks += "," + to_string(i);
-      });
-    }
-    chain_fut.wait();
-    LOG("Local Rank(s) ", ranks, ": GPU UUID ", uuid, "\n");
-  }
-  barrier(upcxx::local_team());
+  log_local("GPU UUID", gpu_utils::get_gpu_uuid());
 }
 

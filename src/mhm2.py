@@ -469,7 +469,7 @@ def main():
 
     # special spawning for perlmutter GPU nodes that requires srun, not upcxx-run for now
     if 'NERSC_HOST' in os.environ and os.environ['NERSC_HOST'] == 'perlmutter' and 'SLURM_JOB_PARTITION' in os.environ and 'gpu' in os.environ['SLURM_JOB_PARTITION']:
-        cmd = ['upcxx-srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
+        cmd = ['upcxx-srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', '--', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
         if 'GASNET_MAX_SEGSIZE' not in os.environ:
