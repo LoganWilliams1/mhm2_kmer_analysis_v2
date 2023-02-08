@@ -433,12 +433,9 @@ void log_env() {
   for (char **_env = environ; *_env; ++_env) {
     string env(*_env);
     auto pos = env.find("GASNET");
-    if (pos == string::npos) {
-      pos = env.find("UPCXX");
-    }
-    if (pos != string::npos) {
-      msg += env + ", ";
-    }
+    if (pos == string::npos) pos = env.find("UPCXX");
+    if (pos == string::npos) pos = env.find("CXI");
+    if (pos != string::npos) msg += env + ", ";
   }
   log_local("GASNET/UPCXX Environment", msg);
 }
