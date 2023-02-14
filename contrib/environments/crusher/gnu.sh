@@ -7,9 +7,10 @@ module load cmake
 module rm xl
 module load gcc
 module load rocm
+module load craype-hugepages2M
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
 module rm upcxx
-module load upcxx/nightly
+module load upcxx/nightly; export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
 #module list
 which upcxx
 

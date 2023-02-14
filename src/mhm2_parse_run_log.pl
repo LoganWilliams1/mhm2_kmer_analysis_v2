@@ -46,8 +46,8 @@ sub printStats {
    foreach my $field (@fields) {
      if (not defined $stats{$field}) { print STDERR "No $field found\n"; }
    }
-   print join("\t", @fields) . "\n";
-   print join("\t", @stats{@fields}) . "\n";
+   print join(";", @fields) . "\n";
+   print join(";", @stats{@fields}) . "\n";
 }
 
 $stats{"Operator"} = $ENV{"USER"};
