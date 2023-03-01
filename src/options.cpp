@@ -416,11 +416,12 @@ bool Options::load(int argc, char **argv) {
                  "Maximum number of RPCs in flight, per process (set to 0 for unlimited).")
       ->check(CLI::Range(0, 10000));
   app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
-      ->check(CLI::Range(0, (int)4 * upcxx::local_team().rank_n()));
+      ->check(CLI::Range(0, 16));
+  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN"); // get default from the environment if it exists
   app.add_option("--pin", pin_by,
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
-      ->check(CLI::IsMember({"cpu", "core", "numa", "none"}));
+      ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}));
   add_flag_def(app, "--use-qf", use_qf,
                "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
   app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));

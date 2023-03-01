@@ -147,8 +147,11 @@ int main(int argc, char **argv) {
     pin_core();
   else if (options->pin_by == "numa")
     pin_numa();
+  else if (options->pin_by == "rr_numa")
+    pin_numa(true);
   
   log_pins();
+  log_env();
 
   // update rlimits on RLIMIT_NOFILE files if necessary
   auto num_input_files = options->reads_fnames.size();

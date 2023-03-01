@@ -86,6 +86,10 @@ bool FastqReader::get_fq_name(string &header) {
   // strip trailing spaces
   // header = std::regex_replace(header, std::regex("\\s+$"), std::string(""));
   rtrim(header);
+  if (_trim_comment) {
+    auto space_pos = header.find_first_of(' ');
+    if (space_pos != string::npos) header = header.substr(0, space_pos);
+  }
   // convert if new illumina 2 format  or HudsonAlpha format
   unsigned len = header.length();
   if (len >= 3 && header[len - 2] != '/') {
@@ -182,7 +186,6 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   in->seekg(offset);
   if (!in->good() || in->tellg() != offset) DIE("Could not seekg to ", offset, " fname=", get_ifstream_state(), ": ", strerror(errno));
 
-
   if (offset != 0) {
     // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
     std::getline(*in, buf);
@@ -242,7 +245,9 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       bool record_found = true;
       DBG_VERBOSE("Testing for header: ", header, "\n");
       for (int j = 0; j < 3; j++) {
-        if (i + 1 + j >= lines.size()) DIE("Missing record info at pos ", tells[i]);
+        if (i + 1 + j >= lines.size())
+          DIE("Missing record info at ", get_basename(fname), " around pos ", tells[i], " lines: ", lines[0], " header: ", header,
+              "\n");
         string &tmp2 = lines[i + 1 + j];
 
         if (j == 0) {
@@ -309,6 +314,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       this_pair = header[header.length() - 1];
       if (has_sep) DBG("Found possible pair ", (char)this_pair, ", header: ", header, "\n");
       bool is_same_header = last_header.compare(possible_header) == 0;
+      auto tpos1 = string::npos, tpos2 = string::npos;
       if (has_sep && last_pair == this_pair) {
         if (_fix_paired_name) {
           if (is_same_header) {
@@ -329,10 +335,18 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
         // proper pair
         DBG("Found proper pair 1&2\n");
         break;
+      } else if ((tpos1 = possible_header.find_first_of(' ')) != string::npos && (tpos2 = last_header.find_first_of(' ')) != string::npos &&
+                 possible_header.substr(0, tpos1).compare(last_header.substr(0, tpos2)) == 0) {
+        if (offset == 0)
+          WARN("Ignoring confounding comments in header of ", get_basename(fname), " '", last_header, "' and '", possible_header, "' are proper pair\n");
+        _trim_comment = true;
+        _fix_paired_name = true;
+        DBG("Found proper pair - identical ignoring comment\n");
       } else if (!has_sep && is_same_header) {
         LOG("Second indistinguishable pair (with no pair separator), so keep at the first record\n");
         break;
       }
+      if (tpos1 != string::npos && tpos2 != string::npos) DBG("Comment trimmed: '", last_header.substr(0,tpos2), "' '", possible_header.substr(0,tpos1), "'\n");
 
       // did not find valid new start of (possibly paired) record
       last_tell = this_tell;
@@ -367,6 +381,8 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     , _is_interleaved(false)
     , _fix_paired_name(false)
     , _first_pair(true)
+    , _trim_comment(false)
+    , _is_bgzf(false)
     , io_t("fastq IO for " + fname)
     , dist_prom(world())
     , open_fut(make_future()) {
@@ -455,6 +471,7 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
 
 future<> FastqReader::set_matching_pair(FastqReader &fqr1, FastqReader &fqr2, dist_object<PromStartStop> &dist_start_stop1,
                                         dist_object<PromStartStop> &dist_start_stop2) {
+  DBG("Starting matching pair ", fqr1.start_read, " and ", fqr2.start_read, "\n");
   if (fqr1.start_read == fqr1.end_read) {
     assert(fqr2.start_read == fqr2.end_read);
     DBG("Fulfilling No reading of ", fqr1.fname, " or ", fqr2.fname, "\n");

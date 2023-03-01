@@ -93,9 +93,13 @@ void pin_cpu();
 
 void pin_core();
 
-void pin_numa();
+void pin_numa(bool round_robin = false);
+
+void log_local(std::string header, std::string msg);
 
 void log_pins();
+
+void log_env();
 
 template <typename STL>
 class safe_stl : public STL {

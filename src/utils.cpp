@@ -53,11 +53,14 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/ofstream.hpp"
 #include "upcxx_utils/timers.hpp"
+
+extern char **environ;
 
 using namespace upcxx_utils;
 
@@ -66,6 +69,7 @@ using std::pair;
 using std::string;
 using std::string_view;
 using std::to_string;
+using std::unordered_map;
 using std::vector;
 
 size_t estimate_hashtable_memory(size_t num_elements, size_t element_size) {
@@ -117,7 +121,9 @@ string revcomp(const string &seq) {
       case 'D':
       case 'H':
       case 'V': seq_rc += 'N'; break;
-      default: DIE("Illegal char at ", i, "'", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' (", (int)seq[i], ") in revcomp of '", seq, "'");
+      default:
+        DIE("Illegal char at ", i, "'", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' (", (int)seq[i], ") in revcomp of '",
+            seq, "'");
     }
   }
   return seq_rc;
@@ -302,7 +308,7 @@ void pin_core() {
     int numa_node_i = std::stoi(entry.substr(4));
     auto cpu_entries = get_dir_entries(numa_node_dir + "/" + entry, "cpu");
     for (auto &cpu_entry : cpu_entries) {
-      if (cpu_entry != "cpu" + to_string(upcxx::rank_me())) continue;
+      if (cpu_entry != "cpu" + to_string(upcxx::local_team().rank_me())) continue;
       if (cpu_entry == "cpulist" || cpu_entry == "cpumap") continue;
       f.open(numa_node_dir + "/" + entry + "/" + cpu_entry + "/topology/thread_siblings_list");
       getline(f, buf);
@@ -321,7 +327,7 @@ void pin_core() {
   }
 }
 
-void pin_numa() {
+void pin_numa(bool round_robin) {
   string numa_node_dir = "/sys/devices/system/node";
   auto numa_node_entries = get_dir_entries(numa_node_dir, "node");
   if (numa_node_entries.empty()) return;
@@ -348,8 +354,8 @@ void pin_numa() {
       num_cpus++;
     }
   }
-  SLOG("On node 0, found a total of ", num_cpus, " hardware threads with ", hdw_threads_per_core, " threads per core on ",
-       numa_node_list.size(), " NUMA domains\n");
+  SLOG_VERBOSE("On node 0, found a total of ", num_cpus, " hardware threads with ", hdw_threads_per_core, " threads per core on ",
+               numa_node_list.size(), " NUMA domains\n");
   // pack onto numa nodes
   int hdw_threads_per_numa_node = num_cpus / numa_node_list.size();
   int cores_per_numa_node = hdw_threads_per_numa_node / hdw_threads_per_core;
@@ -357,6 +363,7 @@ void pin_numa() {
   if (numa_nodes_to_use > numa_node_list.size()) numa_nodes_to_use = numa_node_list.size();
   if (numa_nodes_to_use == 0) numa_nodes_to_use = 1;
   int my_numa_node = upcxx::local_team().rank_me() / cores_per_numa_node;
+  if (round_robin) my_numa_node = upcxx::local_team().rank_me() % numa_node_list.size();
   vector<int> my_cpu_list = numa_node_list[my_numa_node].second;
   sort(my_cpu_list.begin(), my_cpu_list.end());
   pin_proc(my_cpu_list);
@@ -365,29 +372,70 @@ void pin_numa() {
   DBGLOG("Pinned to numa domain ", my_numa_node, ": ", get_proc_pin(), "\n");
 }
 
-void log_pins() {
-  // Log the pinnings for the first node to rank0
-  upcxx::future<> chain_fut = make_future();
-  string ranks, pins;
-  if (!upcxx::local_team().rank_me()) {
+void log_local(std::string header, std::string msg) {
+  // Consolidate a potentially redundant message to the first rank of the node
+  upcxx::dist_object<vector<upcxx::promise<string>>> msgs(upcxx::local_team(), upcxx::local_team().rank_n());
+  barrier(upcxx::local_team());
+  if (upcxx::local_team().rank_me()) {
+    rpc(
+        upcxx::local_team(), 0,
+        [](upcxx::dist_object<vector<upcxx::promise<string>>> &msgs, string msg, int from) { (*msgs)[from].fulfill_result(msg); },
+        msgs, msg, upcxx::local_team().rank_me())
+        .wait();
+  } else {  // local rank 0
+    using _MAP = unordered_map<string, vector<int>>;
+    _MAP msg_rank_groups;
+    (*msgs)[0].fulfill_result(msg);
     for (int i = 0; i < upcxx::local_team().rank_n(); i++) {
-      auto fut_pin = rpc(upcxx::local_team(), i, []() { return get_proc_pin(); });
-      chain_fut = when_all(chain_fut, fut_pin).then([i, &ranks, &pins](string proc_pin) {
-        if (pins != proc_pin) {
-          if (!pins.empty()) {
-            LOG("Local Rank(s) ", ranks, ": CPUs ", pins, "\n");
-          }
-          pins = proc_pin;
-          ranks.clear();
-        }
-        if (ranks.empty())
-          ranks = to_string(i);
-        else
-          ranks += "," + to_string(i);
-      });
+      auto cur_msg = (*msgs)[i].get_future().wait();
+      msg_rank_groups[cur_msg].push_back(i);
     }
-    chain_fut.wait();
-    LOG("Local Rank(s) ", ranks, ": CPUs ", pins, "\n");
+    // order messages by ranks
+    vector<string> ordered_msgs;
+    for (auto &[ranks_msg, ranks] : msg_rank_groups) {
+      ordered_msgs.push_back(ranks_msg);
+    }
+    sort(ordered_msgs.begin(), ordered_msgs.end(),
+         [&msg_rank_groups](const string &a, const string &b) { return msg_rank_groups[a][0] < msg_rank_groups[b][0]; });
+    for (auto const &ranks_msg : ordered_msgs) {
+      string ranks;  // collapse serial ranks in the message
+      bool in_sequence = false, printed = false;
+      int last_rank = -2;
+      auto it = msg_rank_groups[ranks_msg].begin();
+      for (auto &rank : msg_rank_groups[ranks_msg]) {
+        if (rank != last_rank + 1) {
+          if (in_sequence && last_rank >= 0) ranks += to_string(last_rank);
+          in_sequence = false;
+          if (!ranks.empty()) ranks += ",";
+          ranks += to_string(rank);
+          printed = true;
+        } else {
+          if (!in_sequence) ranks += "-";
+          in_sequence = true;
+          printed = false;
+        }
+        last_rank = rank;
+      }
+      if (!printed && last_rank >= 0) {
+        if (!in_sequence && !ranks.empty()) ranks += ",";
+        ranks += to_string(last_rank);
+      }
+      LOG(header, " - local rank(s) ", ranks, ": ", ranks_msg, "\n");
+    }
   }
   barrier(upcxx::local_team());
+}
+
+void log_pins() { log_local("CPU Pinnings", get_proc_pin()); }
+
+void log_env() {
+  string msg;
+  for (char **_env = environ; *_env; ++_env) {
+    string env(*_env);
+    auto pos = env.find("GASNET");
+    if (pos == string::npos) pos = env.find("UPCXX");
+    if (pos == string::npos) pos = env.find("CXI");
+    if (pos != string::npos) msg += env + ", ";
+  }
+  log_local("GASNET/UPCXX Environment", msg);
 }
