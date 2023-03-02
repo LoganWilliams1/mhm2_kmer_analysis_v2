@@ -6,8 +6,10 @@ module load cmake
 
 module rm xl
 module load gcc
-module load rocm
-module load craype-hugepages2M
+# need to load > 5.1 to avoid the background HIP thread
+module load rocm/5.2.0
+# this causes a remap failure when using GPUs
+#module load craype-hugepages2M
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
 module rm upcxx
 module load upcxx/nightly; export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
