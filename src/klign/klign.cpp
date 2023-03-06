@@ -60,6 +60,7 @@
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/three_tier_aggr_store.hpp"
+#include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
 #include "zstr.hpp"
 #include "aligner_cpu.hpp"
@@ -70,11 +71,34 @@ using namespace upcxx_utils;
 
 using cid_t = int64_t;
 
-extern IntermittentTimer aln_cpu_bypass_timer;
-extern IntermittentTimer fetch_ctg_seqs_timer;
-extern IntermittentTimer compute_alns_timer;
-extern IntermittentTimer get_ctgs_timer;
-extern IntermittentTimer aln_kernel_timer;
+struct KlignTimers {
+  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, get_ctgs, rget_ctg_seqs, aln_kernel;
+
+  KlignTimers()
+      : fetch_ctg_maps("klign: fetch ctg maps")
+      , compute_alns("klign: compute alns")
+      , get_ctgs("klign: get ctgs with kmers")
+      , rget_ctg_seqs("klign: rget ctg seqs")
+      , aln_kernel("klign: aln kernel") {}
+
+  void done_all() {
+    fetch_ctg_maps.done_all();
+    compute_alns.done_all();
+    get_ctgs.done_all();
+    rget_ctg_seqs.done_all();
+    aln_kernel.done_all();
+  }
+
+  void clear() {
+    fetch_ctg_maps.clear();
+    compute_alns.clear();
+    get_ctgs.clear();
+    rget_ctg_seqs.clear();
+    aln_kernel.clear();
+  }
+};
+
+static KlignTimers timers;
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
                   int rlen_limit);
@@ -353,7 +377,7 @@ class Aligner {
       read_seqs.emplace_back(rseq);
       if (num_alns >= KLIGN_GPU_BLOCK_SIZE) {
         kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen,
-                           max_rlen, aln_kernel_timer);
+                           max_rlen, timers.aln_kernel);
         clear_aln_bufs();
       }
     }
@@ -419,7 +443,7 @@ class Aligner {
     auto num = kernel_alns.size();
     if (num) {
       kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen, max_rlen,
-                         aln_kernel_timer);
+                         timers.aln_kernel);
       clear_aln_bufs();
     }
     bool is_ready = active_kernel_fut.ready();
@@ -551,11 +575,11 @@ class Aligner {
 
             assert(get_start >= 0);
             assert(get_start + get_len <= ctg_seq.size());
-            fetch_ctg_seqs_timer.start();
+            timers.rget_ctg_seqs.start();
             // write directly to the cached string in active scope (represented by the string view, so okay to const_cast)
             rget(ctg_loc.seq_gptr + get_start, const_cast<char *>(ctg_seq.data()) + get_start, get_len).wait();
-            fetch_ctg_seqs_timer.stop();
-            assert(fetch_ctg_seqs_timer.get_count() > 0);
+            timers.rget_ctg_seqs.stop();
+            assert(timers.rget_ctg_seqs.get_count() > 0);
             ctg_bytes_fetched += get_len;
           } else {
             ctg_cache_hits++;
@@ -680,7 +704,7 @@ static int align_kmers(KmerCtgDHT<MAX_K> &kmer_ctg_dht, Aligner &aligner,
     assert(kmer.is_least());
     kmer_lists[kmer_ctg_dht.get_target_rank(kmer)].push_back(kmer);
   }
-  get_ctgs_timer.start();
+  timers.get_ctgs.start();
   future<> fut_serial_results = make_future();
   // fetch ctgs for each set of kmers from target ranks
   auto lranks = local_team().rank_n();
@@ -761,11 +785,11 @@ static int align_kmers(KmerCtgDHT<MAX_K> &kmer_ctg_dht, Aligner &aligner,
   LOG("After flush: read_group_id=", read_group_id, " kmer_bytes_sent=", kmer_bytes_sent,
       " kmer_bytes_received=", kmer_bytes_received, "\n");
 
-  get_ctgs_timer.stop();
+  timers.get_ctgs.stop();
   delete[] kmer_lists;
   kmer_read_map.clear();
 
-  compute_alns_timer.start();
+  timers.compute_alns.start();
   int num_reads_aligned = 0;
   // compute alignments for each read
   for (auto read_record : read_records) {
@@ -779,7 +803,7 @@ static int align_kmers(KmerCtgDHT<MAX_K> &kmer_ctg_dht, Aligner &aligner,
     delete read_record;
   }
   read_records.clear();
-  compute_alns_timer.stop();
+  timers.compute_alns.stop();
   return num_reads_aligned;
 }
 
@@ -906,18 +930,9 @@ static double do_alignments(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReadsList &pa
 
   aligner.log_ctg_bytes_fetched();
 
-  fetch_ctg_seqs_timer.done_all();
-  aln_cpu_bypass_timer.done_all();
-  get_ctgs_timer.done_all();
-  compute_alns_timer.done_all();
-  aln_kernel_timer.done_all();
-  double aln_kernel_secs = aln_kernel_timer.get_elapsed();
-  fetch_ctg_seqs_timer.clear();
-  assert(fetch_ctg_seqs_timer.get_count() == 0);
-  aln_cpu_bypass_timer.clear();
-  get_ctgs_timer.clear();
-  compute_alns_timer.clear();
-  aln_kernel_timer.clear();
+  timers.done_all();
+  double aln_kernel_secs = timers.aln_kernel.get_elapsed();
+  timers.clear();
   return aln_kernel_secs;
 }
 
