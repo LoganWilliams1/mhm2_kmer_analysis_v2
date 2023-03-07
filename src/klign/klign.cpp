@@ -119,7 +119,6 @@ struct CtgLoc {
 struct CtgAndReadLoc {
   CtgLoc ctg_loc;
   int pos_in_read;
-  bool read_is_rc;
   int cstart;
 };
 
@@ -128,6 +127,11 @@ struct KmerAndCtgLoc {
   Kmer<MAX_K> kmer;
   CtgLoc ctg_loc;
   UPCXX_SERIALIZED_FIELDS(kmer, ctg_loc);
+};
+
+struct CtgLocAndKmerIdx {
+  CtgLoc ctg_loc;
+  int kmer_i;
 };
 
 using CtgAndReadLocsMap = HASH_TABLE<cid_t, vector<CtgAndReadLoc>>;
@@ -162,10 +166,12 @@ template <int MAX_K>
 struct KmersReadsBuffer {
   vector<Kmer<MAX_K>> kmers;
   vector<ReadRecord *> read_records;
+  vector<int> read_offsets;
 
-  void add(const Kmer<MAX_K> &kmer, ReadRecord *read_record) {
+  void add(const Kmer<MAX_K> &kmer, ReadRecord *read_record, int read_offset) {
     kmers.push_back(kmer);
     read_records.push_back(read_record);
+    read_offsets.push_back(read_offset);
   }
 
   size_t size() { return kmers.size(); }
@@ -173,6 +179,7 @@ struct KmersReadsBuffer {
   void clear() {
     kmers.clear();
     read_records.clear();
+    read_offsets.clear();
   }
 };
 
@@ -290,26 +297,42 @@ class KmerCtgDHT {
     kmer_store.clear();
   }
 
-  future<vector<KmerAndCtgLoc<MAX_K>>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
+  future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
     return rpc(
         target_rank,
-        [](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
-          vector<KmerAndCtgLoc<MAX_K>> kmer_ctg_locs;
-          kmer_ctg_locs.reserve(kmers.size());
-          for (auto &kmer : kmers) {
+        [allow_multi_kmers = this->allow_multi_kmers](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
+          BaseTimer rpc_timer;
+          rpc_timer.start();
+          vector<CtgLocAndKmerIdx> ctg_locs;
+          for (int i = 0; i < kmers.size(); i++) {
+            vector<CtgLoc> multi_cids_mapped;
+            auto &kmer = kmers[i];
             assert(kmer.is_least());
             assert(kmer.is_valid());
             const auto it = kmer_map->find(kmer);
             if (it == kmer_map->end()) continue;
             for (auto &ctg_loc : it->second) {
-              kmer_ctg_locs.push_back({kmer, ctg_loc});
+              int min_dist = 100000;
+              for (auto &prev_ctg_loc : multi_cids_mapped) {
+                if (prev_ctg_loc.cid == ctg_loc.cid) {
+                  if (allow_multi_kmers) {
+                    min_dist = min(min_dist, abs(prev_ctg_loc.pos - ctg_loc.pos));
+                  } else {
+                    min_dist = 0;
+                    break;
+                  }
+                }
+              }
+              if (min_dist > 100) {
+                multi_cids_mapped.push_back(ctg_loc);
+                ctg_locs.push_back({ctg_loc, i});
+              }
             }
           }
-          DBG_VERBOSE("processed get_ctgs_with_kmers ", kmers.size(), " ", get_size_str(kmers.size() * sizeof(Kmer<MAX_K>)),
-                      ", returning ", kmer_ctg_locs.size(), " ", get_size_str(kmer_ctg_locs.size() * sizeof(KmerAndCtgLoc<MAX_K>)),
-                      "\n");
-          return kmer_ctg_locs;
+          rpc_timer.stop();
+          timers.get_ctgs.inc_elapsed(rpc_timer.get_elapsed());
+          return ctg_locs;
         },
         kmers, kmer_map);
   }
@@ -564,18 +587,17 @@ class Aligner {
       progress();
       for (auto &ctg_and_read_loc : ctg_and_read_locs.second) {
         int pos_in_read = ctg_and_read_loc.pos_in_read;
-        bool read_kmer_is_rc = ctg_and_read_loc.read_is_rc;
         auto &ctg_loc = ctg_and_read_loc.ctg_loc;
         char orient = '+';
         string rseq_ptr;
-        if (ctg_loc.is_rc != read_kmer_is_rc) {
+        if (ctg_loc.is_rc) {
           // it's revcomp in either contig or read, but not in both or neither
           orient = '-';
           pos_in_read = rlen - (kmer_len + pos_in_read);
           if (rseq_rc.empty()) rseq_rc = revcomp(rseq_fw);
-          rseq_ptr = string(rseq_rc);
+          rseq_ptr = rseq_rc;
         } else {
-          rseq_ptr = string(rseq_fw);
+          rseq_ptr = rseq_fw;
         }
         auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, pos_in_read, rlen);
         // use the whole read, to account for possible indels
@@ -689,6 +711,8 @@ class Aligner {
                  (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), "\n");
     ctg_bytes_fetched = 0;
   }
+
+  void print_cache_stats() { ctg_cache.print_stats(); }
 };
 
 template <int MAX_K>
@@ -750,7 +774,49 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
                                                  KmersReadsBuffer<MAX_K> &kmers_reads_buffer, int64_t &num_alns,
                                                  int64_t &num_excess_alns_reads, int64_t &bytes_sent, int64_t &bytes_received,
                                                  int64_t &num_rpcs) {
-  return make_future<>();
+  assert(kmers_reads_buffer.size());
+  bytes_sent += (sizeof(Kmer<MAX_K>) * kmers_reads_buffer.kmers.size());
+  num_rpcs++;
+  auto fut_get_ctgs = kmer_ctg_dht.get_ctgs_with_kmers(target_rank, kmers_reads_buffer.kmers);
+  auto fut_rpc_returned = fut_get_ctgs.then([target_rank, kmers_reads_buffer, &num_alns, &num_excess_alns_reads,
+                                             &bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
+    bytes_received += (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
+    int kmer_len = Kmer<MAX_K>::get_k();
+    // iterate through the vector of ctg locations, each one is associated with an index in the read list
+    for (int i = 0; i < ctg_locs_and_kmers_idx.size(); i++) {
+      auto &ctg_loc = ctg_locs_and_kmers_idx[i].ctg_loc;
+      auto kmer_idx = ctg_locs_and_kmers_idx[i].kmer_i;
+      auto read_record = kmers_reads_buffer.read_records[kmer_idx];
+      auto rlen = read_record->rlen;
+      auto pos_in_read = kmers_reads_buffer.read_offsets[kmer_idx];
+      auto new_pos_in_read = (ctg_loc.is_rc ? rlen - (kmer_len + pos_in_read) : pos_in_read);
+      auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, new_pos_in_read, rlen);
+      assert(read_record->is_valid());
+      if (KLIGN_MAX_ALNS_PER_READ && read_record->aligned_ctgs_map.size() >= KLIGN_MAX_ALNS_PER_READ) {
+        // too many mappings for this read, stop adding to it
+        num_excess_alns_reads++;
+        continue;
+      }
+      auto it = read_record->aligned_ctgs_map.find(ctg_loc.cid);
+      bool overlaps = false;
+      if (it == read_record->aligned_ctgs_map.end()) {
+        it = read_record->aligned_ctgs_map.insert({ctg_loc.cid, {}}).first;
+      } else {
+        for (auto &prev_ctg_loc : it->second) {
+          if (cstart + rlen >= prev_ctg_loc.cstart && cstart < prev_ctg_loc.cstart + rlen) {
+            overlaps = true;
+            break;
+          }
+        }
+      }
+      if (!overlaps) {
+        it->second.push_back({ctg_loc, pos_in_read, cstart});
+        num_alns++;
+      }
+    }
+  });
+  kmers_reads_buffer.clear();
+  return fut_rpc_returned;
 }
 
 template <int MAX_K>
@@ -764,7 +830,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   int64_t num_kmers = 0;
   int64_t num_rpcs = 0;
 
-  upcxx::future<> fetch_fut = make_future();
+  upcxx::future<> fetch_fut_chain = make_future();
   vector<KmersReadsBuffer<MAX_K>> kmers_reads_buffers(rank_n());
   vector<Kmer<MAX_K>> kmers;
   int kmer_len = Kmer<MAX_K>::get_k();
@@ -796,21 +862,23 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       }
       assert(kmer_lc->is_least());
       auto target = kmer_ctg_dht.get_target_rank(*kmer_lc);
-      kmers_reads_buffers[target].add(*kmer_lc, &read_records[ri]);
-      if (kmers_reads_buffers[target].size() >= KLIGN_KMERS_BUF_SIZE / rank_n())
-        fetch_fut = when_all(fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns,
-                                                       num_excess_alns_reads, bytes_sent, bytes_received, num_rpcs),
-                             fetch_fut);
+      kmers_reads_buffers[target].add(*kmer_lc, &read_records[ri], i);
+      if (kmers_reads_buffers[target].size() >= KLIGN_KMERS_BUF_SIZE / rank_n()) {
+        auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns,
+                                                   num_excess_alns_reads, bytes_sent, bytes_received, num_rpcs);
+        fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+      }
     }
     kmers.clear();
   }
   for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
-    if (kmers_reads_buffers[target].size())
-      fetch_fut = when_all(fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns,
-                                                     num_excess_alns_reads, bytes_sent, bytes_received, num_rpcs),
-                           fetch_fut);
+    if (kmers_reads_buffers[target].size()) {
+      auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
+                                                 bytes_sent, bytes_received, num_rpcs);
+      fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+    }
   }
-  when_all(fetch_fut, progbar.set_done()).wait();
+  when_all(fetch_fut_chain, progbar.set_done()).wait();
   upcxx_utils::flush_outstanding_futures();
   barrier();
   auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
@@ -829,6 +897,51 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
   }
   timers.fetch_ctg_maps.stop();
+  barrier();
+}
+
+template <int MAX_K>
+void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
+                  bool post_asm, bool compute_cigar, bool use_blastn_scores, int64_t all_num_ctgs) {
+  timers.compute_alns.start();
+  int kmer_len = Kmer<MAX_K>::get_k();
+  int64_t num_reads_aligned = 0;
+  int64_t num_reads = 0;
+  Alns alns_for_sample;
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, post_asm, compute_cigar, use_blastn_scores, all_num_ctgs);
+  string read_seq, read_id, read_quals;
+  for (auto read_record : read_records) {
+    progress();
+    if (kmer_len > read_record.rlen) continue;
+    num_reads++;
+    // compute alignments
+    if (read_record.aligned_ctgs_map.size()) {
+      num_reads_aligned++;
+      packed_reads->get_read(read_record.index, read_id, read_seq, read_quals);
+      aligner.compute_alns_for_read(&read_record.aligned_ctgs_map, read_id, read_seq, read_group_id);
+    }
+  }
+  aligner.flush_remaining(read_group_id);
+  barrier();
+  read_records.clear();
+  aligner.print_cache_stats();
+  aligner.sort_alns();
+  aligner.log_ctg_bytes_fetched();
+
+  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
+  auto all_num_reads_aligned = reduce_one(num_reads_aligned, op_fast_add, 0).wait();
+  auto all_num_alns = reduce_one(alns_for_sample.size(), op_fast_add, 0).wait();
+  auto all_num_perfect = aligner.get_num_perfect_alns();
+  auto all_num_overlaps = aligner.get_num_overlaps();
+  auto all_num_bad = alns.get_num_bad();
+
+  SLOG_VERBOSE("Found ", all_num_alns, " alignments of which ", perc_str(all_num_perfect, all_num_alns), " are perfect and ",
+               perc_str(all_num_bad, all_num_alns), " are bad\n");
+  if (all_num_overlaps) SLOG_VERBOSE("Dropped ", perc_str(all_num_overlaps, all_num_alns), " alignments because of overlaps\n");
+  SLOG_VERBOSE("Mapped ", perc_str(all_num_reads_aligned, all_num_reads), " reads to contigs, average mappings per read ",
+               (double)all_num_alns / all_num_reads_aligned, "\n");
+  alns.append(alns_for_sample);
+  timers.compute_alns.stop();
   barrier();
 }
 
@@ -854,9 +967,8 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records);
-    //    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, post_asm, compute_cigar,
-    //    use_blastn_scores,
-    //                        all_num_ctgs);
+    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, allow_multi_kmers, compute_cigar,
+                        use_blastn_scores, all_num_ctgs);
     read_group_id++;
   }
   barrier();
