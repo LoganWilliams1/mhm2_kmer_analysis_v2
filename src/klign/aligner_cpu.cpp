@@ -94,8 +94,9 @@ int get_cigar_length(const string &cigar) {
   return base_count;
 }
 
-CPUAligner::CPUAligner(bool compute_cigar, bool use_blastn_scores)
-    : ssw_aligner() {
+CPUAligner::CPUAligner(bool allow_multi, bool compute_cigar, bool use_blastn_scores)
+    : ssw_aligner()
+    , allow_multi(allow_multi) {
   // aligner construction: SSW internal defaults are 2 2 3 1
   ssw_aligner.Clear();
   if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
@@ -107,7 +108,7 @@ CPUAligner::CPUAligner(bool compute_cigar, bool use_blastn_scores)
 }
 
 void CPUAligner::ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter, Alns *alns,
-                                Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id) {
+                                Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id, bool allow_multi) {
   // debugging with these alignments
   // missing from mhm:
   // CP000510.1-101195/2	Contig6043	96.667	150	5	0	1	150	109	258	1.44e-66	249
@@ -125,7 +126,7 @@ void CPUAligner::ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, Stri
   aln.set(ssw_aln.ref_begin, ssw_aln.ref_end, ssw_aln.query_begin, ssw_aln.query_end, ssw_aln.sw_score, ssw_aln.sw_score_next_best,
           ssw_aln.mismatches, read_group_id);
   if (ssw_filter.report_cigar) aln.set_sam_string(rseq, ssw_aln.cigar_string);
-  alns->add_aln(aln);
+  alns->add_aln(aln, allow_multi);
   /*
   if (ssw_filter.report_cigar && (aln.read_id == "CP000510.1-101195/2")) {
     cout << KLGREEN << "aln: " << aln.to_string() << KNORM << endl;
@@ -136,15 +137,15 @@ void CPUAligner::ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, Stri
   }*/
 }
 
-void CPUAligner::ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id) {
-  ssw_align_read(ssw_aligner, ssw_filter, alns, aln, cseq, rseq, read_group_id);
+void CPUAligner::ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id, bool allow_multi) {
+  ssw_align_read(ssw_aligner, ssw_filter, alns, aln, cseq, rseq, read_group_id, allow_multi);
 }
 
 upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns,
-                                            IntermittentTimer &aln_kernel_timer) {
+                                            IntermittentTimer &aln_kernel_timer, bool allow_multi) {
   AsyncTimer t("ssw_align_block (thread)");
-  future<> fut =
-      upcxx_utils::execute_in_thread_pool([&ssw_aligner = this->ssw_aligner, &ssw_filter = this->ssw_filter, aln_block_data, t]() {
+  future<> fut = upcxx_utils::execute_in_thread_pool(
+      [&ssw_aligner = this->ssw_aligner, &ssw_filter = this->ssw_filter, aln_block_data, t, allow_multi]() {
         t.start();
         assert(!aln_block_data->kernel_alns.empty());
         DBG_VERBOSE("Starting _ssw_align_block of ", aln_block_data->kernel_alns.size(), "\n");
@@ -154,7 +155,7 @@ upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block
           string &cseq = aln_block_data->ctg_seqs[i];
           string &rseq = aln_block_data->read_seqs[i];
           DBG_VERBOSE("aligning ", i, " of ", aln_block_data->kernel_alns.size(), " ", aln.read_id, "\n");
-          ssw_align_read(ssw_aligner, ssw_filter, alns_ptr, aln, cseq, rseq, aln_block_data->read_group_id);
+          ssw_align_read(ssw_aligner, ssw_filter, alns_ptr, aln, cseq, rseq, aln_block_data->read_group_id, allow_multi);
         }
         t.stop();
       });

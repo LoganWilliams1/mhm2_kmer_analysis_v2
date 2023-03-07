@@ -58,8 +58,8 @@ using namespace upcxx_utils;
 static adept_sw::GPUDriver *gpu_driver;
 
 static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, bool report_cigar,
-                                       IntermittentTimer &aln_kernel_timer) {
-  future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &aln_kernel_timer] {
+                                       IntermittentTimer &aln_kernel_timer, bool allow_multi) {
+  future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &aln_kernel_timer, allow_multi] {
     DBG_VERBOSE("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
     aln_kernel_timer.start();
 
@@ -84,7 +84,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
         SWARN("Trying to produce SAM outputs with GPU alignments, which is not supported");
         aln.set_sam_string("*", "*");  // FIXME until there is a valid:ssw_aln.cigar_string);
       }
-      aln_block_data->alns->add_aln(aln);
+      aln_block_data->alns->add_aln(aln, allow_multi);
     }
   });
   fut = fut.then([alns = alns, aln_block_data]() {
@@ -126,7 +126,7 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     assert(!read_seqs.empty());
 #ifndef NO_KLIGN_CPU_WORK_STEAL
     // steal one from the block
-    cpu_aligner.ssw_align_read(alns, kernel_alns.back(), ctg_seqs.back(), read_seqs.back(), read_group_id);
+    cpu_aligner.ssw_align_read(alns, kernel_alns.back(), ctg_seqs.back(), read_seqs.back(), read_group_id, cpu_aligner.allow_multi);
     kernel_alns.pop_back();
     ctg_seqs.pop_back();
     read_seqs.pop_back();
@@ -152,15 +152,17 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     // for now, the GPU alignment doesn't support cigars
     if (!cpu_aligner.ssw_filter.report_cigar && gpu_utils::gpus_present()) {
       SLOG_VERBOSE("GPU align block\n");
-      active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer);
+      active_kernel_fut =
+          gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer, cpu_aligner.allow_multi);
     } else if (!gpu_utils::gpus_present()) {
-      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
+      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer, cpu_aligner.allow_multi);
     } else {
 #ifdef __PPC64__
       SWARN("FIXME Issue #49,#60 no cigars for gpu alignments\n");
-      active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer);
+      active_kernel_fut =
+          gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer, cpu_aligner.allow_multi);
 #else
-      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
+      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer, cpu_aligner.allow_multi);
 #endif
     }
   }

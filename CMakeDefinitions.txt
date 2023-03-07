@@ -76,8 +76,6 @@ add_definitions(-DSHUFFLE_KMER_LEN=31)
 
 # max allowed alignments per read (to reduce overhead & imbalance) - set to 0 to have no limit
 add_definitions(-DKLIGN_MAX_ALNS_PER_READ=20)
-# limit on how many contigs to fetch for a read at a time - this is across all target ranks, so a form of buffering
-add_definitions(-DKLIGN_CTG_FETCH_BUF_SIZE=1000000)
 # decreasing this value increases the alignment computation time, and it may improve results slightly
 add_definitions(-DKLIGN_SEED_SPACE=8)
 # max number of unaligned bases to allow on either side of an alignment
@@ -88,6 +86,11 @@ add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 # turns off code used for kmer caches (i.e. disables --klign-kmer-cache option)
 add_definitions(-DUSE_KMER_CACHE)
+# number of rget requests buffered together for a target rank
+add_definitions(-DKLIGN_RGET_BUF_SIZE=1000)
+# how many kmers are buffered before doing a kmer-ctg-map fetch
+add_definitions(-DKLIGN_KMERS_BUF_SIZE=100000)
+
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)

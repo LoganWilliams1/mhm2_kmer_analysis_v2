@@ -230,7 +230,7 @@ void Alns::clear() {
   vector<Aln>().swap(alns);
 }
 
-void Alns::add_aln(Aln &aln) {
+void Alns::add_aln(Aln &aln, bool allow_multi) {
 #ifdef DEBUG
   // check for duplicate alns to this read - do this backwards because only the most recent entries could be for this read
   for (auto it = alns.rbegin(); it != alns.rend(); ++it) {
@@ -253,7 +253,7 @@ void Alns::add_aln(Aln &aln) {
   auto unaligned = unaligned_left + unaligned_right;
   int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
   double identity = 100.0 * (aln_len - aln.mismatches - unaligned) / aln_len;
-  if (!aln.sam_string.empty() ||
+  if (!aln.sam_string.empty() || allow_multi ||
       (unaligned_left <= KLIGN_UNALIGNED_THRES && unaligned_right <= KLIGN_UNALIGNED_THRES))  // && identity >= 95))
     alns.push_back(aln);
   else
