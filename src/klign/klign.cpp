@@ -527,7 +527,8 @@ class Aligner {
       , read_seqs({})
       , active_kernel_fut(make_future())
       , cpu_aligner(allow_multi, compute_cigar, use_blastn_scores)
-      , alns(&alns) {
+      , alns(&alns)
+      , rget_requests(rank_n()) {
     ctg_cache.init(3 * all_num_ctgs / rank_n() + 1024);
     init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
                  (int)cpu_aligner.ssw_aligner.get_gap_opening_penalty(), (int)cpu_aligner.ssw_aligner.get_gap_extending_penalty(),
