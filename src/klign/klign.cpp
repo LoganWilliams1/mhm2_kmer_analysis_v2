@@ -398,14 +398,15 @@ class CtgCache {
     auto msm_ctg_lookups = min_sum_max_reduce_one(lookups + local_hits, 0).wait();
     auto msm_ctg_refetches = min_sum_max_reduce_one(refetches, 0).wait();
     auto msm_ctg_clobberings = min_sum_max_reduce_one(cache.get_clobberings(), 0).wait();
-    SLOG_VERBOSE("Hits on ctg cache: ", perc_str(msm_ctg_cache_hits.sum, msm_ctg_lookups.sum), " (process 0 cache load ",
-                 (100 * cache.size()) / cache.capacity(), " and clobberings ", cache.get_clobberings(), ")\n");
-    SLOG_VERBOSE("Local contig hits bypassing cache: ", perc_str(msm_ctg_local_hits.sum, msm_ctg_lookups.sum), "\n");
-    SLOG_VERBOSE("ctg_local_hits: ", msm_ctg_local_hits.to_string(), "\n");
-    SLOG_VERBOSE("ctg_cache_hits: ", msm_ctg_cache_hits.to_string(), "\n");
-    SLOG_VERBOSE("ctg_lookups: ", msm_ctg_lookups.to_string(), "\n");
-    SLOG_VERBOSE("ctg_refetches: ", msm_ctg_refetches.to_string(), "\n");
-    SLOG_VERBOSE("ctg_cache_clobberings: ", msm_ctg_clobberings.to_string(), "\n");
+    SLOG_VERBOSE("Contig cache stats:\n");
+    SLOG_VERBOSE("  local hits bypassing cache: ", perc_str(msm_ctg_local_hits.sum, msm_ctg_lookups.sum), " ",
+                 msm_ctg_local_hits.to_string(), "\n");
+    SLOG_VERBOSE("  lookups ", msm_ctg_lookups.to_string(), "\n");
+    SLOG_VERBOSE("  hits ", perc_str(msm_ctg_cache_hits.sum, msm_ctg_lookups.sum), " ", msm_ctg_cache_hits.to_string(), "\n");
+    SLOG_VERBOSE("  refetches ", perc_str(msm_ctg_refetches.sum, msm_ctg_lookups.sum), " ", msm_ctg_refetches.to_string(), "\n");
+    SLOG_VERBOSE("  clobberings ", perc_str(msm_ctg_clobberings.sum, msm_ctg_lookups.sum), " ", msm_ctg_clobberings.to_string(),
+                 "\n");
+    SLOG_VERBOSE("  process 0 load factor ", fixed, setprecision(3), (double)cache.size() / cache.capacity(), "\n");
   }
 
   void insert(cid_t cid, const string &seq) {
@@ -606,10 +607,10 @@ class Aligner {
         assert(overlap_len <= 2 * rlen);
         string_view ctg_seq;
         bool on_node = ctg_loc.seq_gptr.is_local();
-#ifdef DEBUG
-        // test both on node and off node ctg cache
+        // #ifdef DEBUG
+        //  test both on node and off node ctg cache
         if (on_node) on_node = (ctg_loc.seq_gptr.where() % 2) == (rank_me() % 2);
-#endif
+        // #endif
         if (on_node) {
           // on same node already
           ctg_cache.local_hits++;
@@ -651,7 +652,8 @@ class Aligner {
     auto all_ctg_bytes_fetched = reduce_one(ctg_bytes_fetched, op_fast_add, 0).wait();
     auto max_ctg_bytes_fetched = reduce_one(ctg_bytes_fetched, op_fast_max, 0).wait();
     SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
-                 (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), "\n");
+                 (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
+                 get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
     ctg_bytes_fetched = 0;
   }
 
