@@ -359,7 +359,6 @@ int main(int argc, char **argv) {
     }
     packed_reads_list.clear();
     LOG_MEM("Closed all fastq");
-
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
     stage_timers.dump_ctgs->start();
