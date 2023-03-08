@@ -500,7 +500,7 @@ class Aligner {
         ctg_bytes_fetched += clen;
       }
     }
-    SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
+    //SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
     rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
     timers.rget_ctg_seqs.stop();
@@ -829,7 +829,6 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   barrier();
   auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
   auto all_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
-  auto kmers_bytes_sent = all_num_kmers * Kmer<MAX_K>::get_N_LONGS() * sizeof(longs_t);
   auto all_bytes_sent = reduce_one(bytes_sent, op_fast_add, 0).wait();
   auto all_bytes_received = reduce_one(bytes_received, op_fast_add, 0).wait();
   auto all_num_rpcs = reduce_one(num_rpcs, op_fast_add, 0).wait();
