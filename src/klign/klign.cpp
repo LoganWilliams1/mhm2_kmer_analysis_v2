@@ -569,12 +569,8 @@ class Aligner {
   }
 
   void sort_alns() {
-    if (!kernel_alns.empty()) {
-      DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
-    }
-    if (!active_kernel_fut.ready()) {
-      SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
-    }
+    if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
+    if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
     active_kernel_fut.wait();
     alns->sort_alns().wait();
   }
