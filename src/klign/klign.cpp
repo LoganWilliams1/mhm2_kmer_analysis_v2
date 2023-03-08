@@ -190,8 +190,6 @@ struct RgetRequest {
   int read_group_id;
 };
 
-static int seed_space = 1;
-
 template <int MAX_K>
 class KmerCtgDHT {
   using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, vector<CtgLoc>>;
@@ -500,7 +498,7 @@ class Aligner {
         ctg_bytes_fetched += clen;
       }
     }
-    //SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
+    // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
     rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
     timers.rget_ctg_seqs.stop();
@@ -651,9 +649,10 @@ class Aligner {
     auto all_rget_calls = reduce_one(rget_calls, op_fast_add, 0).wait();
     auto all_ctg_bytes_fetched = reduce_one(ctg_bytes_fetched, op_fast_add, 0).wait();
     auto max_ctg_bytes_fetched = reduce_one(ctg_bytes_fetched, op_fast_max, 0).wait();
-    SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
-                 (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
-                 get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
+    if (all_ctg_bytes_fetched > 0)
+      SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
+                   (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
+                   get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
     ctg_bytes_fetched = 0;
   }
 
@@ -767,7 +766,7 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
 }
 
 template <int MAX_K>
-void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records) {
+void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records, int seed_space) {
   timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
@@ -911,7 +910,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   int read_group_id = 0;
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
-    fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records);
+    fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space);
     compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, allow_multi_kmers, compute_cigar,
                         use_blastn_scores, all_num_ctgs);
     read_group_id++;
