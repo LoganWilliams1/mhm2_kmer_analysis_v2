@@ -72,19 +72,17 @@ using namespace upcxx_utils;
 using cid_t = int64_t;
 
 struct KlignTimers {
-  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, get_ctgs, rget_ctg_seqs, aln_kernel;
+  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel;
 
   KlignTimers()
       : fetch_ctg_maps("klign: fetch ctg maps")
       , compute_alns("klign: compute alns")
-      , get_ctgs("klign: get ctgs with kmers")
       , rget_ctg_seqs("klign: rget ctg seqs")
       , aln_kernel("klign: aln kernel") {}
 
   void done_all() {
     fetch_ctg_maps.done_all();
     compute_alns.done_all();
-    get_ctgs.done_all();
     rget_ctg_seqs.done_all();
     aln_kernel.done_all();
   }
@@ -92,13 +90,10 @@ struct KlignTimers {
   void clear() {
     fetch_ctg_maps.clear();
     compute_alns.clear();
-    get_ctgs.clear();
     rget_ctg_seqs.clear();
     aln_kernel.clear();
   }
 };
-
-static KlignTimers klign_timers;
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
                   int rlen_limit);
@@ -292,7 +287,7 @@ class KmerCtgDHT {
     return rpc(
         target_rank,
         [allow_multi_kmers = this->allow_multi_kmers](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
-          klign_timers.get_ctgs.start();
+          // timers.get_ctgs.start();
           vector<CtgLocAndKmerIdx> ctg_locs;
           for (int i = 0; i < kmers.size(); i++) {
             vector<CtgLoc> multi_cids_mapped;
@@ -319,7 +314,7 @@ class KmerCtgDHT {
               }
             }
           }
-          klign_timers.get_ctgs.stop();
+          // timers.get_ctgs.stop();
           return ctg_locs;
         },
         kmers, kmer_map);
@@ -378,7 +373,11 @@ class CtgCache {
   int64_t lookups = 0;
   int64_t local_hits = 0;
 
-  void init(size_t size) {
+  CtgCache(size_t size)
+      : refetches(0)
+      , hits(0)
+      , lookups(0)
+      , local_hits(0) {
     cache.set_invalid_key(std::numeric_limits<cid_t>::max());
     cache.reserve(size);
   }
@@ -442,7 +441,7 @@ class Aligner {
   vector<vector<RgetRequest>> rget_requests;
 
   void align_read(const string &rname, int64_t cid, const string_view &rseq, const string_view &ctg_seq, int rstart, int cstart,
-                  char orient, int overlap_len, int read_group_id) {
+                  char orient, int overlap_len, int read_group_id, KlignTimers &timers) {
     num_alns++;
     size_t clen = ctg_seq.length();
     size_t rlen = rseq.length();
@@ -469,7 +468,7 @@ class Aligner {
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {
         kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen,
-                           max_rlen, klign_timers.aln_kernel);
+                           max_rlen, timers.aln_kernel);
         clear_aln_bufs();
       }
     }
@@ -482,7 +481,7 @@ class Aligner {
     ctg_cache.clear();
   }
 
-  void do_rget_irregular(int target, bool insert_into_cache) {
+  void do_rget_irregular(int target, bool insert_into_cache, KlignTimers &timers) {
     vector<pair<global_ptr<char>, size_t>> src;
     vector<pair<char *, size_t>> dest;
     HASH_TABLE<cid_t, string> ctgs_fetched;
@@ -497,16 +496,17 @@ class Aligner {
       }
     }
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
-    klign_timers.rget_ctg_seqs.start();
+    timers.rget_ctg_seqs.start();
     rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
-    klign_timers.rget_ctg_seqs.stop();
+    timers.rget_ctg_seqs.stop();
     rget_calls++;
     for (auto &req : rget_requests[target]) {
       auto cid = req.ctg_loc.cid;
       auto it = ctgs_fetched.find(cid);
       if (it == ctgs_fetched.end()) DIE("Could not find the sequence for the contig ", cid);
       string &ctg_seq = it->second;
-      align_read(req.rname, cid, req.read_seq, ctg_seq, req.rstart, req.cstart, req.orient, req.overlap_len, req.read_group_id);
+      align_read(req.rname, cid, req.read_seq, ctg_seq, req.rstart, req.cstart, req.orient, req.overlap_len, req.read_group_id,
+                 timers);
       if (insert_into_cache) ctg_cache.insert(cid, ctg_seq);
     }
     rget_requests[target].clear();
@@ -525,8 +525,8 @@ class Aligner {
       , active_kernel_fut(make_future())
       , cpu_aligner(allow_multi, compute_cigar, use_blastn_scores)
       , alns(&alns)
-      , rget_requests(rank_n()) {
-    ctg_cache.init(3 * all_num_ctgs / rank_n() + 1024);
+      , rget_requests(rank_n())
+      , ctg_cache(3 * all_num_ctgs / rank_n() + 1024) {
     init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
                  (int)cpu_aligner.ssw_aligner.get_gap_opening_penalty(), (int)cpu_aligner.ssw_aligner.get_gap_extending_penalty(),
                  (int)cpu_aligner.ssw_aligner.get_ambiguity_penalty(), rlen_limit);
@@ -560,16 +560,16 @@ class Aligner {
     max_rlen = 0;
   }
 
-  void flush_remaining(int read_group_id) {
+  void flush_remaining(int read_group_id, KlignTimers &timers) {
     BaseTimer t(__FILEFUNC__);
     t.start();
     for (auto target : upcxx_utils::foreach_rank_by_node()) {
-      if (rget_requests[target].size()) do_rget_irregular(target, false);
+      if (rget_requests[target].size()) do_rget_irregular(target, false, timers);
     }
     auto num = kernel_alns.size();
     if (num) {
       kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen, max_rlen,
-                         klign_timers.aln_kernel);
+                         timers.aln_kernel);
       clear_aln_bufs();
     }
     bool is_ready = active_kernel_fut.ready();
@@ -577,7 +577,8 @@ class Aligner {
     t.stop();
   }
 
-  void compute_alns_for_read(CtgAndReadLocsMap &aligned_ctgs_map, const string &rname, const string &rseq_fw, int read_group_id) {
+  void compute_alns_for_read(CtgAndReadLocsMap &aligned_ctgs_map, const string &rname, const string &rseq_fw, int read_group_id,
+                             KlignTimers &timers) {
     int rlen = rseq_fw.length();
     string rseq_rc;
     string tmp_ctg;
@@ -623,11 +624,12 @@ class Aligner {
             // not in cache - need to fetch
             auto target = ctg_loc.seq_gptr.where();
             rget_requests[target].push_back({ctg_loc, rname, rseq, rstart, cstart, orient, overlap_len, read_group_id});
-            if (rget_requests[target].size() == KLIGN_RGET_BUF_SIZE) do_rget_irregular(target, true);
+            if (rget_requests[target].size() == KLIGN_RGET_BUF_SIZE) do_rget_irregular(target, true, timers);
           }
         }
         // ctg was either in the cache or local
-        if (!ctg_seq.empty()) align_read(rname, ctg_loc.cid, rseq, ctg_seq, rstart, cstart, orient, overlap_len, read_group_id);
+        if (!ctg_seq.empty())
+          align_read(rname, ctg_loc.cid, rseq, ctg_seq, rstart, cstart, orient, overlap_len, read_group_id, timers);
       }
     }
   }
@@ -764,8 +766,9 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
 }
 
 template <int MAX_K>
-void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records, int seed_space) {
-  klign_timers.fetch_ctg_maps.start();
+void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records, int seed_space,
+                    KlignTimers &timers) {
+  timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
   int64_t num_reads = 0;
@@ -838,14 +841,14 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
     if (all_excess_alns_reads)
       SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
   }
-  klign_timers.fetch_ctg_maps.stop();
+  timers.fetch_ctg_maps.stop();
   barrier();
 }
 
 template <int MAX_K>
 void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
-                  bool post_asm, bool compute_cigar, bool use_blastn_scores, int64_t all_num_ctgs) {
-  klign_timers.compute_alns.start();
+                  bool post_asm, bool compute_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+  timers.compute_alns.start();
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
@@ -860,10 +863,10 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
     if (read_record.aligned_ctgs_map.size()) {
       num_reads_aligned++;
       packed_reads->get_read(read_record.index, read_id, read_seq, read_quals);
-      aligner.compute_alns_for_read(read_record.aligned_ctgs_map, read_id, read_seq, read_group_id);
+      aligner.compute_alns_for_read(read_record.aligned_ctgs_map, read_id, read_seq, read_group_id, timers);
     }
   }
-  aligner.flush_remaining(read_group_id);
+  aligner.flush_remaining(read_group_id, timers);
   barrier();
   read_records.clear();
   aligner.print_cache_stats();
@@ -883,7 +886,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   SLOG_VERBOSE("Mapped ", perc_str(all_num_reads_aligned, all_num_reads), " reads to contigs, average mappings per read ",
                (double)all_num_alns / all_num_reads_aligned, "\n");
   alns.append(alns_for_sample);
-  klign_timers.compute_alns.stop();
+  timers.compute_alns.stop();
   barrier();
 }
 
@@ -893,6 +896,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
                        bool use_blastn_scores, int min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
   Kmer<MAX_K>::set_k(kmer_len);
+  KlignTimers timers;
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
   bool allow_multi_kmers = compute_cigar;
@@ -908,15 +912,15 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   int read_group_id = 0;
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
-    fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space);
+    fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
     compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, allow_multi_kmers, compute_cigar,
-                        use_blastn_scores, all_num_ctgs);
+                        use_blastn_scores, all_num_ctgs, timers);
     read_group_id++;
   }
   barrier();
-  klign_timers.done_all();
-  double aln_kernel_elapsed = klign_timers.aln_kernel.get_elapsed();
-  klign_timers.clear();
+  timers.done_all();
+  double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
+  timers.clear();
   barrier();
   auto num_alns = alns.size();
   auto num_dups = alns.get_num_dups();
