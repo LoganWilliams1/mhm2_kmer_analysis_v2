@@ -93,7 +93,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     begin_gasnet_stats("alignment sk = " + to_string(scaff_kmer_len));
     double kernel_elapsed =
         find_alignments<MAX_K>(scaff_kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
-                               seed_space, rlen_limit, false, false, options->optimize_for == "contiguity", 0);
+                               seed_space, rlen_limit, false, options->optimize_for == "contiguity", 0);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.alignments->stop();
