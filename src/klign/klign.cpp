@@ -604,10 +604,10 @@ class Aligner {
         assert(overlap_len <= 2 * rlen);
         string_view ctg_seq;
         bool on_node = ctg_loc.seq_gptr.is_local();
-        // #ifdef DEBUG
+#ifdef DEBUG
         //   test both on node and off node ctg cache
         if (on_node) on_node = (ctg_loc.seq_gptr.where() % 2) == (rank_me() % 2);
-        // #endif
+#endif
         if (on_node) {
           // on same node already
           ctg_cache.local_hits++;
