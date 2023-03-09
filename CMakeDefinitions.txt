@@ -84,12 +84,10 @@ add_definitions(-DKLIGN_UNALIGNED_THRES=1)
 add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 # the block size of alignments to be dispatched to the GPU
 add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
-# turns on code used for contig caches
-#add_definitions(-DUSE_CONTIG_CACHE)
 # number of rget requests buffered together for a target rank
 add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
 # how many kmers are buffered before doing a kmer-ctg-map fetch
-add_definitions(-DKLIGN_KMERS_BUF_SIZE=100000)
+add_definitions(-DKLIGN_KMERS_BUF_SIZE=10000000)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
