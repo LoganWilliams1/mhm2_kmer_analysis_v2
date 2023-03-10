@@ -787,8 +787,10 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   Alns alns_for_sample;
   Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, compute_cigar, use_blastn_scores, all_num_ctgs);
   string read_seq, read_id, read_quals;
+  ProgressBar progbar(packed_reads->get_local_num_reads(), "Computing alignments");
   for (auto &read_record : read_records) {
     progress();
+    progbar.update();
     if (kmer_len > read_record.rlen) continue;
     num_reads++;
     // compute alignments
@@ -800,6 +802,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   }
   aligner.flush_remaining(read_group_id, timers);
   barrier();
+  progbar.set_done().wait();
   read_records.clear();
   aligner.sort_alns();
   aligner.log_ctg_bytes_fetched();
