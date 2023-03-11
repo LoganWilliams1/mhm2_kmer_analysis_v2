@@ -414,7 +414,6 @@ class Aligner {
       ctg_seqs.emplace_back(cseq);
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {
-        SWARN("cpu_aligner.report_cigar ", cpu_aligner.ssw_filter.report_cigar);
         kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen,
                            max_rlen, timers.aln_kernel);
         clear_aln_bufs();
