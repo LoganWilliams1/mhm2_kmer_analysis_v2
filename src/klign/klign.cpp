@@ -414,6 +414,7 @@ class Aligner {
       ctg_seqs.emplace_back(cseq);
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {
+        SWARN("cpu_aligner.report_cigar ", cpu_aligner.ssw_filter.report_cigar);
         kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen,
                            max_rlen, timers.aln_kernel);
         clear_aln_bufs();
@@ -785,7 +786,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
   Alns alns_for_sample;
-  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, compute_cigar, use_blastn_scores, all_num_ctgs);
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, post_asm, compute_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(), "Computing alignments");
   for (auto &read_record : read_records) {
