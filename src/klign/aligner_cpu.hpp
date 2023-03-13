@@ -79,15 +79,13 @@ struct CPUAligner {
   // default aligner and filter
   StripedSmithWaterman::Aligner ssw_aligner;
   StripedSmithWaterman::Filter ssw_filter;
-  bool allow_multi = false;
 
-  CPUAligner(bool allow_multi, bool compute_cigar, bool use_blastn_scores);
+  CPUAligner(bool report_cigar, bool use_blastn_scores);
 
   static void ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter, Alns *alns,
-                             Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id, bool allow_multi);
+                             Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id);
 
-  void ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id, bool allow_multi);
+  void ssw_align_read(Alns *alns, Aln &aln, const string &cseq, const string &rseq, int read_group_id);
 
-  upcxx::future<> ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, IntermittentTimer &aln_kernel_timer,
-                                  bool allow_multi);
+  upcxx::future<> ssw_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, IntermittentTimer &aln_kernel_timer);
 };

@@ -212,12 +212,11 @@ class KmerCtgDHT {
                                 allow_multi_kmers](KmerAndCtgLoc<MAX_K> kmer_and_ctg_loc) {
       CtgLoc ctg_loc = kmer_and_ctg_loc.ctg_loc;
       auto it = kmer_map->find(kmer_and_ctg_loc.kmer);
-      if (allow_multi_kmers) {
-        if (it == kmer_map->end()) it = kmer_map->insert({kmer_and_ctg_loc.kmer, {}}).first;
-        it->second.push_back(ctg_loc);
+      if (it == kmer_map->end()) {
+        // always insert if not found
+        it = kmer_map->insert({kmer_and_ctg_loc.kmer, {ctg_loc}}).first;
       } else {
-        if (it == kmer_map->end()) {
-          it = kmer_map->insert({kmer_and_ctg_loc.kmer, {}}).first;
+        if (allow_multi_kmers) {
           it->second.push_back(ctg_loc);
         } else {
           // there are conflicts so don't allow any kmer mappings
@@ -286,34 +285,17 @@ class KmerCtgDHT {
     return rpc(
         target_rank,
         [allow_multi_kmers = this->allow_multi_kmers](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
-          // timers.get_ctgs.start();
           vector<CtgLocAndKmerIdx> ctg_locs;
           for (int i = 0; i < kmers.size(); i++) {
-            vector<CtgLoc> multi_cids_mapped;
             auto &kmer = kmers[i];
             assert(kmer.is_least());
             assert(kmer.is_valid());
             const auto it = kmer_map->find(kmer);
             if (it == kmer_map->end()) continue;
             for (auto &ctg_loc : it->second) {
-              int min_dist = 100000;
-              for (auto &prev_ctg_loc : multi_cids_mapped) {
-                if (prev_ctg_loc.cid == ctg_loc.cid) {
-                  if (allow_multi_kmers) {
-                    min_dist = min(min_dist, abs(prev_ctg_loc.pos - ctg_loc.pos));
-                  } else {
-                    min_dist = 0;
-                    break;
-                  }
-                }
-              }
-              if (min_dist > 100) {
-                multi_cids_mapped.push_back(ctg_loc);
-                ctg_locs.push_back({ctg_loc, i});
-              }
+              ctg_locs.push_back({ctg_loc, i});
             }
           }
-          // timers.get_ctgs.stop();
           return ctg_locs;
         },
         kmers, kmer_map);
@@ -402,7 +384,7 @@ class Aligner {
       Aln aln(rname, cid, rstart, rstop, rlen, cstart, cstop, clen, orient, score1, 0, 0, read_group_id);
       assert(aln.is_valid());
       if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(rseq, to_string(overlap_len) + "=");
-      alns->add_aln(aln, cpu_aligner.allow_multi);
+      alns->add_aln(aln);
     } else {
       max_clen = max((int64_t)cseq.size(), max_clen);
       max_rlen = max((int64_t)rseq.size(), max_rlen);
@@ -458,7 +440,7 @@ class Aligner {
   }
 
  public:
-  Aligner(int kmer_len, Alns &alns, int rlen_limit, bool allow_multi, bool compute_cigar, bool use_blastn_scores)
+  Aligner(int kmer_len, Alns &alns, int rlen_limit, bool report_cigar, bool use_blastn_scores)
       : num_alns(0)
       , num_perfect_alns(0)
       , num_overlaps(0)
@@ -467,7 +449,7 @@ class Aligner {
       , ctg_seqs({})
       , read_seqs({})
       , active_kernel_fut(make_future())
-      , cpu_aligner(allow_multi, compute_cigar, use_blastn_scores)
+      , cpu_aligner(report_cigar, use_blastn_scores)
       , alns(&alns)
       , rget_requests(rank_n())
       , rget_calls(0)
@@ -779,13 +761,13 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 
 template <int MAX_K>
 void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
-                  bool post_asm, bool compute_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+                  bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
   timers.compute_alns.start();
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
   Alns alns_for_sample;
-  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, post_asm, compute_cigar, use_blastn_scores);
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(), "Computing alignments");
   for (auto &read_record : read_records) {
@@ -826,17 +808,17 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
 
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
-                       Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool compute_cigar, bool use_blastn_scores,
+                       Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
                        int min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
   Kmer<MAX_K>::set_k(kmer_len);
   KlignTimers timers;
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
-  bool allow_multi_kmers = compute_cigar;
   uint64_t num_ctg_kmers = 0;
   for (auto &ctg : ctgs)
     if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+  bool allow_multi_kmers = report_cigar;
   KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   barrier();
   build_alignment_index(kmer_ctg_dht, ctgs, min_ctg_len);
@@ -847,8 +829,8 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, allow_multi_kmers, compute_cigar,
-                        use_blastn_scores, all_num_ctgs, timers);
+    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, use_blastn_scores, all_num_ctgs,
+                        timers);
     read_group_id++;
   }
   barrier();

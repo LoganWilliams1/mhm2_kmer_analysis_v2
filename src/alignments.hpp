@@ -87,7 +87,7 @@ class Alns {
 
   bool check_dup(Aln &aln);
 
-  void add_aln(Aln &aln, bool allow_multi);
+  void add_aln(Aln &aln);
 
   void append(Alns &more_alns);
 

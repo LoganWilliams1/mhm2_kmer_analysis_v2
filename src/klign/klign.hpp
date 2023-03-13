@@ -48,7 +48,7 @@
 
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
-                       Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool compute_cigar, bool use_blastn_scores,
+                       Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
                        int min_ctg_len);
 
 // Reduce compile time by instantiating templates of common types
