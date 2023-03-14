@@ -727,6 +727,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns,
                                                    num_excess_alns_reads, bytes_sent, bytes_received, num_rpcs);
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+        upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
       }
     }
     kmers.clear();
@@ -736,6 +737,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
                                                  bytes_sent, bytes_received, num_rpcs);
       fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+      upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
     }
   }
   when_all(fetch_fut_chain, progbar.set_done()).wait();
