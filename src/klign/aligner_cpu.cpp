@@ -159,8 +159,8 @@ upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block
         t.stop();
       });
   fut = fut.then([alns = alns, aln_block_data, t, &aln_kernel_timer]() {
-    SLOG_VERBOSE("Finished CPU SSW aligning block of ", aln_block_data->kernel_alns.size(), " in ", t.get_elapsed(), " s (",
-                 (t.get_elapsed() > 0 ? aln_block_data->kernel_alns.size() / t.get_elapsed() : 0.0), " aln/s)\n");
+    DBG_VERBOSE("Finished CPU SSW aligning block of ", aln_block_data->kernel_alns.size(), " in ", t.get_elapsed(), " s (",
+                (t.get_elapsed() > 0 ? aln_block_data->kernel_alns.size() / t.get_elapsed() : 0.0), " aln/s)\n");
     DBG_VERBOSE("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
     aln_kernel_timer += t;
