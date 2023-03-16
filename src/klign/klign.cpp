@@ -113,8 +113,8 @@ struct CtgLoc {
 struct CtgAndReadLoc {
   CtgLoc ctg_loc;
   int32_t cstart;
-  uint32_t pos_in_read : 31;
-  uint32_t read_is_rc : 1;
+  int32_t pos_in_read : 31;
+  int32_t read_is_rc : 1;
 };
 
 template <int MAX_K>
@@ -703,7 +703,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   // Do not exceed 256KB RPC messages in either direction
   size_t max_rdzv_message_size = 256 * 1024;
   size_t max_rdvz_buffer_size = max_rdzv_message_size / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
-  size_t max_kmer_buffer_size = ::min((size_t) KLIGN_KMERS_BUF_SIZE / rank_n(), max_rdvz_buffer_size);
+  size_t max_kmer_buffer_size = ::min((size_t)KLIGN_KMERS_BUF_SIZE / rank_n(), max_rdvz_buffer_size);
 
   ProgressBar progbar(packed_reads->get_local_num_reads(), "Fetching ctg maps for alignments");
   for (int ri = 0; ri < packed_reads->get_local_num_reads(); ri++) {
