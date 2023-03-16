@@ -219,7 +219,8 @@ class KmerCtgDHT {
         if (allow_multi_kmers) {
           it->second.push_back(ctg_loc);
         } else {
-          // there are conflicts so don't allow any kmer mappings
+          // there are conflicts so don't allow any kmer mappings. This improves the assembly when scaffolding k is smaller than
+          // the final contigging k, e.g. sk=33
           it->second.clear();
           (*num_dropped_seed_to_ctgs)++;
         }
@@ -237,18 +238,12 @@ class KmerCtgDHT {
 
   ~KmerCtgDHT() { clear(); }
 
-  void reserve_ctg_seqs(size_t sz) { global_ctg_seqs.reserve(sz); }
-
   global_ptr<char> add_ctg_seq(string seq) {
     auto seq_gptr = upcxx::allocate<char>(seq.length() + 1);
     global_ctg_seqs.push_back(seq_gptr);  // remember to dealloc!
     strcpy(seq_gptr.local(), seq.c_str());
     return seq_gptr;
   }
-
-  void reserve(int64_t mysize) { kmer_map->reserve(mysize); }
-
-  int64_t size() const { return kmer_map->size(); }
 
   intrank_t get_target_rank(const Kmer<MAX_K> &kmer) const { return std::hash<Kmer<MAX_K>>{}(kmer) % rank_n(); }
 
@@ -325,6 +320,59 @@ class KmerCtgDHT {
     dump_file.close();
     progbar.done();
     SLOG_VERBOSE("Dumped ", this->get_num_kmers(), " kmers\n");
+  }
+
+  void build(Contigs &ctgs, unsigned min_ctg_len) {
+    BarrierTimer timer(__FILEFUNC__);
+    int64_t num_kmers = 0;
+    ProgressBar progbar(ctgs.size(), "Extracting seeds from contigs");
+    // estimate and reserve room in the local map to avoid excessive reallocations
+    int64_t est_num_kmers = 0;
+    for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
+      auto ctg = it;
+      auto len = ctg->seq.length();
+      if (len < min_ctg_len) continue;
+      est_num_kmers += len - kmer_len + 1;
+    }
+    est_num_kmers = upcxx::reduce_all(est_num_kmers, upcxx::op_fast_add).wait();
+    auto my_reserve = 1.2 * est_num_kmers / rank_n() + 2000;  // 120% to keep the map fast
+    kmer_map->reserve(my_reserve);
+    global_ctg_seqs.reserve(ctgs.size());
+    size_t ctg_seq_lengths = 0, min_len_ctgs = 0;
+    vector<Kmer<MAX_K>> kmers;
+    for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
+      auto ctg = it;
+      progbar.update();
+      if (ctg->seq.length() < min_ctg_len) continue;
+      ctg_seq_lengths += ctg->seq.length();
+      min_len_ctgs++;
+      global_ptr<char> seq_gptr = add_ctg_seq(ctg->seq);
+      CtgLoc ctg_loc = {.cid = ctg->id, .seq_gptr = seq_gptr, .clen = (int)ctg->seq.length(), .depth = (float)ctg->depth};
+      Kmer<MAX_K>::get_kmers(kmer_len, string_view(ctg->seq.data(), ctg->seq.size()), kmers, true);
+      num_kmers += kmers.size();
+      for (unsigned i = 0; i < kmers.size(); i++) {
+        // if (kmers[i].to_string() == "ACATCTACCGCTAGAGGATTA")
+        //   WARN("kmer ", kmers[i].to_string(), " found in contig ", ctg->id, " in position ", i);
+        ctg_loc.pos = i;
+        if (!kmers[i].is_valid()) continue;
+        add_kmer(kmers[i], ctg_loc);
+      }
+      progress();
+    }
+    auto fut = progbar.set_done();
+    flush_add_kmers();
+    auto tot_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
+    auto tot_num_ctgs = reduce_one(min_len_ctgs, op_fast_add, 0).wait();
+    auto tot_ctg_lengths = reduce_one(ctg_seq_lengths, op_fast_add, 0).wait();
+    fut.wait();
+    auto num_kmers_in_ht = get_num_kmers();
+    LOG("Estimated room for ", my_reserve, " my final count ", kmer_map->size(), "\n");
+    SLOG_VERBOSE("Total contigs >= ", min_ctg_len, ": ", tot_num_ctgs, " seq_length: ", tot_ctg_lengths, "\n");
+    SLOG_VERBOSE("Processed ", tot_num_kmers, " seeds from contigs, added ", num_kmers_in_ht, "\n");
+    auto num_dropped_seed_to_ctgs = get_num_dropped_seed_to_ctgs();
+    if (num_dropped_seed_to_ctgs)
+      SLOG_VERBOSE("For k = ", kmer_len, " dropped ", num_dropped_seed_to_ctgs, " non-unique seed-to-contig mappings (",
+                   setprecision(2), fixed, (100.0 * num_dropped_seed_to_ctgs / tot_num_kmers), "%)\n");
   }
 };
 
@@ -574,60 +622,6 @@ class Aligner {
 };
 
 template <int MAX_K>
-static void build_alignment_index(KmerCtgDHT<MAX_K> &kmer_ctg_dht, Contigs &ctgs, unsigned min_ctg_len) {
-  BarrierTimer timer(__FILEFUNC__);
-  int64_t num_kmers = 0;
-  ProgressBar progbar(ctgs.size(), "Extracting seeds from contigs");
-  // estimate and reserve room in the local map to avoid excessive reallocations
-  int64_t est_num_kmers = 0;
-  for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
-    auto ctg = it;
-    auto len = ctg->seq.length();
-    if (len < min_ctg_len) continue;
-    est_num_kmers += len - kmer_ctg_dht.kmer_len + 1;
-  }
-  est_num_kmers = upcxx::reduce_all(est_num_kmers, upcxx::op_fast_add).wait();
-  auto my_reserve = 1.2 * est_num_kmers / rank_n() + 2000;  // 120% to keep the map fast
-  kmer_ctg_dht.reserve(my_reserve);
-  kmer_ctg_dht.reserve_ctg_seqs(ctgs.size());
-  size_t ctg_seq_lengths = 0, min_len_ctgs = 0;
-  vector<Kmer<MAX_K>> kmers;
-  for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
-    auto ctg = it;
-    progbar.update();
-    if (ctg->seq.length() < min_ctg_len) continue;
-    ctg_seq_lengths += ctg->seq.length();
-    min_len_ctgs++;
-    global_ptr<char> seq_gptr = kmer_ctg_dht.add_ctg_seq(ctg->seq);
-    CtgLoc ctg_loc = {.cid = ctg->id, .seq_gptr = seq_gptr, .clen = (int)ctg->seq.length(), .depth = (float)ctg->depth};
-    Kmer<MAX_K>::get_kmers(kmer_ctg_dht.kmer_len, string_view(ctg->seq.data(), ctg->seq.size()), kmers, true);
-    num_kmers += kmers.size();
-    for (unsigned i = 0; i < kmers.size(); i++) {
-      // if (kmers[i].to_string() == "ACATCTACCGCTAGAGGATTA")
-      //   WARN("kmer ", kmers[i].to_string(), " found in contig ", ctg->id, " in position ", i);
-      ctg_loc.pos = i;
-      if (!kmers[i].is_valid()) continue;
-      kmer_ctg_dht.add_kmer(kmers[i], ctg_loc);
-    }
-    progress();
-  }
-  auto fut = progbar.set_done();
-  kmer_ctg_dht.flush_add_kmers();
-  auto tot_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
-  auto tot_num_ctgs = reduce_one(min_len_ctgs, op_fast_add, 0).wait();
-  auto tot_ctg_lengths = reduce_one(ctg_seq_lengths, op_fast_add, 0).wait();
-  fut.wait();
-  auto num_kmers_in_ht = kmer_ctg_dht.get_num_kmers();
-  LOG("Estimated room for ", my_reserve, " my final count ", kmer_ctg_dht.size(), "\n");
-  SLOG_VERBOSE("Total contigs >= ", min_ctg_len, ": ", tot_num_ctgs, " seq_length: ", tot_ctg_lengths, "\n");
-  SLOG_VERBOSE("Processed ", tot_num_kmers, " seeds from contigs, added ", num_kmers_in_ht, "\n");
-  auto num_dropped_seed_to_ctgs = kmer_ctg_dht.get_num_dropped_seed_to_ctgs();
-  if (num_dropped_seed_to_ctgs)
-    SLOG_VERBOSE("For k = ", kmer_ctg_dht.kmer_len, " dropped ", num_dropped_seed_to_ctgs, " non-unique seed-to-contig mappings (",
-                 setprecision(2), fixed, (100.0 * num_dropped_seed_to_ctgs / tot_num_kmers), "%)\n");
-}
-
-template <int MAX_K>
 static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX_K> &kmer_ctg_dht,
                                                  KmersReadsBuffer<MAX_K> &kmers_reads_buffer, int64_t &num_alns,
                                                  int64_t &num_excess_alns_reads, int64_t &bytes_sent, int64_t &bytes_received,
@@ -833,7 +827,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   bool allow_multi_kmers = report_cigar;
   KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   barrier();
-  build_alignment_index(kmer_ctg_dht, ctgs, min_ctg_len);
+  kmer_ctg_dht.build(ctgs, min_ctg_len);
 #ifdef DEBUG
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
