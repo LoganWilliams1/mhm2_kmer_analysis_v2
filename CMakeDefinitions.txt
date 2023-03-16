@@ -138,7 +138,7 @@ add_definitions(-DLASSM_RATING_THRES=0)
 add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
 # seed length used for post assembly alignment
-add_definitions(-DPOST_ASM_ALN_K=33)
+add_definitions(-DPOST_ASM_ALN_K=31)
 
 # Enabled by default, pre-allocate the data for PackedReads in a large block
 add_definitions(-DUSE_PACKED_READS_LINEAR_ALLOCATOR=1)

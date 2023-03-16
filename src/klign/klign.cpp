@@ -132,8 +132,8 @@ struct CtgLocAndKmerIdx {
 using CtgAndReadLocsMap = HASH_TABLE<cid_t, vector<CtgAndReadLoc>>;
 
 struct ReadRecord {
-  int index;
-  int rlen;
+  int64_t index:40;
+  int64_t rlen:24;
 
   CtgAndReadLocsMap aligned_ctgs_map;
 
