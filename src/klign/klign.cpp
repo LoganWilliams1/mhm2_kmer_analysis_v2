@@ -660,6 +660,7 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
               if (it == read_record->aligned_ctgs_map.end()) {
                 it = read_record->aligned_ctgs_map.insert({ctg_loc.cid, {}}).first;
               } else {
+                // check to see if alignment will overlap one from an earlier seed
                 for (auto &prev_ctg_loc : it->second) {
                   if (cstart + rlen >= prev_ctg_loc.cstart && cstart < prev_ctg_loc.cstart + rlen) {
                     overlaps = true;
