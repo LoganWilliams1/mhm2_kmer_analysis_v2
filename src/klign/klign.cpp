@@ -112,9 +112,9 @@ struct CtgLoc {
 
 struct CtgAndReadLoc {
   CtgLoc ctg_loc;
-  int cstart;
-  int pos_in_read;
-  bool read_is_rc;
+  int32_t cstart;
+  uint32_t pos_in_read : 31;
+  uint32_t read_is_rc : 1;
 };
 
 template <int MAX_K>
@@ -132,8 +132,8 @@ struct CtgLocAndKmerIdx {
 using CtgAndReadLocsMap = HASH_TABLE<cid_t, vector<CtgAndReadLoc>>;
 
 struct ReadRecord {
-  int64_t index:40;
-  int64_t rlen:24;
+  int64_t index : 40;
+  int64_t rlen : 24;
 
   CtgAndReadLocsMap aligned_ctgs_map;
 
@@ -637,46 +637,49 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
   num_rpcs++;
   // move and consume kmers_read_buffer.  Keep scope until the future completes.
   auto sh_krb = make_shared<KmersReadsBuffer<MAX_K>>();
-  std::swap(*sh_krb, kmers_reads_buffer); 
+  std::swap(*sh_krb, kmers_reads_buffer);
   auto fut_get_ctgs = kmer_ctg_dht.get_ctgs_with_kmers(target_rank, sh_krb->kmers);
-  auto fut_rpc_returned = fut_get_ctgs.then([target_rank, &kmers_reads_buffer = *sh_krb, &num_alns, &num_excess_alns_reads,
-                                             &bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
-    bytes_received += (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
-    int kmer_len = Kmer<MAX_K>::get_k();
-    // iterate through the vector of ctg locations, each one is associated with an index in the read list
-    for (int i = 0; i < ctg_locs_and_kmers_idx.size(); i++) {
-      auto &ctg_loc = ctg_locs_and_kmers_idx[i].ctg_loc;
-      auto kmer_idx = ctg_locs_and_kmers_idx[i].kmer_i;
-      auto read_record = kmers_reads_buffer.read_records[kmer_idx].read_record;
-      auto rlen = read_record->rlen;
-      auto pos_in_read = kmers_reads_buffer.read_records[kmer_idx].read_offset;
-      auto read_is_rc = kmers_reads_buffer.read_records[kmer_idx].is_rc;
-      assert(read_record->is_valid());
-      if (KLIGN_MAX_ALNS_PER_READ && read_record->aligned_ctgs_map.size() >= KLIGN_MAX_ALNS_PER_READ) {
-        // too many mappings for this read, stop adding to it
-        num_excess_alns_reads++;
-        continue;
-      }
-      auto it = read_record->aligned_ctgs_map.find(ctg_loc.cid);
-      auto new_pos_in_read = (ctg_loc.is_rc == read_is_rc ? pos_in_read : rlen - (kmer_len + pos_in_read));
-      auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, new_pos_in_read, rlen);
-      bool overlaps = false;
-      if (it == read_record->aligned_ctgs_map.end()) {
-        it = read_record->aligned_ctgs_map.insert({ctg_loc.cid, {}}).first;
-      } else {
-        for (auto &prev_ctg_loc : it->second) {
-          if (cstart + rlen >= prev_ctg_loc.cstart && cstart < prev_ctg_loc.cstart + rlen) {
-            overlaps = true;
-            break;
-          }
-        }
-      }
-      if (!overlaps) {
-        it->second.push_back({ctg_loc, cstart, pos_in_read, read_is_rc});
-        num_alns++;
-      }
-    }
-  }).then([sh_krb](){});
+  auto fut_rpc_returned =
+      fut_get_ctgs
+          .then([target_rank, &kmers_reads_buffer = *sh_krb, &num_alns, &num_excess_alns_reads,
+                 &bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
+            bytes_received += (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
+            int kmer_len = Kmer<MAX_K>::get_k();
+            // iterate through the vector of ctg locations, each one is associated with an index in the read list
+            for (int i = 0; i < ctg_locs_and_kmers_idx.size(); i++) {
+              auto &ctg_loc = ctg_locs_and_kmers_idx[i].ctg_loc;
+              auto kmer_idx = ctg_locs_and_kmers_idx[i].kmer_i;
+              auto read_record = kmers_reads_buffer.read_records[kmer_idx].read_record;
+              auto rlen = read_record->rlen;
+              auto pos_in_read = kmers_reads_buffer.read_records[kmer_idx].read_offset;
+              auto read_is_rc = kmers_reads_buffer.read_records[kmer_idx].is_rc;
+              assert(read_record->is_valid());
+              if (KLIGN_MAX_ALNS_PER_READ && read_record->aligned_ctgs_map.size() >= KLIGN_MAX_ALNS_PER_READ) {
+                // too many mappings for this read, stop adding to it
+                num_excess_alns_reads++;
+                continue;
+              }
+              auto it = read_record->aligned_ctgs_map.find(ctg_loc.cid);
+              auto new_pos_in_read = (ctg_loc.is_rc == read_is_rc ? pos_in_read : rlen - (kmer_len + pos_in_read));
+              auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, new_pos_in_read, rlen);
+              bool overlaps = false;
+              if (it == read_record->aligned_ctgs_map.end()) {
+                it = read_record->aligned_ctgs_map.insert({ctg_loc.cid, {}}).first;
+              } else {
+                for (auto &prev_ctg_loc : it->second) {
+                  if (cstart + rlen >= prev_ctg_loc.cstart && cstart < prev_ctg_loc.cstart + rlen) {
+                    overlaps = true;
+                    break;
+                  }
+                }
+              }
+              if (!overlaps) {
+                it->second.push_back({ctg_loc, cstart, pos_in_read, read_is_rc});
+                num_alns++;
+              }
+            }
+          })
+          .then([sh_krb]() {});
   return fut_rpc_returned;
 }
 
@@ -697,6 +700,11 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   vector<Kmer<MAX_K>> kmers;
   int kmer_len = Kmer<MAX_K>::get_k();
 
+  // Do not exceed 256KB RPC messages in either direction
+  size_t max_rdzv_message_size = 256 * 1024;
+  size_t max_rdvz_buffer_size = max_rdzv_message_size / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
+  size_t max_kmer_buffer_size = ::min((size_t) KLIGN_KMERS_BUF_SIZE / rank_n(), max_rdvz_buffer_size);
+
   ProgressBar progbar(packed_reads->get_local_num_reads(), "Fetching ctg maps for alignments");
   for (int ri = 0; ri < packed_reads->get_local_num_reads(); ri++) {
     progress();
@@ -709,6 +717,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
     read_records[ri] = ReadRecord({ri, (int)read_seq.length()});
     Kmer<MAX_K>::get_kmers(kmer_len, string_view(read_seq.data(), read_seq.size()), kmers, true);
     if (!kmers.size()) continue;
+
     for (int i = 0; i < kmers.size(); i += seed_space) {
       const Kmer<MAX_K> &kmer_fw = kmers[i];
       if (!kmer_fw.is_valid()) continue;
@@ -724,7 +733,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       assert(kmer_lc->is_least());
       auto target = kmer_ctg_dht.get_target_rank(*kmer_lc);
       kmers_reads_buffers[target].add(*kmer_lc, &read_records[ri], i, is_rc);
-      if (kmers_reads_buffers[target].size() >= KLIGN_KMERS_BUF_SIZE / rank_n()) {
+      if (kmers_reads_buffers[target].size() >= max_kmer_buffer_size) {
         auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns,
                                                    num_excess_alns_reads, bytes_sent, bytes_received, num_rpcs);
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
