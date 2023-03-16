@@ -635,8 +635,11 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
   assert(kmers_reads_buffer.size());
   bytes_sent += (sizeof(Kmer<MAX_K>) * kmers_reads_buffer.kmers.size());
   num_rpcs++;
-  auto fut_get_ctgs = kmer_ctg_dht.get_ctgs_with_kmers(target_rank, kmers_reads_buffer.kmers);
-  auto fut_rpc_returned = fut_get_ctgs.then([target_rank, kmers_reads_buffer, &num_alns, &num_excess_alns_reads,
+  // move and consume kmers_read_buffer.  Keep scope until the future completes.
+  auto sh_krb = make_shared<KmersReadsBuffer<MAX_K>>();
+  std::swap(*sh_krb, kmers_reads_buffer); 
+  auto fut_get_ctgs = kmer_ctg_dht.get_ctgs_with_kmers(target_rank, sh_krb->kmers);
+  auto fut_rpc_returned = fut_get_ctgs.then([target_rank, &kmers_reads_buffer = *sh_krb, &num_alns, &num_excess_alns_reads,
                                              &bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
     bytes_received += (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
     int kmer_len = Kmer<MAX_K>::get_k();
@@ -673,9 +676,7 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
         num_alns++;
       }
     }
-  });
-  // we can clear here even though the rpc may not be finished because we passed a copy to the .then call
-  kmers_reads_buffer.clear();
+  }).then([sh_krb](){});
   return fut_rpc_returned;
 }
 
@@ -751,9 +752,9 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   auto all_excess_alns_reads = reduce_one(num_excess_alns_reads, op_fast_add, 0).wait();
   if (rank_me() == 0) {
     SLOG_VERBOSE("Parsed ", all_num_reads, " reads and extracted ", all_num_kmers, " kmers\n");
-    SLOG_VERBOSE("Sent ", get_size_str(all_bytes_sent), " (", get_size_str(all_bytes_sent / all_num_rpcs),
+    SLOG_VERBOSE("Sent ", get_size_str(all_bytes_sent), " (", get_size_str(all_num_rpcs > 0 ? all_bytes_sent / all_num_rpcs : 0),
                  " avg msg) of kmers and received ", get_size_str(all_bytes_received), " (",
-                 get_size_str(all_bytes_received / all_num_rpcs), " avg msg)\n");
+                 get_size_str(all_num_rpcs > 0 ? all_bytes_received / all_num_rpcs : 0), " avg msg)\n");
     if (all_excess_alns_reads)
       SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
   }
