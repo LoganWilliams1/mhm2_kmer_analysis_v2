@@ -244,7 +244,7 @@ void Alns::add_aln(Aln &aln) {
       num_dups++;
       auto old_identity = it->calc_identity();
       auto new_identity = aln.calc_identity();
-      SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, "\n");
+      //SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, " ", num_dups, "\n");
       it++;
       if (new_identity > old_identity) {
         // new one is better - erase the old one
@@ -257,7 +257,7 @@ void Alns::add_aln(Aln &aln) {
       }
     } else {
       it++;
-    }
+      }
   }
   if (!aln.is_valid()) DIE("Invalid alignment: ", aln.to_paf_string());
   assert(aln.is_valid());

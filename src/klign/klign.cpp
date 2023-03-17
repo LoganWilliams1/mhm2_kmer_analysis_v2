@@ -277,7 +277,7 @@ class KmerCtgDHT {
     }
     barrier();
     auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
-    SLOG_VERBOSE("Max ctgs mapped by a single kmer: ", all_max_ctgs, "\n");
+    if (all_max_ctgs > 1) SLOG_VERBOSE("Max contigs mapped by a single kmer: ", all_max_ctgs, "\n");
     BarrierTimer timer(__FILEFUNC__, false);  // barrier on exit, not entrance
     kmer_store.flush_updates();
     kmer_store.clear();
@@ -568,11 +568,6 @@ class Aligner {
     string tmp_ctg;
     for (auto &ctg_and_read_locs : aligned_ctgs_map) {
       progress();
-      bool debug_pos = false;
-      if (ctg_and_read_locs.second.size() > 1) {
-        SLOG("read ", rname, " maps to ", ctg_and_read_locs.second.size(), " places on contig ", ctg_and_read_locs.first, "\n");
-        debug_pos = true;
-      }
       for (auto &ctg_and_read_loc : ctg_and_read_locs.second) {
         int pos_in_read = ctg_and_read_loc.pos_in_read;
         bool read_is_rc = ctg_and_read_loc.read_is_rc;
@@ -589,9 +584,6 @@ class Aligner {
           rseq = rseq_fw;
         }
         auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, pos_in_read, rlen);
-        if (debug_pos)
-          SLOG("cstart ", cstart, " rstart ", rstart, " overlap len ", overlap_len, " read is rc ", read_is_rc, " ctg is rc ",
-               ctg_loc.is_rc, " pos in read ", pos_in_read, " pos in ctg ", ctg_loc.pos, " rseq ", rseq, "\n");
         assert(cstart >= 0 && cstart + overlap_len <= ctg_loc.clen);
         assert(overlap_len <= 2 * rlen);
         bool on_node = ctg_loc.seq_gptr.is_local();
@@ -861,7 +853,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();
   barrier();
-  auto num_alns = alns.size();
+  auto num_alns = reduce_one(alns.size(), op_fast_add, 0).wait();
   auto num_dups = alns.get_num_dups();
   if (num_dups) SLOG_VERBOSE("Number of duplicate alignments ", perc_str(num_dups, num_alns), "\n");
   barrier();
