@@ -270,6 +270,14 @@ class KmerCtgDHT {
   }
 
   void flush_add_kmers() {
+    size_t max_ctgs = 0;
+    // determine max number of ctgs mapped to by a single kmer
+    for (auto &elem : *kmer_map) {
+      max_ctgs = ::max(max_ctgs, elem.second.size());
+    }
+    barrier();
+    auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
+    SLOG_VERBOSE("Max ctgs mapped by a single kmer: ", all_max_ctgs, "\n");
     BarrierTimer timer(__FILEFUNC__, false);  // barrier on exit, not entrance
     kmer_store.flush_updates();
     kmer_store.clear();
@@ -560,6 +568,11 @@ class Aligner {
     string tmp_ctg;
     for (auto &ctg_and_read_locs : aligned_ctgs_map) {
       progress();
+      bool debug_pos = false;
+      if (ctg_and_read_locs.second.size() > 1) {
+        SLOG("read ", rname, " maps to ", ctg_and_read_locs.second.size(), " places on contig ", ctg_and_read_locs.first, "\n");
+        debug_pos = true;
+      }
       for (auto &ctg_and_read_loc : ctg_and_read_locs.second) {
         int pos_in_read = ctg_and_read_loc.pos_in_read;
         bool read_is_rc = ctg_and_read_loc.read_is_rc;
@@ -576,6 +589,9 @@ class Aligner {
           rseq = rseq_fw;
         }
         auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, pos_in_read, rlen);
+        if (debug_pos)
+          SLOG("cstart ", cstart, " rstart ", rstart, " overlap len ", overlap_len, " read is rc ", read_is_rc, " ctg is rc ",
+               ctg_loc.is_rc, " pos in read ", pos_in_read, " pos in ctg ", ctg_loc.pos, " rseq ", rseq, "\n");
         assert(cstart >= 0 && cstart + overlap_len <= ctg_loc.clen);
         assert(overlap_len <= 2 * rlen);
         bool on_node = ctg_loc.seq_gptr.is_local();

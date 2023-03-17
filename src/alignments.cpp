@@ -186,7 +186,7 @@ string Aln::to_blast6_string() const {
   // we don't track gap opens
   int gap_opens = 0;
   int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
-  double identity = 100.0 * (aln_len - mismatches) / aln_len;
+  double identity = calc_identity();
   os << read_id << "\t"
      << "Contig" << cid << "\t" << std::fixed << std::setprecision(3) << identity << "\t" << aln_len << "\t" << mismatches << "\t"
      << gap_opens << "\t" << rstart + 1 << "\t" << rstop << "\t";
@@ -217,6 +217,11 @@ std::pair<int, int> Aln::get_unaligned_overlaps() const {
   return {unaligned_left, unaligned_right};
 }
 
+double Aln::calc_identity() const {
+  int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
+  return 100.0 * (aln_len - mismatches) / aln_len;
+}
+
 //
 // class Alns
 //
@@ -231,18 +236,29 @@ void Alns::clear() {
 }
 
 void Alns::add_aln(Aln &aln) {
-#ifdef DEBUG
-  // check for duplicate alns to this read - do this backwards because only the most recent entries could be for this read
-  for (auto it = alns.rbegin(); it != alns.rend(); ++it) {
+  //  check for multiple read-ctg alns. Check backwards from most recent entry, since all alns for a read are grouped
+  for (auto it = alns.rbegin(); it != alns.rend();) {
     // we have no more entries for this read
-    if (it->read_id != aln.read_id || it->cid != aln.cid) break;
-    // now check for equality
-    if (it->rstart == aln.rstart && it->rstop == aln.rstop && it->cstart == aln.cstart && it->cstop == aln.cstop) {
+    if (it->read_id != aln.read_id) break;
+    if (it->cid == aln.cid) {
       num_dups++;
-      return;
+      auto old_identity = it->calc_identity();
+      auto new_identity = aln.calc_identity();
+      SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, "\n");
+      it++;
+      if (new_identity > old_identity) {
+        // new one is better - erase the old one
+        it = vector<Aln>::reverse_iterator(alns.erase(it.base()));
+        // can only happen once because previous add_aln calls will have ensured there is only the best single aln for that cid
+        break;
+      } else {
+        // new one is worse - don't add
+        return;
+      }
+    } else {
+      it++;
     }
   }
-#endif
   if (!aln.is_valid()) DIE("Invalid alignment: ", aln.to_paf_string());
   assert(aln.is_valid());
   // FIXME: we'd like to require high value alignments, but can't do this because mismatch counts are not yet supported in ADEPT
@@ -252,7 +268,6 @@ void Alns::add_aln(Aln &aln) {
   auto [unaligned_left, unaligned_right] = aln.get_unaligned_overlaps();
   auto unaligned = unaligned_left + unaligned_right;
   int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
-  double identity = 100.0 * (aln_len - aln.mismatches - unaligned) / aln_len;
   if (!aln.sam_string.empty() || (unaligned_left <= KLIGN_UNALIGNED_THRES && unaligned_right <= KLIGN_UNALIGNED_THRES))
     alns.push_back(aln);
   else
