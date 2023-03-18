@@ -103,7 +103,9 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   }
   packed_reads_list.clear();
   LOG_MEM("Purged Post Assembly Reads");
-  calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
+  // stage_timers.compute_insert_sizes->start();
+  // calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
+  // stage_timers.compute_insert_sizes->stop();
   if (options->post_assm_aln) {
 #ifdef PAF_OUTPUT_FORMAT
     alns.dump_single_file("final_assembly.paf");
