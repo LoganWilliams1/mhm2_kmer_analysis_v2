@@ -25,6 +25,7 @@ echo "Using CI_CMAKE_OPTS=${CI_CMAKE_OPTS}"
 git submodule init
 git submodule sync
 git submodule update
+git fetch origin
 git describe
 ( cd upcxx-utils ; git describe )
 CI_INSTALL=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
