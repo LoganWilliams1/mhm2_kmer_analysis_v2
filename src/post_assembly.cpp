@@ -110,7 +110,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     SLOG("\n", KBLUE, "PAF alignments can be found at ", options->output_dir, "/final_assembly.paf", KNORM, "\n");
 #elif BLAST6_OUTPUT_FORMAT
     alns.dump_single_file("final_assembly.b6");
-    SLOG("\n", KBLUE, "Blast alignments can be found at ", options->output_dir, "/final_assembly.b6", KNORM);
+    SLOG("\n", KBLUE, "Blast alignments can be found at ", options->output_dir, "/final_assembly.b6", KNORM, "\n");
 #endif
     LOG_MEM("After Post Assembly Alignments Saved");
     alns.dump_sam_file("final_assembly.sam", options->reads_fnames, ctgs, options->min_ctg_print_len);

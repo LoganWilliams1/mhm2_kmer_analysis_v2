@@ -142,7 +142,7 @@ add_definitions(-DPOST_ASM_ALN_K=31)
 # also dump alignments from post assembly in PAF format (in addition to SAM)
 # add_definitions(-DPAF_OUTPUT_FORMAT)
 # also dump alignments from post assembly in Blast6 format
-add_definitions(-DBLAST6_OUTPUT_FORMAT)
+# add_definitions(-DBLAST6_OUTPUT_FORMAT)
 
 # Enabled by default, pre-allocate the data for PackedReads in a large block
 add_definitions(-DUSE_PACKED_READS_LINEAR_ALLOCATOR=1)
