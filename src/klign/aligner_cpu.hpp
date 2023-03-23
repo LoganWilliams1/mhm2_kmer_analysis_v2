@@ -80,7 +80,7 @@ struct CPUAligner {
   StripedSmithWaterman::Aligner ssw_aligner;
   StripedSmithWaterman::Filter ssw_filter;
 
-  CPUAligner(bool compute_cigar, bool use_blastn_scores);
+  CPUAligner(bool report_cigar, bool use_blastn_scores);
 
   static void ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter, Alns *alns,
                              Aln &aln, const string_view &cseq, const string_view &rseq, int read_group_id);

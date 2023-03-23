@@ -405,9 +405,6 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
   // performance trade-offs
   add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
-  add_flag_def(app, "--klign-kmer-cache", klign_kmer_cache,
-               "Include a cache of kmer seed to contigs which helps avoid repeat lookups of the same kmer -- most useful after "
-               "shuffle-reads localization");
   app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (can be set to all).")
       ->check(CLI::Range(1, 100));
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
@@ -417,7 +414,7 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 10000));
   app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
       ->check(CLI::Range(0, 16));
-  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN"); // get default from the environment if it exists
+  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN");  // get default from the environment if it exists
   app.add_option("--pin", pin_by,
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
@@ -574,8 +571,6 @@ bool Options::load(int argc, char **argv) {
 #ifdef DEBUG
   SWARN("Running low-performance debug mode");
 #endif
-  if (!post_assm_only & klign_kmer_cache & !shuffle_reads)
-    SWARN("klign-kmer-cache option selected but shuffle-reads is not, performance may suffer");
   if (!upcxx::rank_me()) {
     // write out configuration file for restarts
     ofstream ofs(config_file);

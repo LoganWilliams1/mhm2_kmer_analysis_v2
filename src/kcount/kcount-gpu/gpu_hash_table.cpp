@@ -61,18 +61,18 @@
 // quotient filter calls stubbed out
 namespace two_choice_filter {
 #define TCF_RESULT uint8_t
-  struct TCF {
-    static TCF* generate_on_device(bool *, int) {return nullptr;}
-    static void free_on_device(TCF *) {}
-    __device__ bool get_my_tile() {return false;}
-    __device__ bool insert_if_not_exists(bool b, uint64_t, bool, TCF_RESULT, bool) {return false;}
-    int get_fill() {return 0;}
-    int get_num_slots() {return 0;}
-  };
-  __device__ uint8_t pack_extensions(char left, char right) {return 0;}
-  __device__ bool unpack_extensions(uint8_t storage, char& left, char& right) {return false;}
-  static uint64_t estimate_memory(uint64_t max_num_kmers) {return 0;}
-  static bool get_tcf_sizing_from_mem(uint64_t available_bytes) {return false;}
+struct TCF {
+  static TCF *generate_on_device(bool *, int) { return nullptr; }
+  static void free_on_device(TCF *) {}
+  __device__ bool get_my_tile() { return false; }
+  __device__ bool insert_if_not_exists(bool b, uint64_t, bool, TCF_RESULT, bool) { return false; }
+  int get_fill() { return 0; }
+  int get_num_slots() { return 0; }
+};
+__device__ uint8_t pack_extensions(char left, char right) { return 0; }
+__device__ bool unpack_extensions(uint8_t storage, char &left, char &right) { return false; }
+static uint64_t estimate_memory(uint64_t max_num_kmers) { return 0; }
+static bool get_tcf_sizing_from_mem(uint64_t available_bytes) { return false; }
 }  // namespace two_choice_filter
 #endif
 
@@ -725,7 +725,7 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries)
 #ifdef DEBUG
   auto expected_num_entries = read_kmers_stats.new_inserts - num_purged;
   if (num_entries != (int)expected_num_entries)
-    WARN("mismatch %lu != %lu diff %lu new inserts %lu num purged %lu", num_entries, expected_num_entries,
+    WARN("mismatch %d != %u diff %d new inserts %u num purged %d", num_entries, expected_num_entries,
          (num_entries - (int)expected_num_entries), read_kmers_stats.new_inserts, num_purged);
 #endif
   read_kmers_dev.num = num_entries;
@@ -776,7 +776,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   num_dropped = counts_host[0];
   num_unique = counts_host[1];
 #ifdef DEBUG
-  if (num_unique != read_kmers_dev.num) WARN("mismatch in expected entries %lu != %lu", num_unique, read_kmers_dev.num);
+  if (num_unique != read_kmers_dev.num) WARN("mismatch in expected entries %d != %u", num_unique, read_kmers_dev.num);
 #endif
   // now copy the gpu hash table values across to the host
   // We only do this once, which requires enough memory on the host to store the full GPU hash table, but since the GPU memory

@@ -89,11 +89,11 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   Alns alns;
   stage_timers.alignments->start();
   auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
-  bool compute_cigar = true;
+  bool report_cigar = true;
   int kmer_len = POST_ASM_ALN_K;
   const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
   double kernel_elapsed = find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight,
-                                                 ctgs, alns, 4, rlen_limit, options->klign_kmer_cache, compute_cigar,
+                                                 ctgs, alns, KLIGN_SEED_SPACE, rlen_limit, report_cigar,
                                                  options->optimize_for == "contiguity", options->min_ctg_print_len);
   stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
   stage_timers.alignments->stop();
@@ -119,9 +119,12 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     LOG_MEM("After Post Assembly SAM Saved");
   }
   if (options->post_assm_abundances) {
+    SLOG("\n");
+    stage_timers.compute_ctg_depths->start();
     compute_aln_depths("final_assembly_depths.txt", ctgs, alns, kmer_len, options->min_ctg_print_len, options->reads_fnames, false);
+    stage_timers.compute_ctg_depths->stop();
     LOG_MEM("After Post Assembly Depths Saved");
-    SLOG(KBLUE, "Contig depths (abundances) can be found at ", options->output_dir, "/final_assembly_depths.txt", KNORM, "\n");
+    SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options->output_dir, "/final_assembly_depths.txt", KNORM, "\n");
   }
   SLOG(KBLUE, "_________________________", KNORM, "\n");
 }

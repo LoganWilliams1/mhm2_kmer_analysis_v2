@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
   auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
 
   SLOG_VERBOSE("Process 0 on node 0 is initially pinned to ", get_proc_pin(), "\n");
-  
+
   // pin ranks only in production
   if (options->pin_by == "cpu")
     pin_cpu();
@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
     pin_numa();
   else if (options->pin_by == "rr_numa")
     pin_numa(true);
-  
+
   log_pins();
   log_env();
 
@@ -359,7 +359,6 @@ int main(int argc, char **argv) {
     }
     packed_reads_list.clear();
     LOG_MEM("Closed all fastq");
-
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
     stage_timers.dump_ctgs->start();
@@ -376,6 +375,7 @@ int main(int argc, char **argv) {
 
     SLOG(KBLUE "_________________________", KNORM, "\n");
     SLOG("Stage timing:\n");
+    SLOG("    Initialization: ", init_t_elapsed.count(), "\n");
     if (!options->restart)
       SLOG("    ", stage_timers.merge_reads->get_final(), "\n");
     else

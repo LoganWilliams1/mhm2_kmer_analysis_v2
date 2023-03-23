@@ -59,7 +59,6 @@ using std::to_string;
 using std::unique_ptr;
 using std::vector;
 
-
 #ifndef USE_PACKED_READS_LINEAR_ALLOCATOR
 #define USE_PACKED_READS_LINEAR_ALLOCATOR 1
 #endif
@@ -69,7 +68,7 @@ using std::vector;
 class PackedReads;
 class PackedRead {
   static inline const std::array<char, 5> nucleotide_map = {'A', 'C', 'G', 'T', 'N'};
-  static const uint64_t MAX_READ_ID = 1ULL << 46; // 70 trillion read pairs.
+  static const uint64_t MAX_READ_ID = 1ULL << 46;  // 70 trillion read pairs.
   // This class is packed into 16 bytes, a pointer + bitfield packed into 64-bits: is_allocated, read_id and read_len
   uint64_t is_allocated : 1;
   // the pair number is indicated in the read id - negative means pair 1, positive means pair 2
@@ -95,6 +94,7 @@ class PackedRead {
   ~PackedRead();
 
   void unpack(string &read_id_str, string &seq, string &quals, int qual_offset) const;
+  void unpack_seq(string &seq) const;
   void clear();
 
   int64_t get_id();
@@ -119,7 +119,7 @@ class PackedRead {
     static PackedRead *deserialize(Reader &reader, void *storage) {
       PackedRead *packed_read = new (storage) PackedRead();
       int64_t bitpacked_fields = reader.template read<int64_t>();
-      memcpy((void*) packed_read, &bitpacked_fields, sizeof(int64_t));
+      memcpy((void *)packed_read, &bitpacked_fields, sizeof(int64_t));
       packed_read->is_allocated = 0;
       packed_read->bytes = new unsigned char[packed_read->read_len];
       for (int i = 0; i < packed_read->read_len; i++) {
@@ -147,7 +147,6 @@ class PackedReads {
   bool str_ids;
 
  public:
-  
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
   PackedReads(int qual_offset, PackedReadsContainer &packed_reads);
   ~PackedReads();
@@ -155,6 +154,7 @@ class PackedReads {
   bool get_next_read(string &id, string &seq, string &quals);
   uint64_t get_read_index() const;
   void get_read(uint64_t index, string &id, string &seq, string &quals) const;
+  void get_read_seq(uint64_t index, string &seq) const;
 
   PackedRead &operator[](int index);
 
@@ -191,7 +191,6 @@ class PackedReads {
   int get_qual_offset();
 
   static uint64_t estimate_num_kmers(unsigned kmer_len, PackedReadsList &packed_reads_list);
-  
-  unsigned char * allocate_read(uint16_t read_len);
-};
 
+  unsigned char *allocate_read(uint16_t read_len);
+};

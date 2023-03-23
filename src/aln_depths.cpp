@@ -254,16 +254,14 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
     progbar.update();
     // require at least this much overlap with the read
     // what this does is drop alns that hang too much over the ends of contigs
-    // this gives abundances more in line with what we see in MetaBAT, although that uses 97% identity as the cutoff and we're using
-    // 85% here (our alns differ somewhat because of different seed lengths, etc) .
-    // In practice, when using aln depths for scaffolding, this tends to reduce msa without any benefits so we only use it in the
-    // final round, i.e. if min_ctg_len > 0
-    /*
-    if (min_ctg_len && aln.identity < 85) {
+    // this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
+    // In practice, when using aln depths for scaffolding, this tends to reduce misassemblies without any benefits so we only
+    // use it in the final round, i.e. if min_ctg_len > 0
+    if (min_ctg_len && aln.calc_identity() < 97) {
       num_bad_alns++;
       continue;
     }
-    */
+
     // convert to coords for use here
     assert(aln.is_valid());
     // set to -1 if this read is not merged
