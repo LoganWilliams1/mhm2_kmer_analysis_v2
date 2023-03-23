@@ -633,9 +633,11 @@ template <int MAX_K>
 static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX_K> &kmer_ctg_dht,
                                                  KmersReadsBuffer<MAX_K> &kmers_reads_buffer, int64_t &num_alns,
                                                  int64_t &num_excess_alns_reads, int64_t &bytes_sent, int64_t &bytes_received,
-                                                 int64_t &num_rpcs) {
+                                                 int64_t &max_bytes_sent, int64_t &max_bytes_received, int64_t &num_rpcs) {
   assert(kmers_reads_buffer.size());
-  bytes_sent += (sizeof(Kmer<MAX_K>) * kmers_reads_buffer.kmers.size());
+  int64_t sent_msg_size = (sizeof(Kmer<MAX_K>) * kmers_reads_buffer.kmers.size());
+  bytes_sent += sent_msg_size;
+  max_bytes_sent = std::max(max_bytes_sent, sent_msg_size);
   num_rpcs++;
   // move and consume kmers_read_buffer.  Keep scope until the future completes.
   auto sh_krb = make_shared<KmersReadsBuffer<MAX_K>>();
@@ -643,9 +645,11 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
   auto fut_get_ctgs = kmer_ctg_dht.get_ctgs_with_kmers(target_rank, sh_krb->kmers);
   auto fut_rpc_returned =
       fut_get_ctgs
-          .then([target_rank, &kmers_reads_buffer = *sh_krb, &num_alns, &num_excess_alns_reads,
-                 &bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
-            bytes_received += (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
+          .then([target_rank, &kmers_reads_buffer = *sh_krb, &num_alns, &num_excess_alns_reads, &bytes_received,
+                 &max_bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
+            int64_t received_msg_size = (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
+            bytes_received += received_msg_size;
+            max_bytes_received = std::max(max_bytes_received, received_msg_size);
             int kmer_len = Kmer<MAX_K>::get_k();
             // iterate through the vector of ctg locations, each one is associated with an index in the read list
             for (int i = 0; i < ctg_locs_and_kmers_idx.size(); i++) {
@@ -692,6 +696,8 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
+  int64_t max_bytes_sent = 0;
+  int64_t max_bytes_received = 0;
   int64_t num_reads = 0;
   int64_t num_alns = 0;
   int64_t num_excess_alns_reads = 0;
@@ -737,8 +743,9 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       auto target = kmer_ctg_dht.get_target_rank(*kmer_lc);
       kmers_reads_buffers[target].add(*kmer_lc, &read_records[ri], i, is_rc);
       if (kmers_reads_buffers[target].size() >= max_kmer_buffer_size) {
-        auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns,
-                                                   num_excess_alns_reads, bytes_sent, bytes_received, num_rpcs);
+        auto fetch_fut =
+            fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
+                                      bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
         upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
       }
@@ -748,7 +755,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
     if (kmers_reads_buffers[target].size()) {
       auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
-                                                 bytes_sent, bytes_received, num_rpcs);
+                                                 bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
       fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
       upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
     }
@@ -760,13 +767,16 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   auto all_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
   auto all_bytes_sent = reduce_one(bytes_sent, op_fast_add, 0).wait();
   auto all_bytes_received = reduce_one(bytes_received, op_fast_add, 0).wait();
+  auto all_max_bytes_sent = reduce_one(max_bytes_sent, op_fast_max, 0).wait();
+  auto all_max_bytes_received = reduce_one(max_bytes_received, op_fast_max, 0).wait();
   auto all_num_rpcs = reduce_one(num_rpcs, op_fast_add, 0).wait();
   auto all_excess_alns_reads = reduce_one(num_excess_alns_reads, op_fast_add, 0).wait();
   if (rank_me() == 0) {
     SLOG_VERBOSE("Parsed ", all_num_reads, " reads and extracted ", all_num_kmers, " kmers\n");
     SLOG_VERBOSE("Sent ", get_size_str(all_bytes_sent), " (", get_size_str(all_num_rpcs > 0 ? all_bytes_sent / all_num_rpcs : 0),
-                 " avg msg) of kmers and received ", get_size_str(all_bytes_received), " (",
-                 get_size_str(all_num_rpcs > 0 ? all_bytes_received / all_num_rpcs : 0), " avg msg)\n");
+                 " avg msg, ", get_size_str(all_max_bytes_sent), " max msg) of kmers and received ",
+                 get_size_str(all_bytes_received), " (", get_size_str(all_num_rpcs > 0 ? all_bytes_received / all_num_rpcs : 0),
+                 " avg msg, ", get_size_str(all_max_bytes_received), " max msg )\n");
     if (all_excess_alns_reads)
       SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
   }
