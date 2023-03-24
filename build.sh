@@ -59,7 +59,8 @@ else
         cmake $rootdir -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH \
               -DMHM2_ENABLE_TESTING=$testing $MHM2_CMAKE_EXTRAS $2
     fi
-    make -j ${MHM2_BUILD_THREADS} all || make VERBOSE=1 all
+    #make -j ${MHM2_BUILD_THREADS} all || make VERBOSE=1 all
+    make -j ${MHM2_BUILD_THREADS} all
     if [ "$testing" == "1" ] ; then
        make check
     fi

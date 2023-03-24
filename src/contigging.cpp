@@ -151,9 +151,9 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     stage_timers.alignments->start();
     begin_gasnet_stats("alignment k = " + to_string(kmer_len));
     bool first_ctg_round = (kmer_len == options->kmer_lens[0]);
-    double kernel_elapsed = find_alignments<MAX_K>(
-        kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns, KLIGN_SEED_SPACE, rlen_limit,
-        (options->klign_kmer_cache & !first_ctg_round), false, options->optimize_for == "contiguity", 0);
+    double kernel_elapsed =
+        find_alignments<MAX_K>(kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
+                               KLIGN_SEED_SPACE, rlen_limit, false, options->optimize_for == "contiguity", 0);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.alignments->stop();

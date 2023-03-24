@@ -135,9 +135,9 @@ Cori:build:
     - echo "Logging to ${CI_SCRATCH}/build-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
     - env
     - module list
-    - git describe
+    - git describe --always
     - cd upcxx-utils
-    - git describe
+    - git describe --always
     - cd ${MHM2_SOURCE}
     - set -x
     - echo "Copying source from ${MHM2_SOURCE}/ to ${CI_SCRATCH}/src/"

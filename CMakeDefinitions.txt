@@ -76,8 +76,6 @@ add_definitions(-DSHUFFLE_KMER_LEN=31)
 
 # max allowed alignments per read (to reduce overhead & imbalance) - set to 0 to have no limit
 add_definitions(-DKLIGN_MAX_ALNS_PER_READ=20)
-# limit on how many contigs to fetch for a read at a time - this is across all target ranks, so a form of buffering
-add_definitions(-DKLIGN_CTG_FETCH_BUF_SIZE=1000000)
 # decreasing this value increases the alignment computation time, and it may improve results slightly
 add_definitions(-DKLIGN_SEED_SPACE=8)
 # max number of unaligned bases to allow on either side of an alignment
@@ -86,8 +84,10 @@ add_definitions(-DKLIGN_UNALIGNED_THRES=1)
 add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 # the block size of alignments to be dispatched to the GPU
 add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
-# turns off code used for kmer caches (i.e. disables --klign-kmer-cache option)
-add_definitions(-DUSE_KMER_CACHE)
+# number of rget requests buffered together for a target rank
+add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
+# how many kmers are buffered before doing a kmer-ctg-map fetch
+add_definitions(-DKLIGN_KMERS_BUF_SIZE=1000000)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
@@ -138,7 +138,11 @@ add_definitions(-DLASSM_RATING_THRES=0)
 add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
 # seed length used for post assembly alignment
-add_definitions(-DPOST_ASM_ALN_K=21)
+add_definitions(-DPOST_ASM_ALN_K=31)
+# also dump alignments from post assembly in PAF format (in addition to SAM)
+# add_definitions(-DPAF_OUTPUT_FORMAT)
+# also dump alignments from post assembly in Blast6 format
+# add_definitions(-DBLAST6_OUTPUT_FORMAT)
 
 # Enabled by default, pre-allocate the data for PackedReads in a large block
 add_definitions(-DUSE_PACKED_READS_LINEAR_ALLOCATOR=1)
