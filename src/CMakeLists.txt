@@ -290,7 +290,9 @@ endif()
 
 target_link_libraries(mhm2 ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
                       ${UPCXX_UTILS_LIBRARIES})
-target_link_options(mhm2 PUBLIC "-Wl,--build-id")
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
+  target_link_options(mhm2 PUBLIC "-Wl,--build-id")
+endif()
 
 set(MHM2_LINK_LIBRARIES
     ${MHM2_LINK_LIBRARIES}
