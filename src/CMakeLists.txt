@@ -290,6 +290,7 @@ endif()
 
 target_link_libraries(mhm2 ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
                       ${UPCXX_UTILS_LIBRARIES})
+target_link_options(mhm2 PUBLIC "-Wl,--build-id")
 
 set(MHM2_LINK_LIBRARIES
     ${MHM2_LINK_LIBRARIES}
