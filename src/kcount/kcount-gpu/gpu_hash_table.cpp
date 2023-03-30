@@ -443,12 +443,18 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
 
       if (update_only && !updated) {
         // not found in the hash table - look in the qf
-        bool found = false;
+        //bool found = false;
 
         auto packed = two_choice_filter::pack_extensions(left_ext, right_ext);
 
         TCF_RESULT result = 0;
-        bool success = tcf->insert_if_not_exists(tcf->get_my_tile(), hash_val, packed, result, found);
+
+        bool success = true;
+        bool found = tcf->query(tcf->get_my_tile(), hash_val, result);
+
+        if (!found){
+          success = tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed);
+        }
 
         if (success) {
           if (!found) {
@@ -460,6 +466,7 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
 
           } else {
             // found successfully
+            tcf->remove(tcf->get_my_tile(), hash_val);
             two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
             gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
                             dropped_inserts, ctg_kmers, use_qf, false);
