@@ -245,7 +245,6 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   }
   barrier();
   auto unmerged_rlen = alns.calculate_unmerged_rlen();
-  int64_t num_bad_overlaps = 0;
   int64_t num_bad_alns = 0;
   auto num_ctgs = ctgs_depths.get_num_ctgs();
   SLOG_VERBOSE("Computing aln depths for ", num_ctgs, " ctgs\n");
@@ -291,8 +290,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   fut_progbar.wait();
   barrier();
   auto all_num_alns = reduce_one(alns.size(), op_fast_add, 0).wait();
-  SLOG_VERBOSE("Dropped ", perc_str(reduce_one(num_bad_overlaps, op_fast_add, 0).wait(), all_num_alns), " bad overlaps and ",
-               perc_str(reduce_one(num_bad_alns, op_fast_add, 0).wait(), all_num_alns), " low quality alns\n");
+  auto all_num_bad_alns = reduce_one(num_bad_alns, op_fast_add, 0).wait();
+  if (all_num_bad_alns) SLOG_VERBOSE("Dropped ", perc_str(all_num_bad_alns, all_num_alns), " low quality alns\n");
   // get string to dump
   shared_ptr<upcxx_utils::dist_ofstream> sh_of;
   if (fname != "") {
