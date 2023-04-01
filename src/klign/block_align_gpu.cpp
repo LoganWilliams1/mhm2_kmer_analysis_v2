@@ -61,16 +61,32 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
                                        IntermittentTimer &aln_kernel_timer) {
   future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &aln_kernel_timer] {
     DBG_VERBOSE("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
-    aln_kernel_timer.start();
 
-    // align query_seqs, ref_seqs, max_query_size, max_ref_size
-    gpu_driver->run_kernel_forwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
+    unsigned maxContigSize = aln_block_data->max_clen ;
+    unsigned maxReadSize = aln_block_data->max_rlen ;
+    unsigned maxCIGAR = (maxContigSize > maxReadSize ) ? 3* maxContigSize : 3* maxReadSize; //3* size to eliminate overflow FIXME: Truncate CIGARs that are over maxCIGAR
+    //printf("GPU align block: maxContigSize passed in = %d, maxReadSize passed in = %d\n", maxContigSize, maxReadSize);
+    if (report_cigar){
+      
+      aln_kernel_timer.start();
+
+      gpu_driver->run_kernel_traceback(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
+                                      aln_block_data->max_clen);
+      gpu_driver->kernel_block_fwd();
+      aln_kernel_timer.stop();
+    } else {
+
+      aln_kernel_timer.start();
+
+      // align query_seqs, ref_seqs, max_query_size, max_ref_size
+      gpu_driver->run_kernel_forwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
                                     aln_block_data->max_clen);
-    gpu_driver->kernel_block_fwd();
-    gpu_driver->run_kernel_backwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
+      gpu_driver->kernel_block_fwd();
+      gpu_driver->run_kernel_backwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
                                      aln_block_data->max_clen);
-    gpu_driver->kernel_block_rev();
-    aln_kernel_timer.stop();
+      gpu_driver->kernel_block_rev();
+      aln_kernel_timer.stop();
+    }
 
     auto aln_results = gpu_driver->get_aln_results();
 
@@ -81,8 +97,16 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
       aln.set(aln_results.ref_begin[i], aln_results.ref_end[i], aln_results.query_begin[i], aln_results.query_end[i],
               aln_results.top_scores[i], 0, 0, aln_block_data->read_group_id);
       if (report_cigar) {
-        SWARN("Trying to produce SAM outputs with GPU alignments, which is not supported");
-        aln.set_sam_string("*", "*");  // FIXME until there is a valid:ssw_aln.cigar_string);
+        //std::string cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
+        std::string cig = "";
+	      int k = i*maxCIGAR;
+	      while (aln_results.cigar[k] != NULL) {
+          cig += aln_results.cigar[k];
+          k++;
+        }
+        aln.set_sam_string(aln_block_data->read_seqs[i],cig);
+        //cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
+        cig = "";
       }
       aln_block_data->alns->add_aln(aln);
     }
@@ -96,7 +120,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
 }
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
-                  int rlen_limit) {
+                  int rlen_limit, bool compute_cigar) {
   if (!gpu_utils::gpus_present()) {
     // CPU only
     SWARN("No GPU will be used for alignments");
@@ -104,7 +128,7 @@ void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty
     double init_time;
     gpu_driver =
         new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)match_score, (short)-mismatch_penalty,
-                                (short)-gap_opening_penalty, (short)-gap_extending_penalty, rlen_limit, init_time);
+                                (short)-gap_opening_penalty, (short)-gap_extending_penalty, rlen_limit, compute_cigar, init_time);
     SLOG_VERBOSE("Initialized GPU adept_sw driver in ", init_time, " s\n");
   }
 }
@@ -150,7 +174,7 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
         make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id);
     assert(kernel_alns.empty());
     // for now, the GPU alignment doesn't support cigars
-    if (!cpu_aligner.ssw_filter.report_cigar && gpu_utils::gpus_present()) {
+    if (gpu_utils::gpus_present()) {
       active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer);
     } else if (!gpu_utils::gpus_present()) {
       active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
