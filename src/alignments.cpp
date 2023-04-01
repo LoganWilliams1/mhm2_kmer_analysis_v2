@@ -236,6 +236,11 @@ void Alns::clear() {
 }
 
 void Alns::add_aln(Aln &aln) {
+  auto new_identity = aln.calc_identity();
+  if (new_identity < 97) {
+    num_bad++;
+    return;
+  }
   //  check for multiple read-ctg alns. Check backwards from most recent entry, since all alns for a read are grouped
   for (auto it = alns.rbegin(); it != alns.rend();) {
     // we have no more entries for this read
@@ -243,8 +248,8 @@ void Alns::add_aln(Aln &aln) {
     if (it->cid == aln.cid) {
       num_dups++;
       auto old_identity = it->calc_identity();
-      auto new_identity = aln.calc_identity();
-      //SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, " ", num_dups, "\n");
+      // SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, " ",
+      // num_dups, "\n");
       it++;
       if (new_identity > old_identity) {
         // new one is better - erase the old one
@@ -257,7 +262,7 @@ void Alns::add_aln(Aln &aln) {
       }
     } else {
       it++;
-      }
+    }
   }
   if (!aln.is_valid()) DIE("Invalid alignment: ", aln.to_paf_string());
   assert(aln.is_valid());
@@ -267,7 +272,7 @@ void Alns::add_aln(Aln &aln) {
   // Only filter out if the SAM string is not set, i.e. we are using the alns internally rather than for post processing output
   auto [unaligned_left, unaligned_right] = aln.get_unaligned_overlaps();
   auto unaligned = unaligned_left + unaligned_right;
-  int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
+  // int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
   if (!aln.sam_string.empty() || (unaligned_left <= KLIGN_UNALIGNED_THRES && unaligned_right <= KLIGN_UNALIGNED_THRES))
     alns.push_back(aln);
   else
@@ -277,6 +282,7 @@ void Alns::add_aln(Aln &aln) {
 void Alns::append(Alns &more_alns) {
   alns.insert(alns.end(), more_alns.alns.begin(), more_alns.alns.end());
   num_dups += more_alns.num_dups;
+  num_bad += more_alns.num_bad;
   more_alns.clear();
 }
 
@@ -290,9 +296,9 @@ void Alns::reserve(size_t capacity) { alns.reserve(capacity); }
 
 void Alns::reset() { alns.clear(); }
 
-int64_t Alns::get_num_dups() { return upcxx::reduce_one(num_dups, upcxx::op_fast_add, 0).wait(); }
+int64_t Alns::get_num_dups() { return num_dups; }
 
-int64_t Alns::get_num_bad() { return upcxx::reduce_one(num_bad, upcxx::op_fast_add, 0).wait(); }
+int64_t Alns::get_num_bad() { return num_bad; }
 
 void Alns::dump_rank_file(string fname) const {
   get_rank_path(fname, rank_me());

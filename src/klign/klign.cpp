@@ -402,7 +402,6 @@ static tuple<int, int, int> get_start_positions(int kmer_len, const CtgLoc &ctg_
 class Aligner {
   int64_t num_alns;
   int64_t num_perfect_alns;
-  int64_t num_overlaps;
   int kmer_len;
 
   vector<Aln> kernel_alns;
@@ -499,7 +498,6 @@ class Aligner {
   Aligner(int kmer_len, Alns &alns, int rlen_limit, bool report_cigar, bool use_blastn_scores)
       : num_alns(0)
       , num_perfect_alns(0)
-      , num_overlaps(0)
       , kmer_len(kmer_len)
       , kernel_alns({})
       , ctg_seqs({})
@@ -529,11 +527,6 @@ class Aligner {
   int64_t get_num_alns(bool all = false) {
     if (!all) return reduce_one(num_alns, op_fast_add, 0).wait();
     return reduce_all(num_alns, op_fast_add).wait();
-  }
-
-  int64_t get_num_overlaps(bool all = false) {
-    if (!all) return reduce_one(num_overlaps, op_fast_add, 0).wait();
-    return reduce_all(num_overlaps, op_fast_add).wait();
   }
 
   void clear_aln_bufs() {
@@ -816,14 +809,16 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
 
   auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
   auto all_num_reads_aligned = reduce_one(num_reads_aligned, op_fast_add, 0).wait();
-  auto all_num_alns = reduce_one(alns_for_sample.size(), op_fast_add, 0).wait();
+  auto all_num_alns = aligner.get_num_alns();
   auto all_num_perfect = aligner.get_num_perfect_alns();
-  auto all_num_overlaps = aligner.get_num_overlaps();
-  auto all_num_bad = alns.get_num_bad();
-
-  SLOG_VERBOSE("Found ", all_num_alns, " alignments of which ", perc_str(all_num_perfect, all_num_alns), " are perfect and ",
-               perc_str(all_num_bad, all_num_alns), " are bad\n");
-  if (all_num_overlaps) SLOG_VERBOSE("Dropped ", perc_str(all_num_overlaps, all_num_alns), " alignments because of overlaps\n");
+  auto all_num_dups = reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0).wait();
+  auto all_num_bad = reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0).wait();
+  auto all_num_good = reduce_one(alns_for_sample.size(), op_fast_add, 0).wait();
+  SLOG("Found ", all_num_alns, " alignments:\n");
+  SLOG("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
+  SLOG("  good ", perc_str(all_num_good, all_num_alns), "\n");
+  SLOG("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
+  SLOG("  duplicates ", perc_str(all_num_dups, all_num_alns), "\n");
   SLOG_VERBOSE("Mapped ", perc_str(all_num_reads_aligned, all_num_reads), " reads to contigs, average mappings per read ",
                (double)all_num_alns / all_num_reads_aligned, "\n");
   alns.append(alns_for_sample);
@@ -862,10 +857,5 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   timers.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();
-  barrier();
-  auto num_alns = reduce_one(alns.size(), op_fast_add, 0).wait();
-  auto num_dups = alns.get_num_dups();
-  if (num_dups) SLOG_VERBOSE("Number of duplicate alignments ", perc_str(num_dups, num_alns), "\n");
-  barrier();
   return aln_kernel_elapsed;
 }
