@@ -16,7 +16,7 @@ then
 	echo $USAGE
 	exit 1
 fi
-UPCXX_VER=${UPCXX_VER:=2022.9.0}
+UPCXX_VER=${UPCXX_VER:=2023.3.0}
 echo "Using upcxx version $UPCXX_VER"
 
 CI_CMAKE_OPTS=${CI_CMAKE_OPTS}

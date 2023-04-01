@@ -413,7 +413,7 @@ struct HashTableInserter<MAX_K>::HashTableInserterState {
   upcxx_utils::BaseTimer insert_timer, kernel_timer;
 
   HashTableInserterState()
-      : kmers({}) {}
+      : kmers(KmerMapExts<MAX_K>{}) {}
 };
 
 template <int MAX_K>
