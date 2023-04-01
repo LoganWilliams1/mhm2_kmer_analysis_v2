@@ -88,7 +88,7 @@ struct ExtCounts {
 size_t ReadsToCtgsDHT::get_target_rank(const string &read_id) { return std::hash<string>{}(read_id) % rank_n(); }
 
 ReadsToCtgsDHT::ReadsToCtgsDHT(int64_t initial_size, int64_t num_alns)
-    : reads_to_ctgs_map({})
+    : reads_to_ctgs_map(reads_to_ctgs_map_t{})
     , rtc_store() {
   reads_to_ctgs_map->reserve(initial_size);
   rtc_store.set_update_func([&reads_to_ctgs_map = this->reads_to_ctgs_map](ReadCtgInfo &&read_ctg_info) {
@@ -170,7 +170,7 @@ future<vector<vector<CtgInfo>>> ReadsToCtgsDHT::get_ctgs(intrank_t target_rank, 
 size_t CtgsWithReadsDHT::get_target_rank(int64_t cid) { return std::hash<int64_t>{}(cid) % rank_n(); }
 
 CtgsWithReadsDHT::CtgsWithReadsDHT(int64_t num_ctgs, int64_t num_ctg_bases)
-    : ctgs_map({})
+    : ctgs_map(ctgs_map_t{})
     , ctg_store()
     , ctg_read_store() {
   // pad the local ctg count a bit for this estimate
