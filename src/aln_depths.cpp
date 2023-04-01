@@ -91,7 +91,8 @@ struct AvgVar {
 
 class CtgsDepths {
  private:
-  using ctgs_depths_map_t = upcxx::dist_object<HASH_TABLE<int64_t, CtgBaseDepths>>;
+  using local_ctgs_depths_map_t = HASH_TABLE<int64_t, CtgBaseDepths>;
+  using ctgs_depths_map_t = upcxx::dist_object<local_ctgs_depths_map_t>;
   ctgs_depths_map_t ctgs_depths;
   int edge_base_len, num_read_groups;
   HASH_TABLE<int64_t, CtgBaseDepths>::iterator ctgs_depths_iter;
@@ -132,7 +133,7 @@ class CtgsDepths {
 
  public:
   CtgsDepths(int edge_base_len, int num_read_groups)
-      : ctgs_depths({})
+      : ctgs_depths(local_ctgs_depths_map_t{})
       , edge_base_len(edge_base_len)
       , num_read_groups(num_read_groups)
       , ctg_aln_depth_store() {

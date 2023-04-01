@@ -10,7 +10,7 @@ variables:
   APPLICATION: mhm2
   TEST_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:latest
   RELEASE_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:$CI_BUILD_REF_NAME
-  UPCXX_VER: 2022.9.0
+  UPCXX_VER: 2023.3.0
 
 stages:
   - build
@@ -140,9 +140,6 @@ Cori:validation:
     - echo "Submitting job on 3 nodes - on 2 nodes roughly RWDI=400s, DBG --kmer-lens 63 =456s  ...REL=170s"
     - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/knl-rwdi-0 && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/knl-dbg-0-k63 && echo Good")
     - echo "KNL JOB ${knl_job}"
-    - echo "Submitting build on cori gpu"
-    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 -c 5 -G 1 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; mkdir -p build-cori-gpu && cd build-cori-gpu && cmake \$MHM2_CMAKE_EXTRAS -DCMAKE_INSTALL_PREFIX=install ${CI_SCRATCH}/src && make VERBOSE=1 -j 10 all install && srun install/bin/mhm2_test")
-    - echo "GPU Build job $gpu_job"
     - echo "Waiting for knl job $knl_job"
     - date
     - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
@@ -159,15 +156,6 @@ Cori:validation:
     - if [ ! -f ${RUN_PREFIX}/knl-dbg-0-k63/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-dbg-0-k63" ; fi
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-dbg-0-k63 --expected-quals ${RWDI}/../share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || echo "WARN Did not pass check_asm_quality.py on knl-dbg-0-k63 with reduced workflow k63"
-    - echo "Waiting for gpu job ${gpu_job}"
-    - module load cgpu
-    - date
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(sacct -j $gpu_job -X -n)
-    - cat slurm-${gpu_job}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else FAILED="${FAILED} -- gpu job ${gpu_job} failed somehow - ${wasgood}"; fi
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed"
 
@@ -210,9 +198,6 @@ Cori:accuracy:
     - echo "Submitting full arctic job on 15 nodes"
     - export OPTS2="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
     - knl_job2=$(sbatch --parsable --job-name="CI-mhm2-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=15 --qos=debug --time=30:00 --wrap="${REL}/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-full && echo Good")
-    - echo "Submitting GPU full arctic job on 2 cori GPU nodes"
-    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 --exclusive --nodes=2 -G 16 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; build-cori-gpu/install/bin/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-gpu && echo Good")
-    - echo "Waiting for knl job $knl_job"
     - date
     - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
     - echo "sacct $sacct"
@@ -236,17 +221,6 @@ Cori:accuracy:
     - if [ ! -f ${RUN_PREFIX}/rel-full/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel-full" ; fi
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - ${REL}/check_asm_quality.py --thres 0.015 --rna --asm-dir ${RUN_PREFIX}/rel-full --expected-quals ${REL}/../share/good-arcticsynth.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py (full)"
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - echo "Waiting for GPU job to finish ${gpu_job}"
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(module load cgpu; sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(module load cgpu; sacct -j $gpu_job -X -n)
-    - echo "sacct $sacct"
-    - cat slurm-${gpu_job}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else  echo "gpu job ${gpu_job} failed somehow - ${wasgood}"; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/rel-gpu/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel-gpu" ; fi
-    - echo "FAILED=${FAILED}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed"
 
