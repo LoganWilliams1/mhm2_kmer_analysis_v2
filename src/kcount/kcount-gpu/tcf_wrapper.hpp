@@ -93,7 +93,7 @@ __constant__ char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
 //     1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
 //     poggers::hashers::murmurHasher, true, backing_table>;
 
-using TCF = poggers::data_structs::tcf_wrapper<uint64_t, uint8_t, 10, 6, 1, 16>::tcf;
+using TCF = poggers::data_structs::tcf_wrapper<uint64_t, uint8_t, 10, 6, 1, 8>::tcf;
 
 #define TCF_RESULT uint8_t
 
