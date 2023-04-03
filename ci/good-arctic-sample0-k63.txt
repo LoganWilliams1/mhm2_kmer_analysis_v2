@@ -31,13 +31,13 @@ Misassembled contigs length  2660
 # unaligned mis. contigs     0
 # unaligned contigs          0 + 0 part
 Unaligned length             0
-Genome fraction (%)          2.642
+Genome fraction (%)          2.611
 Duplication ratio            1.001
 # N's per 100 kbp            1.75
 # mismatches per 100 kbp     320.54
 # indels per 100 kbp         10.92
 Largest alignment            3398
-Total aligned length         2073683
+Total aligned length         2047004
 NA50                         685
 NA90                         528
 auNA                         804.2
