@@ -20,12 +20,13 @@ echo "Using upcxx version $UPCXX_VER"
 CI_CMAKE_OPTS=${CI_CMAKE_OPTS}
 echo "Using CI_CMAKE_OPTS=${CI_CMAKE_OPTS}"
 
-CI_INSTALL=$BASE/ci-install-mhm2-upcxx-${UPCXX_VER}
-export HIPMER_DATA=${BASE}/scratch/
+export CI_INSTALL=${CI_INSTALL:=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}}
+export HIPMER_DATA=${HIPMER_DATA:=${BASE}/scratch/}
+export CI_SCRATCH=${CI_SCRATCH:=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}}
+export RUN_PREFIX=${RUN_PREFIX:=${CI_SCRATCH}/runs}
+export INSTALL_PREFIX=${INSTALL_PREFIX:=${CI_SCRATCH}}
+
 mkdir -p ${HIPMER_DATA}
-export CI_SCRATCH=${BASE}/scratch/mhm2-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-export RUN_PREFIX=${CI_SCRATCH}/runs
-export INSTALL_PREFIX=${CI_SCRATCH}
 export GASNET_BACKTRACE=1
 
 echo "Validating all tests under BASE=$BASE and CI_SCRATCH=$CI_SCRATCH"
