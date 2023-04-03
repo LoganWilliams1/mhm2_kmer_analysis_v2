@@ -31,6 +31,7 @@ else
   echo "Restarting in $test_dir"
 fi
 uptime
+set -x
 $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
 status=$?
 if [ $status -ne 0 ]

@@ -200,7 +200,7 @@ class KmerCtgDHT {
   bool allow_multi_kmers = false;
 
   KmerCtgDHT(int max_store_size, int max_rpcs_in_flight, bool allow_multi_kmers, uint64_t num_contig_kmers = 0)
-      : kmer_map({})
+      : kmer_map(local_kmer_map_t{})
       , global_ctg_seqs({})
       , kmer_store()
       , allow_multi_kmers(allow_multi_kmers)

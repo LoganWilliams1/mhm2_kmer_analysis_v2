@@ -91,7 +91,8 @@ struct AvgVar {
 
 class CtgsDepths {
  private:
-  using ctgs_depths_map_t = upcxx::dist_object<HASH_TABLE<int64_t, CtgBaseDepths>>;
+  using local_ctgs_depths_map_t = HASH_TABLE<int64_t, CtgBaseDepths>;
+  using ctgs_depths_map_t = upcxx::dist_object<local_ctgs_depths_map_t>;
   ctgs_depths_map_t ctgs_depths;
   int edge_base_len, num_read_groups;
   HASH_TABLE<int64_t, CtgBaseDepths>::iterator ctgs_depths_iter;
@@ -132,7 +133,7 @@ class CtgsDepths {
 
  public:
   CtgsDepths(int edge_base_len, int num_read_groups)
-      : ctgs_depths({})
+      : ctgs_depths(local_ctgs_depths_map_t{})
       , edge_base_len(edge_base_len)
       , num_read_groups(num_read_groups)
       , ctg_aln_depth_store() {
@@ -245,7 +246,6 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   }
   barrier();
   auto unmerged_rlen = alns.calculate_unmerged_rlen();
-  int64_t num_bad_overlaps = 0;
   int64_t num_bad_alns = 0;
   auto num_ctgs = ctgs_depths.get_num_ctgs();
   SLOG_VERBOSE("Computing aln depths for ", num_ctgs, " ctgs\n");
@@ -291,8 +291,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   fut_progbar.wait();
   barrier();
   auto all_num_alns = reduce_one(alns.size(), op_fast_add, 0).wait();
-  SLOG_VERBOSE("Dropped ", perc_str(reduce_one(num_bad_overlaps, op_fast_add, 0).wait(), all_num_alns), " bad overlaps and ",
-               perc_str(reduce_one(num_bad_alns, op_fast_add, 0).wait(), all_num_alns), " low quality alns\n");
+  auto all_num_bad_alns = reduce_one(num_bad_alns, op_fast_add, 0).wait();
+  if (all_num_bad_alns) SLOG_VERBOSE("Dropped ", perc_str(all_num_bad_alns, all_num_alns), " low quality alns\n");
   // get string to dump
   shared_ptr<upcxx_utils::dist_ofstream> sh_of;
   if (fname != "") {

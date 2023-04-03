@@ -1,6 +1,8 @@
 #!/bin/bash
 # Example mps-wrapper.sh usage:
 # > srun [srun args] mps-wrapper.sh [cmd] [cmd args]
+export GASNET_PHYSMEM_MAX=2/3
+export GASNET_PHYSMEM_PROBE=0
 export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
 export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-log
 # Launch MPS from a single rank per node

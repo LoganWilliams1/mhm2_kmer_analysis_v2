@@ -85,7 +85,7 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
   assert(SHUFFLE_KMER_LEN < 32);
   kmer_t::set_k(SHUFFLE_KMER_LEN);
   // create kmer-cid hash table - this will only be for k < 32
-  dist_object<kmer_to_cid_map_t> kmer_to_cid_map({});
+  dist_object<kmer_to_cid_map_t> kmer_to_cid_map(kmer_to_cid_map_t{});
   ThreeTierAggrStore<pair<uint64_t, int64_t>> kmer_cid_store;
   kmer_cid_store.set_update_func([&kmer_to_cid_map](pair<uint64_t, int64_t> &&kmer_cid_info) {
     auto it = kmer_to_cid_map->find(kmer_cid_info.first);
@@ -177,7 +177,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
 static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList &packed_reads_list,
                                                                 dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
-  dist_object<cid_to_reads_map_t> cid_to_reads_map({});
+  dist_object<cid_to_reads_map_t> cid_to_reads_map(cid_to_reads_map_t{});
   cid_to_reads_map->reserve(num_ctgs);
   ThreeTierAggrStore<pair<int64_t, int64_t>> cid_reads_store;
   cid_reads_store.set_update_func([&cid_to_reads_map](pair<int64_t, int64_t> &&cid_reads_info) {
@@ -246,7 +246,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList 
 static dist_object<cid_to_reads_map_t> process_alns(PackedReadsList &packed_reads_list, Alns &alns, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   using read_to_cid_map_t = HASH_TABLE<int64_t, pair<int64_t, int>>;
-  dist_object<read_to_cid_map_t> read_to_cid_map({});
+  dist_object<read_to_cid_map_t> read_to_cid_map(read_to_cid_map_t{});
   ThreeTierAggrStore<tuple<int64_t, int64_t, int>> read_cid_store;
   read_cid_store.set_update_func([&read_to_cid_map](tuple<int64_t, int64_t, int> &&read_cid_info) {
     auto &[read_id, cid, score] = read_cid_info;
@@ -273,7 +273,7 @@ static dist_object<cid_to_reads_map_t> process_alns(PackedReadsList &packed_read
   read_cid_store.flush_updates();
   barrier();
 
-  dist_object<cid_to_reads_map_t> cid_to_reads_map({});
+  dist_object<cid_to_reads_map_t> cid_to_reads_map(cid_to_reads_map_t{});
   cid_to_reads_map->reserve(num_ctgs);
   ThreeTierAggrStore<pair<int64_t, int64_t>> cid_reads_store;
   cid_reads_store.set_update_func([&cid_to_reads_map](pair<int64_t, int64_t> &&cid_reads_info) {
@@ -326,7 +326,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   SLOG_VERBOSE("Avg mapped reads per rank ", avg_num_mapped_reads, " max ", max_num_mapped_reads, " balance ",
                (double)avg_num_mapped_reads / max_num_mapped_reads, "\n");
 
-  dist_object<read_to_target_map_t> read_to_target_map({});
+  dist_object<read_to_target_map_t> read_to_target_map(read_to_target_map_t{});
   upcxx_utils::ThreeTierAggrStore<ReadTarget> read_target_store;
   auto local_n = local_team().rank_n();
   int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
@@ -458,7 +458,7 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   auto kmer_to_cid_map = compute_kmer_to_cid_map(ctgs);
   auto cid_to_reads_map = compute_cid_to_reads_map(packed_reads_list, kmer_to_cid_map, ctgs.size());
   auto read_to_target_map = compute_read_locations(cid_to_reads_map, all_num_reads);
-  dist_object<PackedReadsContainer> new_packed_reads({});
+  dist_object<PackedReadsContainer> new_packed_reads(PackedReadsContainer{});
   new_packed_reads->reserve(num_reads * 1.3);
   move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads, new_packed_reads);
 
