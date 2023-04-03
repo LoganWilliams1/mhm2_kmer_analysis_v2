@@ -27,12 +27,14 @@ git submodule sync
 git submodule update
 git describe --always
 ( cd upcxx-utils ; git describe --always )
-CI_INSTALL=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
-export HIPMER_DATA=${BASE}/scratch/
+
+export CI_INSTALL=${CI_INSTALL:=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}}
+export HIPMER_DATA=${HIPMER_DATA:=${BASE}/scratch/}
+export CI_SCRATCH=${CI_SCRATCH:=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}}
+export RUN_PREFIX=${RUN_PREFIX:=${CI_SCRATCH}/runs}
+export INSTALL_PREFIX=${INSTALL_PREFIX:=${CI_SCRATCH}}
+
 mkdir -p ${HIPMER_DATA}
-export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-export RUN_PREFIX=${CI_SCRATCH}/runs
-export INSTALL_PREFIX=${CI_SCRATCH}
 export GASNET_BACKTRACE=1
 
 echo "Verifing and/or downloading test arctic data set"
