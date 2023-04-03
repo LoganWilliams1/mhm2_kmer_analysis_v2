@@ -167,9 +167,9 @@ double CtgGraph::calc_tnf_dist(shared_ptr<Vertex> v1, shared_ptr<Vertex> v2) {
 #endif
 
 CtgGraph::CtgGraph()
-    : vertices({})
-    , edges({})
-    , read_seqs({})
+    : vertices(local_vertex_map_t{})
+    , edges(local_edge_map_t{})
+    , read_seqs(local_reads_map_t{})
     , vertex_cache({})
     , edge_cache({}) {
   vertex_cache.reserve(CGRAPH_MAX_CACHE_SIZE);
