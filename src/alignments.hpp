@@ -73,6 +73,7 @@ struct Aln {
   string to_blast6_string() const;
   bool is_valid() const;
   std::pair<int, int> get_unaligned_overlaps() const;
+  double calc_identity() const;
 };
 
 class Alns {

@@ -94,13 +94,13 @@ int get_cigar_length(const string &cigar) {
   return base_count;
 }
 
-CPUAligner::CPUAligner(bool compute_cigar, bool use_blastn_scores)
+CPUAligner::CPUAligner(bool report_cigar, bool use_blastn_scores)
     : ssw_aligner() {
   // aligner construction: SSW internal defaults are 2 2 3 1
   ssw_aligner.Clear();
   if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
     SDIE("Failed to set aln scores");
-  ssw_filter.report_cigar = compute_cigar;
+  ssw_filter.report_cigar = report_cigar;
   SLOG_VERBOSE("Alignment scoring parameters: match ", (int)ssw_aligner.get_match_score(), " mismatch ",
                (int)ssw_aligner.get_mismatch_penalty(), " gap open ", (int)ssw_aligner.get_gap_opening_penalty(), " gap extend ",
                (int)ssw_aligner.get_gap_extending_penalty(), " ambiguity ", (int)ssw_aligner.get_ambiguity_penalty(), "\n");
@@ -159,8 +159,8 @@ upcxx::future<> CPUAligner::ssw_align_block(shared_ptr<AlignBlockData> aln_block
         t.stop();
       });
   fut = fut.then([alns = alns, aln_block_data, t, &aln_kernel_timer]() {
-    SLOG_VERBOSE("Finished CPU SSW aligning block of ", aln_block_data->kernel_alns.size(), " in ", t.get_elapsed(), " s (",
-                 (t.get_elapsed() > 0 ? aln_block_data->kernel_alns.size() / t.get_elapsed() : 0.0), " aln/s)\n");
+    DBG_VERBOSE("Finished CPU SSW aligning block of ", aln_block_data->kernel_alns.size(), " in ", t.get_elapsed(), " s (",
+                (t.get_elapsed() > 0 ? aln_block_data->kernel_alns.size() / t.get_elapsed() : 0.0), " aln/s)\n");
     DBG_VERBOSE("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
     aln_kernel_timer += t;

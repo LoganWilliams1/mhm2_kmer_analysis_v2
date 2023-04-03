@@ -245,7 +245,6 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   }
   barrier();
   auto unmerged_rlen = alns.calculate_unmerged_rlen();
-  int64_t num_bad_overlaps = 0;
   int64_t num_bad_alns = 0;
   auto num_ctgs = ctgs_depths.get_num_ctgs();
   SLOG_VERBOSE("Computing aln depths for ", num_ctgs, " ctgs\n");
@@ -254,16 +253,14 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
     progbar.update();
     // require at least this much overlap with the read
     // what this does is drop alns that hang too much over the ends of contigs
-    // this gives abundances more in line with what we see in MetaBAT, although that uses 97% identity as the cutoff and we're using
-    // 85% here (our alns differ somewhat because of different seed lengths, etc) .
-    // In practice, when using aln depths for scaffolding, this tends to reduce msa without any benefits so we only use it in the
-    // final round, i.e. if min_ctg_len > 0
-    /*
-    if (min_ctg_len && aln.identity < 85) {
+    // this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
+    // In practice, when using aln depths for scaffolding, this tends to reduce misassemblies without any benefits so we only
+    // use it in the final round, i.e. if min_ctg_len > 0
+    if (min_ctg_len && aln.calc_identity() < 97) {
       num_bad_alns++;
       continue;
     }
-    */
+
     // convert to coords for use here
     assert(aln.is_valid());
     // set to -1 if this read is not merged
@@ -293,8 +290,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   fut_progbar.wait();
   barrier();
   auto all_num_alns = reduce_one(alns.size(), op_fast_add, 0).wait();
-  SLOG_VERBOSE("Dropped ", perc_str(reduce_one(num_bad_overlaps, op_fast_add, 0).wait(), all_num_alns), " bad overlaps and ",
-               perc_str(reduce_one(num_bad_alns, op_fast_add, 0).wait(), all_num_alns), " low quality alns\n");
+  auto all_num_bad_alns = reduce_one(num_bad_alns, op_fast_add, 0).wait();
+  if (all_num_bad_alns) SLOG_VERBOSE("Dropped ", perc_str(all_num_bad_alns, all_num_alns), " low quality alns\n");
   // get string to dump
   shared_ptr<upcxx_utils::dist_ofstream> sh_of;
   if (fname != "") {

@@ -25,8 +25,8 @@ echo "Using CI_CMAKE_OPTS=${CI_CMAKE_OPTS}"
 git submodule init
 git submodule sync
 git submodule update
-git describe
-( cd upcxx-utils ; git describe )
+git describe --always
+( cd upcxx-utils ; git describe --always )
 CI_INSTALL=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
 export HIPMER_DATA=${BASE}/scratch/
 mkdir -p ${HIPMER_DATA}

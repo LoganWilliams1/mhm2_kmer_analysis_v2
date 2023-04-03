@@ -43,7 +43,7 @@
 
 #include <iostream>
 // Not available in gcc <= 7
-//#include <charconv>
+// #include <charconv>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -117,7 +117,8 @@ PackedRead::PackedRead(const string &id_str, string_view seq, string_view quals,
       case 'D':
       case 'H':
       case 'V': bytes[i] = 4; break;
-      default: DIE("Illegal char in comp nucleotide of '", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' int=", (int)seq[i], "\n");
+      default:
+        DIE("Illegal char in comp nucleotide of '", ((seq[i] >= 32 && seq[i] <= 126) ? seq[i] : ' '), "' int=", (int)seq[i], "\n");
     }
     bytes[i] |= ((unsigned char)std::min(quals[i] - qual_offset, 31) << 3);
   }
@@ -204,6 +205,15 @@ void PackedRead::unpack(string &read_id_str, string &seq, string &quals, int qua
   assert(quals.length() == read_len);
 }
 
+void PackedRead::unpack_seq(string &seq) const {
+  assert(bytes != nullptr);
+  seq.resize(read_len);
+  for (int i = 0; i < read_len; i++) {
+    seq[i] = nucleotide_map[bytes[i] & 7];
+  }
+  assert(seq.length() == read_len);
+}
+
 int64_t PackedRead::get_id() { return read_id; }
 
 string PackedRead::get_str_id() {
@@ -268,6 +278,11 @@ void PackedReads::get_read(uint64_t index, string &id, string &seq, string &qual
   if (index >= packed_reads.size()) DIE("Invalid get_read(", index, ") - size=", packed_reads.size());
   packed_reads[index].unpack(id, seq, quals, qual_offset);
   if (str_ids) id = read_id_idx_to_str[index];
+}
+
+void PackedReads::get_read_seq(uint64_t index, string &seq) const {
+  if (index >= packed_reads.size()) DIE("Invalid get_read(", index, ") - size=", packed_reads.size());
+  packed_reads[index].unpack_seq(seq);
 }
 
 void PackedReads::reset() { index = 0; }

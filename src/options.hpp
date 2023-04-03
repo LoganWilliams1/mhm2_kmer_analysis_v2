@@ -97,7 +97,6 @@ class Options {
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
   bool checkpoint = true;
   bool dump_merged = false;
-  bool klign_kmer_cache = false;
   bool post_assm_aln = false;
   bool post_assm_abundances = false;
   bool post_assm_only = false;

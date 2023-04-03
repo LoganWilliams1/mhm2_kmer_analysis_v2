@@ -51,7 +51,7 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+// #define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
 #define SLOG_GPU SLOG_VERBOSE
 
 static bool init_gpu_thread = true;
@@ -76,7 +76,7 @@ static vector<string> &get_gpu_uuids() {
 }
 
 void init_devices() {
-  SLOG("Initializing GPUS\n");
+  SLOG("Initializing GPUs\n");
   init_gpu_thread = true;
   // initialize the GPU and first-touch memory and functions in a new thread as this can take many seconds to complete
   detect_gpu_fut = execute_in_thread_pool([]() {
@@ -156,4 +156,3 @@ void log_gpu_uuid() {
   // Log the UUIDs for the GPUs used on the first node to rank0
   log_local("GPU UUID", gpu_utils::get_gpu_uuid());
 }
-
