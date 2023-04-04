@@ -237,10 +237,11 @@ void Alns::clear() {
 
 void Alns::add_aln(Aln &aln) {
   auto new_identity = aln.calc_identity();
-  if (new_identity < 97) {
-    num_bad++;
-    return;
-  }
+  // This is not done in bbmap - poorer alns are kept. This filtering is done when computing aln depths
+  // if (new_identity < 97) {
+  //   num_bad++;
+  //   return;
+  // }
   //  check for multiple read-ctg alns. Check backwards from most recent entry, since all alns for a read are grouped
   for (auto it = alns.rbegin(); it != alns.rend();) {
     // we have no more entries for this read
