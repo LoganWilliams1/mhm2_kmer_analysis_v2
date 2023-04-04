@@ -144,7 +144,7 @@ Cori:build:
     - export MHM2_NEW_SOURCE=${CI_SCRATCH}/repo
     - echo "Copying source from ${MHM2_SOURCE}/ to ${MHM2_NEW_SOURCE}"
     - mkdir -p ${MHM2_NEW_SOURCE}
-    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}/
+    - rsync -a ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}/
     - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
     - lmstat -a -c $INTEL_LICENSE_FILE || /bin/true
     - echo "Loading Haswell modules for upcxx GNU"
