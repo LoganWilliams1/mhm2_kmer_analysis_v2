@@ -94,9 +94,9 @@ Perlmutter:accuracy:
     - export MHM2_SOURCE=${CI_SCRATCH}/repo
     - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - dt=$(date '+%Y%m%d_%H%M%S')
-    - exec >  >(tee -ia ${CI_SCRATCH}/validation-$dt.log)
-    - exec 2> >(tee -ia ${CI_SCRATCH}/validation-$dt.err >&2)
-    - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
+    - exec >  >(tee -ia ${CI_SCRATCH}/accuracy-$dt.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy-$dt.err >&2)
+    - echo "Logging to ${CI_SCRATCH}/accuracy-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
     - ${MHM2_SOURCE}/ci/perlmutter.accuracy.sh
     - echo "Perlmutter accuracy done"
 
