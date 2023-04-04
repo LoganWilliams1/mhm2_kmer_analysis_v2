@@ -47,11 +47,12 @@ Perlmutter:build:
     - exec >  >(tee -ia ${CI_SCRATCH}/build-${dt}.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/build-${dt}.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/build-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
-    - echo "Copying source to ${CI_SCRATCH} because NERSC hates its users"
+    - export MHM2_NEW_SOURCE=${CI_SCRATCH}/repo
+    - echo "Copying source from ${MHM2_SOURCE}/ to ${MHM2_NEW_SOURCE}/"
     - export MHM2_BUILD_THREADS=64
-    - mkdir -p ${CI_SCRATCH}/repo
-    - rsync -a ${MHM2_SOURCE}/ ${CI_SCRATCH}/repo/
-    - export MHM2_SOURCE=${CI_SCRATCH}/repo
+    - mkdir -p ${MHM2_NEW_SOURCE}
+    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}
+    - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
     - cd ${CI_SCRATCH}/repo
     - sbatch --account=m2865 --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
     - echo "Perlmutter build done"
@@ -140,9 +141,11 @@ Cori:build:
     - git describe --always
     - cd ${MHM2_SOURCE}
     - set -x
-    - echo "Copying source from ${MHM2_SOURCE}/ to ${CI_SCRATCH}/src/"
-    - mkdir -p ${CI_SCRATCH}/src
-    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${CI_SCRATCH}/src/
+    - export MHM2_NEW_SOURCE=${CI_SCRATCH}/repo
+    - echo "Copying source from ${MHM2_SOURCE}/ to ${MHM2_NEW_SOURCE}"
+    - mkdir -p ${MHM2_NEW_SOURCE}
+    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}/
+    - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
     - lmstat -a -c $INTEL_LICENSE_FILE || /bin/true
     - echo "Loading Haswell modules for upcxx GNU"
     - source ${MHM2_SOURCE}/contrib/environments/cori-haswell/gnu.sh
@@ -193,9 +196,9 @@ Cori:validation:
     - date
     - export GASNET_BACKTRACE=1
     - echo "Establishing variables"
-    - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
     - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
+    - export MHM2_SOURCE=${CI_SCRATCH}/repo/
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
@@ -254,9 +257,9 @@ Cori:accuracy:
     - date
     - export GASNET_BACKTRACE=1
     - echo "Establishing variables"
-    - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
     - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
+    - export MHM2_SOURCE=${CI_SCRATCH}/repo/
     - export INSTALL_PREFIX=${CI_SCRATCH}/install
     - export BUILD_PREFIX=${CI_SCRATCH}/build
     - export RUN_PREFIX=${CI_SCRATCH}/runs
