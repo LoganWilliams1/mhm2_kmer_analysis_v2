@@ -54,7 +54,9 @@ Perlmutter:build:
     - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}
     - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
     - cd ${CI_SCRATCH}/repo
-    - sbatch --account=m2865 --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
+    - export OUT=perlmutter.build.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
+    - sbatch --output=$OUT --account=m2865 --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
+    - cat $OUT
     - echo "Perlmutter build done"
 
 Perlmutter:validation:

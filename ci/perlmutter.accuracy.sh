@@ -28,6 +28,7 @@ cd -
 export GASNET_BACKTRACE=1
 
 cd $CI_SCRATCH
+dt=$(date '+%Y%m%d_%H%M%S')
 
 export ARCTIC=${SCRATCH}/GitlabCIData/
 for f in arctic_sample_0.fq  arctic_samples.fq  arcticsynth-refs.fa
@@ -98,7 +99,9 @@ do
 done
 
 echo "Submitting $cmds $waits"
-sbatch --wait --qos=debug --time=30:00 --account=m342 -C cpu -c 8 --wrap="$cmds $waits"
+OUT==perlmutter.accuracy.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
+sbatch --output=$OUT --wait --qos=debug --time=30:00 --account=m342 -C cpu -c 8 --wrap="$cmds $waits"
+cat $OUT
 
 if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
 
