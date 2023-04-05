@@ -51,7 +51,7 @@ Perlmutter:build:
     - echo "Copying source from ${MHM2_SOURCE}/ to ${MHM2_NEW_SOURCE}/"
     - export MHM2_BUILD_THREADS=64
     - mkdir -p ${MHM2_NEW_SOURCE}
-    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}
+    - rsync -a ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}
     - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
     - cd ${CI_SCRATCH}/repo
     - export OUT=perlmutter.build.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
