@@ -3,6 +3,7 @@
 # CI Accuracy script for perlmutter
 
 set -e
+set -x
 
 uname -a
 pwd
@@ -85,7 +86,7 @@ do
   if [ -z "$wasgood" ] ; then  true ; else  echo "job ${job} failed somehow - ${wasgood}"; false ; fi
 done
 
-cmds="set -x ;"
+cmds="set -x ; env | grep SLURM ;"
 waits="/bin/true"
 for arch in gpu cpu
 do
@@ -99,7 +100,7 @@ do
 done
 
 echo "Submitting $cmds $waits"
-OUT==perlmutter.accuracy.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
+OUT=perlmutter.accuracy.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
 sbatch --output=$OUT --wait --qos=debug --time=30:00 --account=m342 -C cpu -c 8 --wrap="$cmds $waits"
 cat $OUT
 

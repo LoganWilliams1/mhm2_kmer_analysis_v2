@@ -3,6 +3,7 @@
 # CI Validation script for perlmutter
 
 set -e
+set -x
 
 uname -a
 pwd
