@@ -10,12 +10,13 @@ module load gcc
 module load rocm/5.2.0
 # this causes a remap failure when using GPUs
 #module load craype-hugepages2M
-module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
-#module rm upcxx
-module load upcxx
+module use /lustre/orion/csc296/world-shared/frontier/modulefiles
+module rm upcxx
+module load upcxx/2023.3.0
 export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
 #module list
 which upcxx
+upcxx --version
 
 module load cray-python
 
