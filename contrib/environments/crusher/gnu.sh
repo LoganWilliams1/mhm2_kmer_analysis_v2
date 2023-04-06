@@ -12,7 +12,15 @@ module load rocm/5.2.0
 #module load craype-hugepages2M
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
 module rm upcxx
-module load upcxx/nightly; export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
+module load upcxx
+export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
+export FI_OFI_RXM_RX_SIZE=8192
+export FI_CXI_DEFAULT_CQ_SIZE=13107200
+export FI_MR_CACHE_MONITOR=memhooks
+export FI_CXI_RX_MATCH_MODE=software
+export FI_CXI_REQ_BUF_MIN_POSTED=10
+export FI_CXI_REQ_BUF_SIZE=25165824
+
 #module list
 which upcxx
 
