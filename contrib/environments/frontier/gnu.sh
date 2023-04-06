@@ -19,6 +19,7 @@ export FI_MR_CACHE_MONITOR=memhooks
 export FI_CXI_RX_MATCH_MODE=software
 export FI_CXI_REQ_BUF_MIN_POSTED=10
 export FI_CXI_REQ_BUF_SIZE=25165824
+module rm craype-hugepages2M # FIXME when slingshot is fixed
 
 #module list
 which upcxx
@@ -29,4 +30,3 @@ module load cray-python
 export MHM2_CMAKE_EXTRAS="-DCMAKE_C_COMPILER=$(which cc) -DCMAKE_CXX_COMPILER=$(which CC) -DENABLE_CUDA=Off -DENABLE_HIP=On"
 export MHM2_BUILD_THREADS=8
 
-# salloc/sbatch with: -A BIF115_crusher --ntasks-per-node=64 
