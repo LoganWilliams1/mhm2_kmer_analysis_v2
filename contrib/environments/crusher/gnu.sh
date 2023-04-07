@@ -5,9 +5,10 @@ module load git
 module load cmake
 
 module rm xl
-module load gcc
+module rm gcc
+module load gcc/11.2.0
 # need to load > 5.1 to avoid the background HIP thread
-module load rocm/5.2.0
+module load rocm/5.3.0
 # this causes a remap failure when using GPUs
 #module load craype-hugepages2M
 module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
