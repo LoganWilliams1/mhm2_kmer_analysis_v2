@@ -6,7 +6,7 @@ module load cmake
 
 module rm xl
 module load gcc
-module load rocm
+module load rocm/5.2.0
 # this causes a remap failure when using GPUs
 #module load craype-hugepages2M
 module use /lustre/orion/csc296/world-shared/frontier/modulefiles
