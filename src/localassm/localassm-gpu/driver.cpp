@@ -276,7 +276,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       depth_h[i] = temp_data.depth;
       // convert string to c-string
       char *ctgs_ptr = ctg_seqs_h.get() + ctgs_offset_sum;
-      if (temp_data.seq.size() > 4294967296L) printf("Invalid seq size=%ld my_rank=%d i=%d\n cid=%ld", temp_data.seq.size(), my_rank, i, temp_data.cid);
+      if (temp_data.seq.size() > 4294967296L) printf("Invalid seq size=%ld my_rank=%d i=%d of %d cid=%ld\n", temp_data.seq.size(), my_rank, i, this_slice_size, temp_data.cid);
       memcpy(ctgs_ptr, temp_data.seq.c_str(), temp_data.seq.size());
       ctgs_offset_sum += temp_data.seq.size();
       ctg_seq_offsets_h[i] = ctgs_offset_sum;
@@ -286,8 +286,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       for (unsigned j = 0; j < temp_data.reads_left.size(); j++) {
         char *reads_l_ptr = reads_left_h.get() + reads_l_offset_sum;
         char *quals_l_ptr = quals_left_h.get() + reads_l_offset_sum;
-        if (temp_data.reads_left[j].seq.size() > 4294967296L) printf("Invalid reads_left[%d].seq size=%ld my_rank=%d i=%d\n cid=%ld", j, temp_data.reads_left[j].seq.size(), my_rank, i, temp_data.cid);
-        if (temp_data.reads_left[j].quals.size() > 4294967296L) printf("Invalid reads_left[%d].quals size=%ld my_rank=%d i=%d\n cid=%ld", j, temp_data.reads_left[j].quals.size(), my_rank, i, temp_data.cid);
+        if (temp_data.reads_left[j].seq.size() > 4294967296L) printf("Invalid reads_left[%d of %d].seq size=%ld my_rank=%d i=%d of cid=%ld\n", j, temp_data.reads_left.size(), temp_data.reads_left[j].seq.size(), my_rank, i, this_slice_size, temp_data.cid);
+        if (temp_data.reads_left[j].quals.size() > 4294967296L) printf("Invalid reads_left[%d of %d].quals size=%ld my_rank=%d i=%d\n cid=%ld\n", j, temp_data.reads_left.size(), temp_data.reads_left[j].quals.size(), my_rank, i, this_slice_size, temp_data.cid);
         memcpy(reads_l_ptr, temp_data.reads_left[j].seq.c_str(), temp_data.reads_left[j].seq.size());
         // quals offsets will be same as reads offset because quals and reads have same length
         memcpy(quals_l_ptr, temp_data.reads_left[j].quals.c_str(), temp_data.reads_left[j].quals.size());
@@ -300,8 +300,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
         char *reads_r_ptr = reads_right_h.get() + reads_r_offset_sum;
         char *quals_r_ptr = quals_right_h.get() + reads_r_offset_sum;
-        if (temp_data.reads_right[j].seq.size() > 4294967296L) printf("Invalid reads_right[%d].seq size=%ld my_rank=%d i=%d\n cid=%ld", j, temp_data.reads_right[j].seq.size(), my_rank, i, temp_data.cid);
-        if (temp_data.reads_right[j].quals.size() > 4294967296L) printf("Invalid reads_right[%d].quals size=%ld my_rank=%d i=%d\n cid=%ld", j, temp_data.reads_right[j].quals.size(), my_rank, i, temp_data.cid);
+        if (temp_data.reads_right[j].seq.size() > 4294967296L) printf("Invalid reads_right[%d of %d].seq size=%ld my_rank=%d i=%d of %d cid=%ld\n", j, temp_data.reads_right.size(), temp_data.reads_right[j].seq.size(), my_rank, i, this_slice_size, temp_data.cid);
+        if (temp_data.reads_right[j].quals.size() > 4294967296L) printf("Invalid reads_right[%d of %d].quals size=%ld my_rank=%d i=%d of %d cid=%ld", j, temp_data.reads_right[j].quals.size(),  temp_data.reads_right.size(), my_rank, i, this_slice_size, temp_data.cid);
         memcpy(reads_r_ptr, temp_data.reads_right[j].seq.c_str(), temp_data.reads_right[j].seq.size());
         // quals offsets will be same as reads offset because quals and reads have same length
         memcpy(quals_r_ptr, temp_data.reads_right[j].quals.c_str(), temp_data.reads_right[j].quals.size());
