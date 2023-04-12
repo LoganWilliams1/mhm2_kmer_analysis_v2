@@ -452,6 +452,11 @@ def main():
 
     cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
 
+    if is_slurm_job() and num_nodes >= 16 and 'SLURM_BCAST' not in os.environ:
+        bcast_path = f"/tmp/mhm2.{get_job_id()}"
+        os.environ['SLURM_BCAST'] = bcast_path
+        print(f"Setting SLURM_BCAST={bcast_path} on this large {num_nodes} node job")
+
     # special spawner for summit that auto-detects the job size and calls jsrun to properly bind cpus, gpus and hca network devices
     if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "summit":
         cmd = ['upcxx-jsrun']
@@ -487,6 +492,16 @@ def main():
         os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
         print("This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
 
+    if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "frontier":
+        gpus_per_node = 8
+        tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
+        cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms']
+        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
+            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
+        os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
+        print("This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        
     if 'UPCXX_SHARED_HEAP_SIZE' in os.environ and 'GASNET_MAX_SEGSIZE' not in os.environ:
         print("Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ", os.environ['UPCXX_SHARED_HEAP_SIZE'], " to avoid gasnet memory probe")
         os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']
