@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
  # HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  # through Lawrence Berkeley National Laboratory (subject to receipt of any required
