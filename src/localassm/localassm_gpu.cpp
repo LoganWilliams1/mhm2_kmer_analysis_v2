@@ -91,9 +91,8 @@ static CtgWithReads ctgs_to_ctgs(CtgWithReads ctg_in) {
 
 static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driver::ctg_bucket &mid_slice,
                         localassm_driver::ctg_bucket &outlier_slice, CtgsWithReadsDHT &ctgs_dht,
-                        IntermittentTimer &ctg_buckets_timer) {
+                        unsigned max_read_size, IntermittentTimer &ctg_buckets_timer) {
   ctg_buckets_timer.start();
-  unsigned max_read_size = 300;
   for (auto ctg = ctgs_dht.get_first_local_ctg(); ctg != nullptr; ctg = ctgs_dht.get_next_local_ctg()) {
     CtgWithReads temp_in = ctgs_to_ctgs(*ctg);
     temp_in.max_reads =
@@ -126,7 +125,7 @@ static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driv
 }
 
 void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len,
-                 int qual_offset) {
+                 int qual_offset, unsigned max_read_size) {
   BarrierTimer timer(__FILEFUNC__);
   // walk should never be more than this. Note we use the maximum insert size from all libraries
   int walk_len_limit = insert_avg + 2 * insert_stddev;
@@ -139,25 +138,25 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   ProgressBar progbar(ctgs_dht.get_local_num_ctgs(), "Extending contigs");
 
   localassm_driver::ctg_bucket zero_slice, mid_slice, outlier_slice;
-  bucket_ctgs(zero_slice, mid_slice, outlier_slice, ctgs_dht, ctg_buckets_timer);
+  bucket_ctgs(zero_slice, mid_slice, outlier_slice, ctgs_dht, max_read_size, ctg_buckets_timer);
   ctg_buckets_timer.done_all();
 
   loc_assem_kernel_timer.start();
-  unsigned max_read_size = 300;
 
   auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();  // implicit local_team barier
-  //future<> fut_outlier = upcxx_utils::execute_in_thread_pool(
-  //    [&outlier_slice, max_read_size, walk_len_limit, qual_offset, max_kmer_len, kmer_len, gpu_avail_mem_per_rank]() {
-        if (outlier_slice.ctg_vec.size() > 0)
+  future<> fut_outlier = make_future();
+  if (outlier_slice.ctg_vec.size() > 0)
+    fut_outlier = upcxx_utils::execute_in_thread_pool(
+        [&outlier_slice, max_read_size, walk_len_limit, qual_offset, max_kmer_len, kmer_len, gpu_avail_mem_per_rank]() {
           localassm_driver::localassm_driver(outlier_slice.ctg_vec, outlier_slice.max_contig_sz, max_read_size, outlier_slice.r_max,
                                              outlier_slice.l_max, kmer_len, max_kmer_len, outlier_slice.sizes_vec, walk_len_limit,
                                              qual_offset, local_team().rank_me(), gpu_avail_mem_per_rank);
-        //    });
+        });
   auto tot_mids{mid_slice.ctg_vec.size()};
   // work steal while either:
   //    outliers are running on the GPU
   // OR if there are less than 100 mid_slice contigs to localassm
-  while (//(!fut_outlier.ready() && mid_slice.ctg_vec.size() > 0) ||
+  while ((!fut_outlier.ready() && mid_slice.ctg_vec.size() > 0) ||
          (mid_slice.ctg_vec.size() <= 100 && mid_slice.ctg_vec.size() > 0)) {
     auto ctg = &mid_slice.ctg_vec.back();
     extend_ctg(ctg, wm, insert_avg, insert_stddev, max_kmer_len, kmer_len, qual_offset, walk_len_limit, count_mers_timer,
@@ -166,6 +165,7 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
     mid_slice.ctg_vec.pop_back();
     upcxx::progress();
   }
+  fut_outlier.wait();
   auto cpu_exts{tot_mids - mid_slice.ctg_vec.size()};
   LOG("Number of Local Contig Extensions processed on CPU:", cpu_exts, "\n");
 
