@@ -154,8 +154,10 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
                                              qual_offset, local_team().rank_me(), gpu_avail_mem_per_rank);
         //    });
   auto tot_mids{mid_slice.ctg_vec.size()};
-  //while ((!fut_outlier.ready() && mid_slice.ctg_vec.size() > 0) ||
-  while ((mid_slice.ctg_vec.size() > 0) ||
+  // work steal while either:
+  //    outliers are running on the GPU
+  // OR if there are less than 100 mid_slice contigs to localassm
+  while (//(!fut_outlier.ready() && mid_slice.ctg_vec.size() > 0) ||
          (mid_slice.ctg_vec.size() <= 100 && mid_slice.ctg_vec.size() > 0)) {
     auto ctg = &mid_slice.ctg_vec.back();
     extend_ctg(ctg, wm, insert_avg, insert_stddev, max_kmer_len, kmer_len, qual_offset, walk_len_limit, count_mers_timer,
