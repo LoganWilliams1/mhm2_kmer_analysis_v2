@@ -82,7 +82,9 @@ static void revcomp(char *str, char *str_rc, unsigned int size) {
       case 'D':
       case 'H':
       case 'V': str_rc[size_rc] = 'N'; break;
-      default: std::cerr << "Illegal revcomp char " << ((str[i] >= 32 && str[i] <= 126) ? str[i] : ' ') << " int=" << (int) str[i] << "\n"; break;
+      default:
+        std::cerr << "Illegal revcomp char " << ((str[i] >= 32 && str[i] <= 126) ? str[i] : ' ') << " int=" << (int)str[i] << "\n";
+        break;
     }
     size_rc++;
   }
@@ -117,7 +119,10 @@ static std::string revcomp(std::string instr) {
       case 'D':
       case 'H':
       case 'V': str_rc += 'N'; break;
-      default: std::cerr << "Illegal revcomp char:" << ((instr[i] >= 32 && instr[i] <= 126) ? instr[i] : ' ') << " int=" << (int) instr[i] << "\n"; break;
+      default:
+        std::cerr << "Illegal revcomp char:" << ((instr[i] >= 32 && instr[i] <= 126) ? instr[i] : ' ') << " int=" << (int)instr[i]
+                  << "\n";
+        break;
     }
   }
   return str_rc;
@@ -126,7 +131,7 @@ static std::string revcomp(std::string instr) {
 void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t max_ctg_size, uint32_t max_read_size,
                                         uint32_t max_r_count, uint32_t max_l_count, int mer_len, int max_kmer_len,
                                         accum_data &sizes_vecs, int walk_len_limit, int qual_offset, int my_rank,
-                                        size_t gpu_mem_avail) {
+                                        size_t gpu_mem_avail, int debug_line) {
   gpu_utils::set_gpu_device(my_rank);
   int max_mer_len = max_kmer_len;  // mer_len;// max_mer_len needs to come from macro (121) and mer_len is the mer_len for current
                                    // go
@@ -270,8 +275,9 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     uint32_t reads_r_offset_sum = 0;
     uint32_t reads_l_offset_sum = 0;
     uint32_t read_l_index = 0, read_r_index = 0;
+    int num_bad = 0;
     for (unsigned i = 0; i < this_slice_size; i++) {
-      const CtgWithReads& temp_data = slice_iter[i];  // slice_data[i];
+      const CtgWithReads &temp_data = slice_iter[i];  // slice_data[i];
       cid_h[i] = temp_data.cid;
       depth_h[i] = temp_data.depth;
       // convert string to c-string
@@ -288,12 +294,20 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       for (unsigned j = 0; j < temp_data.reads_left.size(); j++) {
         char *reads_l_ptr = reads_left_h.get() + reads_l_offset_sum;
         char *quals_l_ptr = quals_left_h.get() + reads_l_offset_sum;
-        if (temp_data.reads_left[j].seq.size() > 4294967296L)
-          fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j, temp_data.reads_left.size(),
-                 temp_data.reads_left[j].seq.size(), i, this_slice_size, temp_data.cid);
-        if (temp_data.reads_left[j].quals.size() > 4294967296L)
-          fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j, temp_data.reads_left.size(),
-                 temp_data.reads_left[j].quals.size(), i, this_slice_size, temp_data.cid);
+        if (temp_data.reads_left[j].seq.size() > 300) {
+          if (!num_bad)
+            fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
+                    temp_data.reads_left.size(), temp_data.reads_left[j].seq.size(), i, this_slice_size, temp_data.cid);
+          num_bad++;
+          continue;
+        }
+        if (temp_data.reads_left[j].quals.size() > 300) {
+          if (!num_bad)
+            fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].quals size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
+                    temp_data.reads_left.size(), temp_data.reads_left[j].quals.size(), i, this_slice_size, temp_data.cid);
+          num_bad++;
+          continue;
+        }
         memcpy(reads_l_ptr, temp_data.reads_left[j].seq.c_str(), temp_data.reads_left[j].seq.size());
         // quals offsets will be same as reads offset because quals and reads have same length
         memcpy(quals_l_ptr, temp_data.reads_left[j].quals.c_str(), temp_data.reads_left[j].quals.size());
@@ -306,12 +320,20 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
         char *reads_r_ptr = reads_right_h.get() + reads_r_offset_sum;
         char *quals_r_ptr = quals_right_h.get() + reads_r_offset_sum;
-        if (temp_data.reads_right[j].seq.size() > 4294967296L)
-          fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j, temp_data.reads_right.size(),
-                 temp_data.reads_right[j].seq.size(), i, this_slice_size, temp_data.cid);
-        if (temp_data.reads_right[j].quals.size() > 4294967296L)
-          fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j, temp_data.reads_right.size(),
-                 temp_data.reads_right[j].quals.size(), i, this_slice_size, temp_data.cid);
+        if (temp_data.reads_right[j].seq.size() > 300) {
+          if (!num_bad)
+            fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
+                    temp_data.reads_right.size(), temp_data.reads_right[j].seq.size(), i, this_slice_size, temp_data.cid);
+          num_bad++;
+          continue;
+        }
+        if (temp_data.reads_right[j].quals.size() > 300) {
+          if (!num_bad)
+            fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].quals size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
+                    temp_data.reads_right.size(), temp_data.reads_right[j].quals.size(), i, this_slice_size, temp_data.cid);
+          num_bad++;
+          continue;
+        }
         memcpy(reads_r_ptr, temp_data.reads_right[j].seq.c_str(), temp_data.reads_right[j].seq.size());
         // quals offsets will be same as reads offset because quals and reads have same length
         memcpy(quals_r_ptr, temp_data.reads_right[j].quals.c_str(), temp_data.reads_right[j].quals.size());
@@ -321,6 +343,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       }
       rds_r_cnt_offset_h[i] = read_r_index;  // running sum of right reads count
     }                                        // data packing for loop ends
+    if (num_bad) fprintf(stderr, "WARN: myrank=%d found %d excess sized reads from line %d\n", my_rank, num_bad, debug_line);
 
     uint32_t total_r_reads_slice = read_r_index;
     uint32_t total_l_reads_slice = read_l_index;

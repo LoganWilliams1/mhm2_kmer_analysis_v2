@@ -66,6 +66,6 @@ struct ctg_bucket {
 
 void localassm_driver(std::vector<CtgWithReads>& data_in, uint32_t max_ctg_size, uint32_t max_read_size, uint32_t max_r_count,
                       uint32_t max_l_count, int mer_len, int max_kmer_len, accum_data& sizes_outliers, int walk_len_limit,
-                      int qual_offset, int my_rank, size_t gpu_mem_avail);
+                      int qual_offset, int my_rank, size_t gpu_mem_avail, int debug_line);
 
 }  // namespace localassm_driver
