@@ -95,8 +95,8 @@ static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driv
   ctg_buckets_timer.start();
   unsigned max_read_size = 300;
   for (auto ctg = ctgs_dht.get_first_local_ctg(); ctg != nullptr; ctg = ctgs_dht.get_next_local_ctg()) {
-    // CtgWithReads temp_in = ctgs_to_ctgs(*ctg);
-    CtgWithReads &temp_in = *ctg;
+    CtgWithReads temp_in = ctgs_to_ctgs(*ctg);
+    //CtgWithReads &temp_in = *ctg;
     temp_in.max_reads =
         temp_in.reads_left.size() > temp_in.reads_right.size() ? temp_in.reads_left.size() : temp_in.reads_right.size();
     if (temp_in.max_reads == 0) {
