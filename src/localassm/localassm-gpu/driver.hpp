@@ -51,6 +51,12 @@ struct accum_data {
   std::vector<uint32_t> l_reads_count;
   std::vector<uint32_t> r_reads_count;
   std::vector<uint32_t> ctg_sizes;
+  void clear() {
+    ht_sizes.clear();
+    l_reads_count.clear();
+    r_reads_count.clear();
+    ctg_sizes.clear();
+  }
 };
 
 struct ctg_bucket {
@@ -84,9 +90,9 @@ struct ctg_bucket {
     if (max_contig_sz < seq_size) max_contig_sz = seq_size;
   }
   void clear() {
-    std::vector<CtgWithReads>().swap(ctg_vec);
-    accum_data().swap(sizes_vec);
-    l_max = r_max = max_ctg_sz = max_read_sz = 0;
+    ctg_vec.clear();
+    sizes_vec.clear();
+    l_max = r_max = max_contig_sz = max_read_sz = 0;
   }
 };
 

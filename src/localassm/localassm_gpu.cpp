@@ -69,7 +69,7 @@ static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driv
   for (auto ctg = ctgs_dht.get_first_local_ctg(); ctg != nullptr; ctg = ctgs_dht.get_next_local_ctg()) {
     CtgWithReads temp_in(*ctg); // deep copy
     temp_in.set_max_reads();
-    assert(mid_slize.max_read_sz >= temp_in.get_max_read_size() && "No reads are longer than expected");
+    assert(mid_slice.max_read_sz >= temp_in.get_max_read_size() && "No reads are longer than expected");
     if (temp_in.max_reads == 0) {
       zero_slice.add(std::move(temp_in));
     } else if (temp_in.max_reads > 0 && temp_in.max_reads < 10) {
