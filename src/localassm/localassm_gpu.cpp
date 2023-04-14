@@ -115,7 +115,7 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   // OR other members of the gpu_team are still processing outliers (and consuming GPU memory)
   // OR if there are less than 100 mid_slice contigs to localassm
   upcxx_utils::PromiseBarrier gpu_team_promise_barrier(get_gpu_team());
-  fut_outlier = fut_outler.then([&gpu_team_promise_barrier]() { gpu_team_promise_barrier.fulfill(); });
+  fut_outlier = fut_outlier.then([&gpu_team_promise_barrier]() { gpu_team_promise_barrier.fulfill(); });
   auto fut_gpu_team_promise_barrier = gpu_team_promise_barrier.get_future();
   upcxx::discharge();
   auto tot_mids{mid_slice.ctg_vec.size()};

@@ -74,8 +74,8 @@ struct ctg_bucket {
     uint32_t temp_ht_size = max_reads * max_read_sz;
     sizes_vec.ht_sizes.push_back(temp_ht_size);
     sizes_vec.ctg_sizes.push_back(seq_size);
-    mid_slice.sizes_vec.l_reads_count.push_back(reads_left_size);
-    mid_slice.sizes_vec.r_reads_count.push_back(reads_right_size);
+    sizes_vec.l_reads_count.push_back(reads_left_size);
+    sizes_vec.r_reads_count.push_back(reads_right_size);
   
     if (l_max < reads_left_size) l_max = reads_left_size;
     if (r_max < reads_right_size) r_max = reads_right_size;

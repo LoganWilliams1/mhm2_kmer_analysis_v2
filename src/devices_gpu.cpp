@@ -93,7 +93,8 @@ upcxx::team &get_gpu_team() {
     }
     assert(color != upcxx::team::color_none);
     return upcxx::local_team().split(color, upcxx::local_team().rank_me());
-  } return tm;
+  }();
+  return tm;
 }
 
 void init_devices() {
@@ -174,7 +175,7 @@ void done_init_devices() {
 }
 
 void tear_down_devices() {
-  auto &gpu_team = gpu_utils::get_gpu_team();
+  auto &gpu_team = get_gpu_team();
   gpu_team.destroy();
 }
 
