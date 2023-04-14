@@ -81,6 +81,7 @@ Aln::Aln()
     , score2(0)
     , mismatches(0)
     , sam_string({})
+    , cigar({})
     , read_group_id(-1)
     , orient() {}
 
@@ -98,6 +99,7 @@ Aln::Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, in
     , score2(score2)
     , mismatches(mismatches)
     , sam_string({})
+    , cigar({})
     , read_group_id(read_group_id)
     , orient(orient) {
   // DBG_VERBOSE(read_id, " cid=", cid, " RG=", read_group_id, " mismatches=", mismatches, "\n");
@@ -125,6 +127,7 @@ void Aln::set(int ref_begin, int ref_end, int query_begin, int query_end, int to
 
 void Aln::set_sam_string(std::string_view read_seq, string cigar) {
   assert(is_valid());
+  this->cigar = cigar;
   sam_string = read_id + "\t";
   string tmp;
   if (orient == '-') {
@@ -222,6 +225,36 @@ double Aln::calc_identity() const {
   return 100.0 * (aln_len - mismatches) / aln_len;
 }
 
+bool Aln::check_quality() const {
+  int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
+  double perc_id = 100.0 * (aln_len - mismatches) / aln_len;
+  int cigar_aln_len = 0;
+  int cigar_mismatches = 0;
+  string num_str = "";
+  for (int i = 0; i < cigar.length(); i++) {
+    if (isdigit(cigar[i])) {
+      num_str += cigar[i];
+      continue;
+    }
+    int count = stoi(num_str);
+    if (cigar[i] != 'S') cigar_aln_len += count;
+    num_str = "";
+    // SLOG(count, " ", cigar[i], " ");
+    switch (cigar[i]) {
+      case 'X':
+      case 'I':
+      case 'D': cigar_mismatches++; break;
+      case '=':
+      case 'M':
+      case 'S': break;
+      default: WARN("unexpected type in cigar: '", cigar[i], "'");
+    };
+  }
+  SLOG(cigar, " ", aln_len, " ", mismatches, " [", cigar_aln_len, " ", cigar_mismatches, "]\n");
+  // SLOG("\n");
+  return true;
+}
+
 //
 // class Alns
 //
@@ -249,8 +282,9 @@ void Alns::add_aln(Aln &aln) {
     if (it->cid == aln.cid) {
       num_dups++;
       auto old_identity = it->calc_identity();
-      // SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, " ",
-      // num_dups, "\n");
+      auto new_identity = aln.calc_identity();
+      // SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, "
+      // ", num_dups, "\n");
       it++;
       if ((new_identity > old_identity) || (new_identity == old_identity && (aln.rstop - aln.rstart > it->rstop - it->rstart))) {
         // new one is better - erase the old one

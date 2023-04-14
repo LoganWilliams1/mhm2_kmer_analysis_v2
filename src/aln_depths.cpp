@@ -251,6 +251,7 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   ProgressBar progbar(alns.size(), "Processing alignments");
   for (auto &aln : alns) {
     progbar.update();
+    aln.check_quality();
     // require at least this much overlap with the read
     // what this does is drop alns that hang too much over the ends of contigs
     // this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
