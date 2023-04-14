@@ -58,18 +58,20 @@ struct ctg_bucket {
   accum_data sizes_vec;
   uint32_t l_max, r_max, max_contig_sz, max_read_sz;
   ctg_bucket(uint32_t max_read_sz)
-      : l_max{0}
+      : ctg_vec{}
+      , sizes_vec{}
+      , l_max{0}
       , r_max{0}
       , max_contig_sz{0}
       , max_read_sz{max_read_sz} {}
   ctg_bucket(const ctg_bucket &copy) = default;
   ctg_bucket(ctg_bucket &&move) = default;
   void add(CtgWithReads &&cwr) {
+    assert(max_read_sz >= cwr.get_max_read_size() && "CtgWithRead max_read_size exceeds ctg_bucket max_read_sz");
     auto max_reads = cwr.max_reads;
     auto seq_size = cwr.seq.size();
     auto reads_left_size = cwr.reads_left.size();
     auto reads_right_size = cwr.reads_right.size();
-    
     ctg_vec.emplace_back(std::move(cwr));
     uint32_t temp_ht_size = max_reads * max_read_sz;
     sizes_vec.ht_sizes.push_back(temp_ht_size);
@@ -81,7 +83,11 @@ struct ctg_bucket {
     if (r_max < reads_right_size) r_max = reads_right_size;
     if (max_contig_sz < seq_size) max_contig_sz = seq_size;
   }
-  void clear();
+  void clear() {
+    std::vector<CtgWithReads>().swap(ctg_vec);
+    accum_data().swap(sizes_vec);
+    l_max = r_max = max_ctg_sz = max_read_sz = 0;
+  }
 };
 
 void localassm_driver(std::vector<CtgWithReads>& data_in, uint32_t max_ctg_size, uint32_t max_read_size, uint32_t max_r_count,

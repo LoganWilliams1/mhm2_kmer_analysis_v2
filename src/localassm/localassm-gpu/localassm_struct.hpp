@@ -69,10 +69,10 @@ struct CtgWithReads {
   void set_max_reads() {
     max_reads = std::max(reads_left.size(), reads_right.size());
   }
-  int get_max_read_size() const {
-    int max_sz = 0;
-    for (auto &read_seq : reads_left) max_sz = std::max(max_sz, (int) read_seq.seq.size());
-    for (auto &read_seq : reads_right) max_sz = std::max(max_sz, (int) read_seq.seq.size());
+  auto get_max_read_size() const {
+    uint64_t max_sz = 0;
+    for (auto &read_seq : reads_left) max_sz = std::max(max_sz, (uint64_t) read_seq.seq.size());
+    for (auto &read_seq : reads_right) max_sz = std::max(max_sz, (uint64_t) read_seq.seq.size());
     return max_sz;
   }
 };
