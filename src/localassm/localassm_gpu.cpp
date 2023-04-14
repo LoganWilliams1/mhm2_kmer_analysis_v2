@@ -66,7 +66,7 @@ static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driv
                         localassm_driver::ctg_bucket &outlier_slice, CtgsWithReadsDHT &ctgs_dht,
                         IntermittentTimer &ctg_buckets_timer) {
   ctg_buckets_timer.start();
-  for (const auto ctg = ctgs_dht.get_first_local_ctg(); ctg != nullptr; ctg = ctgs_dht.get_next_local_ctg()) {
+  for (auto ctg = ctgs_dht.get_first_local_ctg(); ctg != nullptr; ctg = ctgs_dht.get_next_local_ctg()) {
     CtgWithReads temp_in(*ctg); // deep copy
     temp_in.set_max_reads();
     assert(mid_slize.max_read_sz >= temp_in.get_max_read_size() && "No reads are longer than expected");
