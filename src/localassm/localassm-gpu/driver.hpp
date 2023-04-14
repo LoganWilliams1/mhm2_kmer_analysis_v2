@@ -56,11 +56,31 @@ struct accum_data {
 struct ctg_bucket {
   std::vector<CtgWithReads> ctg_vec;
   accum_data sizes_vec;
-  uint32_t l_max, r_max, max_contig_sz;
-  ctg_bucket()
+  uint32_t l_max, r_max, max_contig_sz, max_read_sz;
+  ctg_bucket(uint32_t max_read_sz)
       : l_max{0}
       , r_max{0}
-      , max_contig_sz{0} {}
+      , max_contig_sz{0}
+      , max_read_sz{max_read_sz} {}
+  ctg_bucket(const ctg_bucket &copy) = default;
+  ctg_bucket(ctg_bucket &&move) = default;
+  void add(CtgWithReads &&cwr) {
+    auto max_reads = cwr.max_reads;
+    auto seq_size = cwr.seq.size();
+    auto reads_left_size = cwr.reads_left.size();
+    auto reads_right_size = cwr.reads_right.size();
+    
+    ctg_vec.emplace_back(std::move(cwr));
+    uint32_t temp_ht_size = max_reads * max_read_sz;
+    sizes_vec.ht_sizes.push_back(temp_ht_size);
+    sizes_vec.ctg_sizes.push_back(seq_size);
+    mid_slice.sizes_vec.l_reads_count.push_back(reads_left_size);
+    mid_slice.sizes_vec.r_reads_count.push_back(reads_right_size);
+  
+    if (l_max < reads_left_size) l_max = reads_left_size;
+    if (r_max < reads_right_size) r_max = reads_right_size;
+    if (max_contig_sz < seq_size) max_contig_sz = seq_size;
+  }
   void clear();
 };
 
