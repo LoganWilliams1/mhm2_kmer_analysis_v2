@@ -62,7 +62,7 @@ using namespace upcxx;
 using namespace upcxx_utils;
 using namespace localassm_core;
 
-static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driver::ctg_bucket &mid_slice,
+static void bucket_ctgs(Contigs &ctgs, localassm_driver::ctg_bucket &mid_slice,
                         localassm_driver::ctg_bucket &outlier_slice, CtgsWithReadsDHT &ctgs_dht,
                         IntermittentTimer &ctg_buckets_timer) {
   ctg_buckets_timer.start();
@@ -77,7 +77,8 @@ static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driv
     }
     assert(mid_slice.max_read_sz >= temp_in.get_max_read_size() && "No reads are longer than expected");
     if (temp_in.max_reads == 0) {
-      zero_slice.add(std::move(temp_in));
+      // formerly zero_slice
+      ctgs.add_contig({.id = temp_ctg.cid, .seq = std::move(temp_ctg.seq), .depth = temp_ctg.depth});
     } else if (temp_in.max_reads > 0 && temp_in.max_reads < 10) {
       mid_slice.add(std::move(temp_in));
     } else {
@@ -100,8 +101,8 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
 
   ProgressBar progbar(ctgs_dht.get_local_num_ctgs(), "Extending contigs");
 
-  localassm_driver::ctg_bucket zero_slice(0), mid_slice(max_read_size), outlier_slice(max_read_size);
-  bucket_ctgs(zero_slice, mid_slice, outlier_slice, ctgs_dht, ctg_buckets_timer);
+  localassm_driver::ctg_bucket mid_slice(max_read_size), outlier_slice(max_read_size);
+  bucket_ctgs(ctgs, mid_slice, outlier_slice, ctgs_dht, ctg_buckets_timer);
   ctg_buckets_timer.done_all();
 
   auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();  // implicit gpu_team barier
@@ -149,10 +150,6 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
     loc_assem_kernel_timer.stop();
   }
   
-  for (int j = 0; j < zero_slice.ctg_vec.size(); j++) {
-    CtgWithReads& temp_ctg = zero_slice.ctg_vec[j];
-    ctgs.add_contig({.id = temp_ctg.cid, .seq = std::move(temp_ctg.seq), .depth = temp_ctg.depth});
-  }
   for (int j = 0; j < mid_slice.ctg_vec.size(); j++) {
     CtgWithReads& temp_ctg = mid_slice.ctg_vec[j];
     ctgs.add_contig({.id = temp_ctg.cid, .seq = std::move(temp_ctg.seq), .depth = temp_ctg.depth});
