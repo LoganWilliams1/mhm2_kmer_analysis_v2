@@ -81,17 +81,14 @@ upcxx::team &get_gpu_team() {
     assert(upcxx::master_persona().active_with_caller() && "Called from master persona");
     upcxx::intrank_t color = upcxx::team::color_none;
     if (gpu_utils::gpus_present()) {
-      auto uuids = gpu_utils::get_gpu_uuids();
       auto my_uuid = gpu_utils::get_gpu_uuid();
-      for (int i = 0; i < uuids.size(); i++)
-        if (my_uuid == uuids[i]) {
-          color = i;
-          break;
-        }
+      color = std::hash<string>{}(my_uuid) & 0xffffffff;
+      if (color < 0) color = -color;
     } else {
       color = 0;  // i.e. just a copy of the local team
     }
     assert(color != upcxx::team::color_none);
+    log_local("GPU team color", std::to_string(color));
     return upcxx::local_team().split(color, upcxx::local_team().rank_me());
   }();
   return tm;
