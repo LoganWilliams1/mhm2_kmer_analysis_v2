@@ -78,7 +78,7 @@ static void bucket_ctgs(Contigs &ctgs, localassm_driver::ctg_bucket &mid_slice,
     assert(mid_slice.max_read_sz >= temp_in.get_max_read_size() && "No reads are longer than expected");
     if (temp_in.max_reads == 0) {
       // formerly zero_slice
-      ctgs.add_contig({.id = temp_ctg.cid, .seq = std::move(temp_ctg.seq), .depth = temp_ctg.depth});
+      ctgs.add_contig({.id = temp_in.cid, .seq = std::move(temp_in.seq), .depth = temp_in.depth});
     } else if (temp_in.max_reads > 0 && temp_in.max_reads < 10) {
       mid_slice.add(std::move(temp_in));
     } else {
