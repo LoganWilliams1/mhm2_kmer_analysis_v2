@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 
   char tmp[2048];
   strncpy(tmp, argv[3], 2040);
-  strncat(tmp, ".tmp", 4);
+  strncat(tmp, ".tmp", 5);
   IFQ = fopen(tmp, "w");
   if(IFQ == NULL)
   {
