@@ -77,6 +77,7 @@ void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_lis
     max_read_len = std::max(max_read_len, (unsigned) packed_reads->get_max_read_len());
     num_reads += l_reads;
   }
+  max_read_len = upcxx::reduce_all(max_read_len, upcxx::op_fast_max).wait();
   num_read_bases = num_reads * max_read_len;
   LOG("num_reads=", num_reads, " num_read_bases=", num_read_bases, " max_read_len=", max_read_len, "\n");
   CtgsWithReadsDHT ctgs_dht(ctgs.size(), num_ctg_bases);
