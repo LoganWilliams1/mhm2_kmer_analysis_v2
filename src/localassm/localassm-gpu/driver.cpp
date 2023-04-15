@@ -159,70 +159,66 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   float factor = 0.80;
   unsigned iterations = ceil(((double)gpu_mem_req) / ((double)gpu_mem_avail * factor));
   assert(iterations > 0);
-  unsigned slice_size = tot_extensions / iterations;
-  assert(slice_size > 0);
-  unsigned remaining = tot_extensions % iterations;
+  const unsigned max_slice_size = (tot_extensions + iterations - 1) / iterations;
+  assert(max_slice_size > 0);
   vector<uint32_t> max_ht_sizes;
   // to get the largest ht size for any iteration and allocate GPU memory for that (once)
   uint64_t max_ht = 0, max_r_rds_its = 0, max_l_rds_its = 0, max_ctg_len_it = 0, test_sum = 0;
   for (unsigned i = 0; i < iterations; i++) {
+    auto extensions_offset = max_slice_size * i;
+    auto num_extensions = tot_extensions - extensions_offset;
+    if (num_extensions > max_slice_size) num_extensions = max_slice_size;
+    assert(num_extensions > 0);
     uint64_t temp_max_ht = 0, temp_max_r_rds = 0, temp_max_l_rds = 0, temp_max_ctg_len = 0;
-    if (i < iterations - 1) {
-      temp_max_ht = accumulate(sizes_vecs.ht_sizes.begin() + i * slice_size, sizes_vecs.ht_sizes.begin() + (i + 1) * slice_size, 0);
-      temp_max_r_rds =
-          accumulate(sizes_vecs.r_reads_count.begin() + i * slice_size, sizes_vecs.r_reads_count.begin() + (i + 1) * slice_size, 0);
-      temp_max_l_rds =
-          accumulate(sizes_vecs.l_reads_count.begin() + i * slice_size, sizes_vecs.l_reads_count.begin() + (i + 1) * slice_size, 0);
-      temp_max_ctg_len =
-          accumulate(sizes_vecs.ctg_sizes.begin() + i * slice_size, sizes_vecs.ctg_sizes.begin() + (i + 1) * slice_size, 0);
-    } else {
-      temp_max_ht = accumulate(sizes_vecs.ht_sizes.begin() + i * slice_size,
-                               sizes_vecs.ht_sizes.begin() + ((i + 1) * slice_size) + remaining, 0);
-      temp_max_r_rds = accumulate(sizes_vecs.r_reads_count.begin() + i * slice_size,
-                                  sizes_vecs.r_reads_count.begin() + ((i + 1) * slice_size) + remaining, 0);
-      temp_max_l_rds = accumulate(sizes_vecs.l_reads_count.begin() + i * slice_size,
-                                  sizes_vecs.l_reads_count.begin() + ((i + 1) * slice_size) + remaining, 0);
-      temp_max_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin() + i * slice_size,
-                                    sizes_vecs.ctg_sizes.begin() + ((i + 1) * slice_size) + remaining, 0);
-    }
+
+    temp_max_ht = accumulate(sizes_vecs.ht_sizes.begin() + extensions_offset,
+                             sizes_vecs.ht_sizes.begin() + extensions_offset + num_extensions, 0);
+    temp_max_r_rds = accumulate(sizes_vecs.r_reads_count.begin() + extensions_offset,
+                                sizes_vecs.r_reads_count.begin() + extensions_offset + num_extensions, 0);
+    temp_max_l_rds = accumulate(sizes_vecs.l_reads_count.begin() + extensions_offset,
+                                sizes_vecs.l_reads_count.begin() + extensions_offset + num_extensions, 0);
+    temp_max_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin() + extensions_offset,
+                                  sizes_vecs.ctg_sizes.begin() + extensions_offset + num_extensions, 0);
+
     if (temp_max_ht > max_ht) max_ht = temp_max_ht;
     if (temp_max_r_rds > max_r_rds_its) max_r_rds_its = temp_max_r_rds;
     if (temp_max_l_rds > max_l_rds_its) max_l_rds_its = temp_max_l_rds;
     if (temp_max_ctg_len > max_ctg_len_it) max_ctg_len_it = temp_max_ctg_len;
     test_sum += temp_max_ht;
   }
-  slice_size = slice_size + remaining;  // this is the largest slice size, mostly the last iteration handles the leftovers
   // allocating maximum possible memory for a single iteration
 
-  unique_ptr<char[]> ctg_seqs_h{new char[max_ctg_size * slice_size]};
-  unique_ptr<uint64_t[]> cid_h{new uint64_t[slice_size]};
+  auto max_ctg_seqs_h = max_ctg_size * max_slice_size;
+  unique_ptr<char[]> ctg_seqs_h{new char[max_ctg_seqs_h]};
+  unique_ptr<uint64_t[]> cid_h{new uint64_t[max_slice_size]};
   unique_ptr<char[]> ctgs_seqs_rc_h{
-      new char[max_ctg_size * slice_size]};  // revcomps not requried on GPU, ctg space will be re-used on GPU, but if we want to do
+      new char[max_ctg_size * max_slice_size]};  // revcomps not requried on GPU, ctg space will be re-used on GPU, but if we want to do
                                              // right left extensions in parallel, then we need separate space on GPU
-  unique_ptr<uint32_t[]> ctg_seq_offsets_h{new uint32_t[slice_size]};
-  unique_ptr<double[]> depth_h{new double[slice_size]};
-  unique_ptr<char[]> reads_left_h{new char[max_l_count * max_read_size * slice_size]};
-  unique_ptr<char[]> reads_right_h{new char[max_r_count * max_read_size * slice_size]};
-  unique_ptr<char[]> quals_right_h{new char[max_r_count * max_read_size * slice_size]};
-  unique_ptr<char[]> quals_left_h{new char[max_l_count * max_read_size * slice_size]};
-  unique_ptr<uint32_t[]> reads_l_offset_h{new uint32_t[max_l_count * slice_size]};
-  unique_ptr<uint32_t[]> reads_r_offset_h{new uint32_t[max_r_count * slice_size]};
-  unique_ptr<uint32_t[]> rds_l_cnt_offset_h{new uint32_t[slice_size]};
-  unique_ptr<uint32_t[]> rds_r_cnt_offset_h{new uint32_t[slice_size]};
+  unique_ptr<uint32_t[]> ctg_seq_offsets_h{new uint32_t[max_slice_size]};
+  unique_ptr<double[]> depth_h{new double[max_slice_size]};
+  auto max_reads_left_h = max_l_count * max_read_size * max_slice_size;
+  auto max_reads_right_h = max_r_count * max_read_size * max_slice_size;
+  unique_ptr<char[]> reads_left_h{new char[max_reads_left_h]};
+  unique_ptr<char[]> reads_right_h{new char[max_reads_right_h]};
+  unique_ptr<char[]> quals_right_h{new char[max_reads_right_h]};
+  unique_ptr<char[]> quals_left_h{new char[max_reads_left_h]};
+  unique_ptr<uint32_t[]> reads_l_offset_h{new uint32_t[max_l_count * max_slice_size]};
+  unique_ptr<uint32_t[]> reads_r_offset_h{new uint32_t[max_r_count * max_slice_size]};
+  unique_ptr<uint32_t[]> rds_l_cnt_offset_h{new uint32_t[max_slice_size]};
+  unique_ptr<uint32_t[]> rds_r_cnt_offset_h{new uint32_t[max_slice_size]};
   unique_ptr<uint32_t[]> term_counts_h{new uint32_t[3]};
-  unique_ptr<char[]> longest_walks_r_h{new char[slice_size * max_walk_len * iterations]};  // reserve memory for all the walks
-  unique_ptr<char[]> longest_walks_l_h{
-      new char[slice_size * max_walk_len * iterations]};  // not needed on device, will re-use right walk memory
-  unique_ptr<uint32_t[]> final_walk_lens_r_h{new uint32_t[slice_size * iterations]};  // reserve memory for all the walks.
+  unique_ptr<char[]> longest_walks_r_h{new char[max_slice_size * max_walk_len * iterations]};  // reserve memory for all the walks
+  unique_ptr<char[]> longest_walks_l_h{new char[max_slice_size * max_walk_len * iterations]};  // not needed on device, will re-use right walk memory
+  unique_ptr<uint32_t[]> final_walk_lens_r_h{new uint32_t[max_slice_size * iterations]};  // reserve memory for all the walks.
   unique_ptr<uint32_t[]> final_walk_lens_l_h{
-      new uint32_t[slice_size * iterations]};  // not needed on device, will re use right walk memory
-  unique_ptr<uint32_t[]> prefix_ht_size_h{new uint32_t[slice_size]};
+      new uint32_t[max_slice_size * iterations]};  // not needed on device, will re use right walk memory
+  unique_ptr<uint32_t[]> prefix_ht_size_h{new uint32_t[max_slice_size]};
 
-  gpu_mem_req = sizeof(int32_t) * slice_size * 6 + sizeof(int32_t) * 3 + sizeof(int32_t) * max_l_rds_its +
+  gpu_mem_req = sizeof(int32_t) * max_slice_size * 6 + sizeof(int32_t) * 3 + sizeof(int32_t) * max_l_rds_its +
                 sizeof(int32_t) * max_r_rds_its + sizeof(char) * max_ctg_len_it + sizeof(char) * max_l_rds_its * max_read_size * 2 +
-                sizeof(char) * max_r_rds_its * max_read_size * 2 + sizeof(double) * slice_size + sizeof(loc_ht) * max_ht +
-                sizeof(char) * slice_size * max_walk_len + (max_mer_len + max_walk_len) * sizeof(char) * slice_size +
-                sizeof(loc_ht_bool) * slice_size * max_walk_len;
+                sizeof(char) * max_r_rds_its * max_read_size * 2 + sizeof(double) * max_slice_size + sizeof(loc_ht) * max_ht +
+                sizeof(char) * max_slice_size * max_walk_len + (max_mer_len + max_walk_len) * sizeof(char) * max_slice_size +
+                sizeof(loc_ht_bool) * max_slice_size * max_walk_len;
 
   uint32_t *ctg_seq_offsets_d, *reads_l_offset_d, *reads_r_offset_d;
   uint64_t *cid_d;
@@ -235,42 +231,38 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   loc_ht_bool *d_ht_bool;
   uint32_t *final_walk_lens_d;
   // allocate GPU  memory
-  ERROR_CHECK(Malloc(&prefix_ht_size_d, sizeof(uint32_t) * slice_size));
-  ERROR_CHECK(Malloc(&cid_d, sizeof(uint64_t) * slice_size));
-  ERROR_CHECK(Malloc(&ctg_seq_offsets_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&prefix_ht_size_d, sizeof(uint32_t) * max_slice_size));
+  ERROR_CHECK(Malloc(&cid_d, sizeof(uint64_t) * max_slice_size));
+  ERROR_CHECK(Malloc(&ctg_seq_offsets_d, sizeof(uint32_t) * max_slice_size));
   ERROR_CHECK(Malloc(&reads_l_offset_d, sizeof(uint32_t) * max_l_rds_its));
   ERROR_CHECK(Malloc(&reads_r_offset_d, sizeof(uint32_t) * max_r_rds_its));
-  ERROR_CHECK(Malloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * slice_size));
-  ERROR_CHECK(Malloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * slice_size));
+  ERROR_CHECK(Malloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * max_slice_size));
+  ERROR_CHECK(Malloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * max_slice_size));
   ERROR_CHECK(Malloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_it));
   ERROR_CHECK(Malloc(&reads_left_d, sizeof(char) * max_read_size * max_l_rds_its));
   ERROR_CHECK(Malloc(&reads_right_d, sizeof(char) * max_read_size * max_r_rds_its));
-  ERROR_CHECK(Malloc(&depth_d, sizeof(double) * slice_size));
+  ERROR_CHECK(Malloc(&depth_d, sizeof(double) * max_slice_size));
   ERROR_CHECK(Malloc(&quals_right_d, sizeof(char) * max_read_size * max_r_rds_its));
   ERROR_CHECK(Malloc(&quals_left_d, sizeof(char) * max_read_size * max_l_rds_its));
   ERROR_CHECK(Malloc(&term_counts_d, sizeof(uint32_t) * 3));
   // one local hashtable for each thread, so total hash_tables equal to vec_size i.e. total contigs
   ERROR_CHECK(Malloc(&d_ht, sizeof(loc_ht) * (max_ht + 1)));  // one more for FULL last entry
   ERROR_CHECK(Memset(d_ht + max_ht, FULL, sizeof(loc_ht)));   // set the FULL record
-  ERROR_CHECK(Malloc(&longest_walks_d, sizeof(char) * slice_size * max_walk_len));
-  ERROR_CHECK(Malloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * slice_size));
-  ERROR_CHECK(Malloc(&d_ht_bool, sizeof(loc_ht_bool) * (slice_size * max_walk_len + 1)));   // one more for FULL last entry
-  ERROR_CHECK(Memset(d_ht_bool + (slice_size * max_walk_len), FULL, sizeof(loc_ht_bool)));  // set the FULL record
-  ERROR_CHECK(Malloc(&final_walk_lens_d, sizeof(uint32_t) * slice_size));
-
-  slice_size = tot_extensions / iterations;
+  ERROR_CHECK(Malloc(&longest_walks_d, sizeof(char) * max_slice_size * max_walk_len));
+  ERROR_CHECK(Malloc(&mer_walk_temp_d, (max_mer_len + max_walk_len) * sizeof(char) * max_slice_size));
+  ERROR_CHECK(Malloc(&d_ht_bool, sizeof(loc_ht_bool) * (max_slice_size * max_walk_len + 1)));   // one more for FULL last entry
+  ERROR_CHECK(Memset(d_ht_bool + (max_slice_size * max_walk_len), FULL, sizeof(loc_ht_bool)));  // set the FULL record
+  ERROR_CHECK(Malloc(&final_walk_lens_d, sizeof(uint32_t) * max_slice_size));
 
   for (unsigned slice = 0; slice < iterations; slice++) {
-    uint32_t left_over;
-    if (iterations - 1 == slice)
-      left_over = tot_extensions % iterations;
-    else
-      left_over = 0;
-    assert(slice_size > 0);
+    auto extensions_offset = max_slice_size * slice;
+    auto num_extensions = tot_extensions - extensions_offset;
+    if (num_extensions > max_slice_size) num_extensions = max_slice_size;
+    assert(num_extensions > 0);
 
-    vector<CtgWithReads>::const_iterator slice_iter = data_in.begin() + slice * slice_size;
-    auto this_slice_size = slice_size + left_over;
-    uint32_t vec_size = this_slice_size;  // slice_data.size();
+    vector<CtgWithReads>::const_iterator slice_iter = data_in.begin() + extensions_offset;
+    auto this_slice_size = num_extensions;
+    uint32_t vec_size = this_slice_size; 
     uint32_t ctgs_offset_sum = 0;
     uint32_t prefix_ht_sum = 0;
     uint32_t reads_r_offset_sum = 0;
@@ -282,63 +274,55 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       cid_h[i] = temp_data.cid;
       depth_h[i] = temp_data.depth;
       // convert string to c-string
+      auto ctg_seq_size = temp_data.seq.size();
+      if (ctg_seq_size > TOO_BIG || ctgs_offset_sum + ctg_seq_size >= max_ctg_seqs_h)
+        printf("Invalid ctg_seq_size=%ld my_rank=%d i=%d of %d cid=%ld ctgs_offset_sum=%u max_ctg_seqs_h=%u\n", ctg_seq_size, my_rank, i, this_slice_size,
+               temp_data.cid, ctgs_offset_sum, max_ctg_seqs_h);
       char *ctgs_ptr = ctg_seqs_h.get() + ctgs_offset_sum;
-      if (temp_data.seq.size() > TOO_BIG)
-        printf("Invalid seq size=%ld my_rank=%d i=%d of %d cid=%ld\n", temp_data.seq.size(), my_rank, i, this_slice_size,
-               temp_data.cid);
-      memcpy(ctgs_ptr, temp_data.seq.c_str(), temp_data.seq.size());
-      ctgs_offset_sum += temp_data.seq.size();
+      memcpy(ctgs_ptr, temp_data.seq.c_str(), ctg_seq_size);
+      ctgs_offset_sum += ctg_seq_size;
       ctg_seq_offsets_h[i] = ctgs_offset_sum;
       prefix_ht_sum += temp_data.max_reads * max_read_size;
       prefix_ht_size_h[i] = prefix_ht_sum;
 
       for (unsigned j = 0; j < temp_data.reads_left.size(); j++) {
+        auto read_size = temp_data.reads_left[j].seq.size();
+        auto qual_size = temp_data.reads_left[j].quals.size();
+        if (read_size != qual_size || read_size > max_read_size || reads_l_offset_sum + max_read_size >= max_reads_left_h) {
+          if (!num_bad)
+            fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq read_size=%lu qual_size=%lu i=%u of %u, cid=%lu reads_l_offset_sum=%u max_reads_left_h=%u\n", my_rank, j,
+                    temp_data.reads_left.size(), read_size, qual_size, i, this_slice_size, temp_data.cid, reads_l_offset_sum, max_reads_left_h);
+          num_bad++;
+          continue;
+        }
         char *reads_l_ptr = reads_left_h.get() + reads_l_offset_sum;
         char *quals_l_ptr = quals_left_h.get() + reads_l_offset_sum;
-        if (temp_data.reads_left[j].seq.size() > max_read_size) {
-          if (!num_bad)
-            fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
-                    temp_data.reads_left.size(), temp_data.reads_left[j].seq.size(), i, this_slice_size, temp_data.cid);
-          num_bad++;
-          continue;
-        }
-        if (temp_data.reads_left[j].quals.size() > max_read_size) {
-          if (!num_bad)
-            fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].quals size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
-                    temp_data.reads_left.size(), temp_data.reads_left[j].quals.size(), i, this_slice_size, temp_data.cid);
-          num_bad++;
-          continue;
-        }
-        memcpy(reads_l_ptr, temp_data.reads_left[j].seq.c_str(), temp_data.reads_left[j].seq.size());
+        
+        memcpy(reads_l_ptr, temp_data.reads_left[j].seq.c_str(), read_size);
         // quals offsets will be same as reads offset because quals and reads have same length
-        memcpy(quals_l_ptr, temp_data.reads_left[j].quals.c_str(), temp_data.reads_left[j].quals.size());
-        reads_l_offset_sum += temp_data.reads_left[j].seq.size();
+        memcpy(quals_l_ptr, temp_data.reads_left[j].quals.c_str(), qual_size);
+        reads_l_offset_sum += read_size;
         reads_l_offset_h[read_l_index] = reads_l_offset_sum;
         read_l_index++;
       }
       rds_l_cnt_offset_h[i] = read_l_index;  // running sum of left reads count
 
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
+        auto read_size = temp_data.reads_right[j].seq.size();
+        auto qual_size = temp_data.reads_right[j].quals.size();
+        if (read_size != qual_size || read_size > max_read_size || reads_r_offset_sum + max_read_size >= max_reads_right_h) {
+          if (!num_bad)
+            fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq read_size=%lu quals_size=%lu i=%u of %u, cid=%lu reads_r_offset_sum=%u max_reads_right_h=%u\n", my_rank, j,
+                    temp_data.reads_right.size(), read_size, qual_size, i, this_slice_size, temp_data.cid, reads_r_offset_sum, max_reads_right_h);
+          num_bad++;
+          continue;
+        }
         char *reads_r_ptr = reads_right_h.get() + reads_r_offset_sum;
         char *quals_r_ptr = quals_right_h.get() + reads_r_offset_sum;
-        if (temp_data.reads_right[j].seq.size() > max_read_size) {
-          if (!num_bad)
-            fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
-                    temp_data.reads_right.size(), temp_data.reads_right[j].seq.size(), i, this_slice_size, temp_data.cid);
-          num_bad++;
-          continue;
-        }
-        if (temp_data.reads_right[j].quals.size() > max_read_size) {
-          if (!num_bad)
-            fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].quals size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
-                    temp_data.reads_right.size(), temp_data.reads_right[j].quals.size(), i, this_slice_size, temp_data.cid);
-          num_bad++;
-          continue;
-        }
-        memcpy(reads_r_ptr, temp_data.reads_right[j].seq.c_str(), temp_data.reads_right[j].seq.size());
+        memcpy(reads_r_ptr, temp_data.reads_right[j].seq.c_str(), read_size);
         // quals offsets will be same as reads offset because quals and reads have same length
-        memcpy(quals_r_ptr, temp_data.reads_right[j].quals.c_str(), temp_data.reads_right[j].quals.size());
-        reads_r_offset_sum += temp_data.reads_right[j].seq.size();
+        memcpy(quals_r_ptr, temp_data.reads_right[j].quals.c_str(), qual_size);
+        reads_r_offset_sum += read_size;
         reads_r_offset_h[read_r_index] = reads_r_offset_sum;
         read_r_index++;
       }
@@ -395,10 +379,10 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       }
       revcomp(curr_seq, curr_seq_rc, size_lst);
     }
-    ERROR_CHECK(Memcpy(longest_walks_r_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
+    ERROR_CHECK(Memcpy(longest_walks_r_h.get() + slice * max_walk_len * max_slice_size, longest_walks_d,
                        sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));
     ERROR_CHECK(
-        Memcpy(final_walk_lens_r_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size, MemcpyDeviceToHost));
+        Memcpy(final_walk_lens_r_h.get() + slice * max_slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size, MemcpyDeviceToHost));
 
     // cpying rev comped ctgs to device on same memory as previous ctgs
     ERROR_CHECK(Memcpy(ctg_seqs_d, ctgs_seqs_rc_h.get(), sizeof(char) * ctgs_offset_sum, MemcpyHostToDevice));
@@ -408,38 +392,43 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
                  term_counts_d, num_walks, max_walk_len, sum_ext, max_read_size, max_read_count, qual_offset_, longest_walks_d,
                  mer_walk_temp_d, final_walk_lens_d, vec_size);
 
-    ERROR_CHECK(Memcpy(longest_walks_l_h.get() + slice * max_walk_len * slice_size, longest_walks_d,
+    ERROR_CHECK(Memcpy(longest_walks_l_h.get() + slice * max_walk_len * max_slice_size, longest_walks_d,
                        sizeof(char) * vec_size * max_walk_len, MemcpyDeviceToHost));  // copy back left walks
     ERROR_CHECK(
-        Memcpy(final_walk_lens_l_h.get() + slice * slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size, MemcpyDeviceToHost));
+        Memcpy(final_walk_lens_l_h.get() + slice * max_slice_size, final_walk_lens_d, sizeof(int32_t) * vec_size, MemcpyDeviceToHost));
   }  // the for loop over all slices ends here
 
   // once all the alignments are on cpu, then go through them and stitch them with contigs in front and back.
-  int loc_left_over = tot_extensions % iterations;
+  
   for (unsigned j = 0; j < iterations; j++) {
-    int loc_size = (j == iterations - 1) ? slice_size + loc_left_over : slice_size;
+    auto extensions_offset = max_slice_size * j;
+    auto num_extensions = tot_extensions - extensions_offset;
+    if (num_extensions > max_slice_size) num_extensions = max_slice_size;
+    assert(num_extensions > 0);
+
+    int loc_size = num_extensions;
 
     for (int i = 0; i < loc_size; i++) {
-      auto &left_len = final_walk_lens_l_h[j * slice_size + i];
+      auto &left_len = final_walk_lens_l_h[j * max_slice_size + i];
       if (left_len > TOO_BIG) {
         fprintf(stderr, "WARN: myrank=%d found TOO_BIG %d left_len line j=%d i=%d of %d\n", my_rank, left_len, j, i, loc_size);
         continue;
       }
       if (left_len> 0) {
-        string left(longest_walks_l_h.get() + j * slice_size * max_walk_len + max_walk_len * i,
+        string left(longest_walks_l_h.get() + j * max_slice_size * max_walk_len + max_walk_len * i,
                     left_len);
         string left_rc = revcomp(left);
-        data_in[j * slice_size + i].seq.insert(0, left_rc);
+        data_in[j * max_slice_size + i].seq.insert(0, left_rc);
       }
-      auto &right_len = final_walk_lens_r_h[j * slice_size + i];
+      auto &right_len = final_walk_lens_r_h[j * max_slice_size + i];
       if (right_len > TOO_BIG) {
         fprintf(stderr, "WARN: myrank=%d found TOO_BIG %d right_len line j=%d i=%d of %d\n", my_rank, right_len, j, i, loc_size);
         continue;
       }
       if (right_len > 0) {
-        string right(longest_walks_r_h.get() + j * slice_size * max_walk_len + max_walk_len * i,
-                     final_walk_lens_r_h[j * slice_size + i]);
-        data_in[j * slice_size + i].seq += right;
+        string right(longest_walks_r_h.get() + j * max_slice_size * max_walk_len + max_walk_len * i,
+                     final_walk_lens_r_h[j * max_slice_size + i]);
+        data_in[j * max_slice_size + i].seq += right;
       }
     }
   }
