@@ -133,6 +133,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
                                         accum_data &sizes_vecs, int walk_len_limit, int qual_offset, int my_rank,
                                         size_t gpu_mem_avail, int debug_line) {
   gpu_utils::set_gpu_device(my_rank);
+  size_t TOO_BIG = 4294967296L;
   int max_mer_len = max_kmer_len;  // mer_len;// max_mer_len needs to come from macro (121) and mer_len is the mer_len for current
                                    // go
   unsigned tot_extensions = data_in.size();
@@ -282,7 +283,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       depth_h[i] = temp_data.depth;
       // convert string to c-string
       char *ctgs_ptr = ctg_seqs_h.get() + ctgs_offset_sum;
-      if (temp_data.seq.size() > 4294967296L)
+      if (temp_data.seq.size() > TOO_BIG)
         printf("Invalid seq size=%ld my_rank=%d i=%d of %d cid=%ld\n", temp_data.seq.size(), my_rank, i, this_slice_size,
                temp_data.cid);
       memcpy(ctgs_ptr, temp_data.seq.c_str(), temp_data.seq.size());
@@ -294,14 +295,14 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       for (unsigned j = 0; j < temp_data.reads_left.size(); j++) {
         char *reads_l_ptr = reads_left_h.get() + reads_l_offset_sum;
         char *quals_l_ptr = quals_left_h.get() + reads_l_offset_sum;
-        if (temp_data.reads_left[j].seq.size() > 300) {
+        if (temp_data.reads_left[j].seq.size() > max_read_size) {
           if (!num_bad)
             fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
                     temp_data.reads_left.size(), temp_data.reads_left[j].seq.size(), i, this_slice_size, temp_data.cid);
           num_bad++;
           continue;
         }
-        if (temp_data.reads_left[j].quals.size() > 300) {
+        if (temp_data.reads_left[j].quals.size() > max_read_size) {
           if (!num_bad)
             fprintf(stderr, "WARN: myrank=%d: Invalid reads_left[%u of %lu].quals size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
                     temp_data.reads_left.size(), temp_data.reads_left[j].quals.size(), i, this_slice_size, temp_data.cid);
@@ -320,14 +321,14 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
         char *reads_r_ptr = reads_right_h.get() + reads_r_offset_sum;
         char *quals_r_ptr = quals_right_h.get() + reads_r_offset_sum;
-        if (temp_data.reads_right[j].seq.size() > 300) {
+        if (temp_data.reads_right[j].seq.size() > max_read_size) {
           if (!num_bad)
             fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
                     temp_data.reads_right.size(), temp_data.reads_right[j].seq.size(), i, this_slice_size, temp_data.cid);
           num_bad++;
           continue;
         }
-        if (temp_data.reads_right[j].quals.size() > 300) {
+        if (temp_data.reads_right[j].quals.size() > max_read_size) {
           if (!num_bad)
             fprintf(stderr, "WARN: myrank=%d: Invalid reads_right[%u of %lu].quals size=%lu i=%u of %u, cid=%lu\n", my_rank, j,
                     temp_data.reads_right.size(), temp_data.reads_right[j].quals.size(), i, this_slice_size, temp_data.cid);
@@ -419,13 +420,23 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     int loc_size = (j == iterations - 1) ? slice_size + loc_left_over : slice_size;
 
     for (int i = 0; i < loc_size; i++) {
-      if (final_walk_lens_l_h[j * slice_size + i] > 0) {
+      auto &left_len = final_walk_lens_l_h[j * slice_size + i];
+      if (left_len > TOO_BIG) {
+        fprintf(stderr, "WARN: myrank=%d found TOO_BIG %d left_len line j=%d i=%d of %d\n", my_rank, left_len, j, i, loc_size);
+        continue;
+      }
+      if (left_len> 0) {
         string left(longest_walks_l_h.get() + j * slice_size * max_walk_len + max_walk_len * i,
-                    final_walk_lens_l_h[j * slice_size + i]);
+                    left_len);
         string left_rc = revcomp(left);
         data_in[j * slice_size + i].seq.insert(0, left_rc);
       }
-      if (final_walk_lens_r_h[j * slice_size + i] > 0) {
+      auto &right_len = final_walk_lens_r_h[j * slice_size + i];
+      if (right_len > TOO_BIG) {
+        fprintf(stderr, "WARN: myrank=%d found TOO_BIG %d right_len line j=%d i=%d of %d\n", my_rank, right_len, j, i, loc_size);
+        continue;
+      }
+      if (right_len > 0) {
         string right(longest_walks_r_h.get() + j * slice_size * max_walk_len + max_walk_len * i,
                      final_walk_lens_r_h[j * slice_size + i]);
         data_in[j * slice_size + i].seq += right;

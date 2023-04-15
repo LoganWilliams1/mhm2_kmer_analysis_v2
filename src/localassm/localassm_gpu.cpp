@@ -71,7 +71,10 @@ static void bucket_ctgs(localassm_driver::ctg_bucket &zero_slice, localassm_driv
 	  i++;
     CtgWithReads temp_in(*ctg); // deep copy
     temp_in.set_max_reads();
-    if (temp_in.get_max_read_size() > mid_slice.max_read_sz)  WARN("Invalid read size max=", temp_in.get_max_read_size(), " mid_slice.max=", mid_slice.max_read_sz, " i=", i, " ctg=", ctg->cid, " left=", ctg->reads_left.size(), " right=", ctg->reads_right.size(), "\n");
+    if (temp_in.get_max_read_size() > mid_slice.max_read_sz) {
+      WARN("Invalid read size max=", temp_in.get_max_read_size(), " mid_slice.max=", mid_slice.max_read_sz, " i=", i, " ctg=", ctg->cid, " left=", ctg->reads_left.size(), " right=", ctg->reads_right.size(), "\n");
+      continue;
+    }
     assert(mid_slice.max_read_sz >= temp_in.get_max_read_size() && "No reads are longer than expected");
     if (temp_in.max_reads == 0) {
       zero_slice.add(std::move(temp_in));
