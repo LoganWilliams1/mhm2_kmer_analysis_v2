@@ -452,11 +452,6 @@ def main():
 
     cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
 
-    #if is_slurm_job() and num_nodes >= 16 and 'SLURM_BCAST' not in os.environ:
-    #    bcast_path = f"/tmp/bcast-mhm2.{get_job_id()}"
-    #    os.environ['SLURM_BCAST'] = bcast_path
-    #    print(f"Setting SLURM_BCAST={bcast_path} on this large {num_nodes} node job")
-
     # special spawner for summit that auto-detects the job size and calls jsrun to properly bind cpus, gpus and hca network devices
     if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "summit":
         cmd = ['upcxx-jsrun']
