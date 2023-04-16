@@ -47,10 +47,10 @@
 namespace localassm_driver {
 
 struct accum_data {
-  std::vector<uint32_t> ht_sizes;
-  std::vector<uint32_t> l_reads_count;
-  std::vector<uint32_t> r_reads_count;
-  std::vector<uint32_t> ctg_sizes;
+  std::vector<uint64_t> ht_sizes;
+  std::vector<uint64_t> l_reads_count;
+  std::vector<uint64_t> r_reads_count;
+  std::vector<uint64_t> ctg_sizes;
   void clear() {
     ht_sizes.clear();
     l_reads_count.clear();
@@ -63,13 +63,20 @@ struct ctg_bucket {
   std::vector<CtgWithReads> ctg_vec;
   accum_data sizes_vec;
   uint32_t l_max, r_max, max_contig_sz, max_read_sz;
+  uint64_t tot_ht, tot_ctg, tot_l_reads, tot_r_reads, count;
   ctg_bucket(uint32_t max_read_sz)
       : ctg_vec{}
       , sizes_vec{}
       , l_max{0}
       , r_max{0}
       , max_contig_sz{0}
-      , max_read_sz{max_read_sz} {}
+      , max_read_sz{max_read_sz} 
+      , tot_ht{0}
+      , tot_ctg{0}
+      , tot_l_reads{0}
+      , tot_r_reads{0}
+      , count{0}
+      {}
   ctg_bucket(const ctg_bucket &copy) = default;
   ctg_bucket(ctg_bucket &&move) = default;
   void add(CtgWithReads &&cwr) {
@@ -81,9 +88,14 @@ struct ctg_bucket {
     ctg_vec.emplace_back(std::move(cwr));
     uint32_t temp_ht_size = max_reads * max_read_sz;
     sizes_vec.ht_sizes.push_back(temp_ht_size);
+    tot_ht += temp_ht_size;
     sizes_vec.ctg_sizes.push_back(seq_size);
+    tot_ctg += seq_size;
     sizes_vec.l_reads_count.push_back(reads_left_size);
+    tot_l_reads += reads_left_size;
     sizes_vec.r_reads_count.push_back(reads_right_size);
+    tot_r_reads += reads_right_size;
+    count++;
   
     if (l_max < reads_left_size) l_max = reads_left_size;
     if (r_max < reads_right_size) r_max = reads_right_size;
