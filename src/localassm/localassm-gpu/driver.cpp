@@ -128,7 +128,7 @@ static std::string revcomp(std::string instr) {
   return str_rc;
 }
 
-void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t max_ctg_size, uint32_t max_read_size,
+void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_t max_ctg_size, uint32_t max_read_size,
                                         uint32_t max_r_count, uint32_t max_l_count, int mer_len, int max_kmer_len,
                                         accum_data &sizes_vecs, int walk_len_limit, int qual_offset, int my_rank,
                                         size_t gpu_mem_avail, int debug_line) {
@@ -306,7 +306,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     if (num_extensions > max_slice_size) num_extensions = max_slice_size;
     assert(num_extensions > 0 && num_extensions <= max_slice_size);
 
-    vector<CtgWithReads>::const_iterator slice_iter = data_in.begin() + extensions_offset;
+    vector<CtgWithReads *>::const_iterator slice_iter = data_in.begin() + extensions_offset;
     auto this_slice_size = num_extensions;
     uint32_t vec_size = this_slice_size;
     uint64_t ctgs_offset_sum = 0;
@@ -316,7 +316,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     uint64_t read_l_index = 0, read_r_index = 0;
     int num_bad = 0;
     for (unsigned i = 0; i < this_slice_size; i++) {
-      const CtgWithReads &temp_data = slice_iter[i];  // slice_data[i];
+      const CtgWithReads &temp_data = *slice_iter[i];  // slice_data[i];
       cid_h[i] = temp_data.cid;
       depth_h[i] = temp_data.depth;
       // convert string to c-string
@@ -481,7 +481,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       if (left_len > 0) {
         string left(longest_walks_l_h.get() + j * max_slice_size * max_walk_len + max_walk_len * i, left_len);
         string left_rc = revcomp(left);
-        data_in[j * max_slice_size + i].seq.insert(0, left_rc);
+        data_in[j * max_slice_size + i]->seq.insert(0, left_rc);
       }
       auto &right_len = final_walk_lens_r_h[j * max_slice_size + i];
       if (right_len > TOO_BIG) {
@@ -491,7 +491,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
       if (right_len > 0) {
         string right(longest_walks_r_h.get() + j * max_slice_size * max_walk_len + max_walk_len * i,
                      final_walk_lens_r_h[j * max_slice_size + i]);
-        data_in[j * max_slice_size + i].seq += right;
+        data_in[j * max_slice_size + i]->seq += right;
       }
     }
   }
