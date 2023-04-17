@@ -104,6 +104,8 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   localassm_driver::ctg_bucket mid_slice(max_read_size), outlier_slice(max_read_size);
   bucket_ctgs(ctgs, mid_slice, outlier_slice, ctgs_dht, ctg_buckets_timer);
   ctg_buckets_timer.done_all();
+  LOG("outlier: ht=", outlier_slice.tot_ht, " ctg=", outlier_slice.tot_ctg, " l=", outlier_slice.tot_l_reads, " r=", outlier_slice.tot_r_reads, "\n");
+  LOG("mid: ht=", mid_slice.tot_ht, " ctg=", mid_slice.tot_ctg, " l=", mid_slice.tot_l_reads, " r=", mid_slice.tot_r_reads, "\n");
 
   auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();  // implicit gpu_team barier
   future<> fut_outlier = make_future();

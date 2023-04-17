@@ -138,17 +138,11 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
                                    // go
   uint64_t tot_extensions = data_in.size();
   uint32_t max_read_count = max_r_count > max_l_count ? max_r_count : max_l_count;
-  if (max_read_count * max_read_size * tot_extensions > TOO_BIG)
-    fprintf(stderr, "WARN: possible int32_overflow max_read_count=%u max_read_size=%u tot_extensions=%lu = %lu\n", max_read_count,
-            max_read_size, tot_extensions, max_read_count * max_read_size * tot_extensions);
   int max_walk_len = walk_len_limit;
   uint64_t ht_tot_size = accumulate(sizes_vecs.ht_sizes.begin(), sizes_vecs.ht_sizes.end(), 0);
   uint64_t total_r_reads = accumulate(sizes_vecs.r_reads_count.begin(), sizes_vecs.r_reads_count.end(), 0);
   uint64_t total_l_reads = accumulate(sizes_vecs.l_reads_count.begin(), sizes_vecs.l_reads_count.end(), 0);
   uint64_t total_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin(), sizes_vecs.ctg_sizes.end(), 0);
-  if (ht_tot_size > TOO_BIG || total_r_reads > TOO_BIG || total_l_reads > TOO_BIG || total_ctg_len > TOO_BIG)
-    fprintf(stderr, "WARN: possible int32_overflow total_ctg_len=%lu total_r_reads=%lu total_l_reads=%lu total_ctg_len=%lu\n",
-            total_ctg_len, total_r_reads, total_l_reads, total_ctg_len);
 
   size_t gpu_mem_req = sizeof(int32_t) * tot_extensions * 2                            // prefix_ht_size_d, ctg_seq_offsets_d
                        + sizeof(int32_t) * tot_extensions * 2                          // rds_l_cnt_offset_d, rds_r_cnt_offset_d
@@ -183,7 +177,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   assert(max_slice_size > 0);
 
   // to get the largest ht size for any iteration and allocate GPU memory for that (once)
-  uint64_t max_ht = 0, max_r_rds_its = 0, max_l_rds_its = 0, max_ctg_len_it = 0, test_sum = 0;
+  uint64_t max_ht = 0, max_r_rds_its = 0, max_l_rds_its = 0, max_ctg_len_its = 0, test_sum = 0;
   for (unsigned i = 0; i < iterations; i++) {
     uint64_t extensions_offset = max_slice_size * i;
     uint64_t num_extensions = tot_extensions - extensions_offset;
@@ -203,14 +197,21 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     if (temp_max_ht > max_ht) max_ht = temp_max_ht;
     if (temp_max_r_rds > max_r_rds_its) max_r_rds_its = temp_max_r_rds;
     if (temp_max_l_rds > max_l_rds_its) max_l_rds_its = temp_max_l_rds;
-    if (temp_max_ctg_len > max_ctg_len_it) max_ctg_len_it = temp_max_ctg_len;
+    if (temp_max_ctg_len > max_ctg_len_its) max_ctg_len_its = temp_max_ctg_len;
     test_sum += temp_max_ht;
   }
-  if (max_r_rds_its < max_r_count * max_read_size * max_slice_size || max_l_rds_its < max_l_count * max_read_size * max_slice_size)
-    fprintf(stderr, "WARN: max_r_rds_its=%lu max_r_count=%u max_l_rds_its=%lu max_l_count=%u max_read_size=%u max_slice_size=%lu\n",
-            max_r_rds_its, max_r_count, max_l_rds_its, max_l_count, max_read_size, max_slice_size);
+  if (max_ht > TOO_BIG || max_r_rds_its > TOO_BIG || max_l_rds_its > TOO_BIG || max_ctg_len_its > TOO_BIG)
+    fprintf(stderr,
+            "overflow with iterations=%u max_slice_size=%lu for tot_extensions=%lu max_ht=%lu max_r_rds_its=%lu max_l_rds_its=%lu "
+            "max_ctg_len_its=%lu\n",
+            iterations, max_slice_size, tot_extensions, max_ht, max_r_rds_its, max_l_rds_its, max_ctg_len_its);
 
   // allocating maximum possible memory for a single iteration
+  uint64_t all_walk_size = tot_extensions * max_walk_len;
+  if (!my_rank)
+    fprintf(stderr,
+            "Allocating memory for iterations=%u max_slice_size=%lu and tot_extensions=%lu of max_walk_len=%u and 2x walks %lu\n",
+            iterations, max_slice_size, tot_extensions, max_walk_len, all_walk_size);
 
   uint64_t max_ctg_seqs_h = max_ctg_size * max_slice_size;
   unique_ptr<char[]> ctg_seqs_h{new char[max_ctg_seqs_h]};
@@ -220,30 +221,38 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
                                   // to do right left extensions in parallel, then we need separate space on GPU
   unique_ptr<uint32_t[]> ctg_seq_offsets_h{new uint32_t[max_slice_size]};
   unique_ptr<double[]> depth_h{new double[max_slice_size]};
-  int32_t max_reads_left_h = max_l_count * max_read_size * max_slice_size;
-  int32_t max_reads_right_h = max_r_count * max_read_size * max_slice_size;
+  int32_t max_reads_left_h = max_read_size * max_l_rds_its;
+  int32_t max_reads_right_h = max_read_size * max_r_rds_its;
   unique_ptr<char[]> reads_left_h{new char[max_reads_left_h]};
   unique_ptr<char[]> reads_right_h{new char[max_reads_right_h]};
   unique_ptr<char[]> quals_right_h{new char[max_reads_right_h]};
   unique_ptr<char[]> quals_left_h{new char[max_reads_left_h]};
-  unique_ptr<uint32_t[]> reads_l_offset_h{new uint32_t[max_l_count * max_slice_size]};
-  unique_ptr<uint32_t[]> reads_r_offset_h{new uint32_t[max_r_count * max_slice_size]};
+  unique_ptr<uint32_t[]> reads_l_offset_h{new uint32_t[max_l_rds_its]};
+  unique_ptr<uint32_t[]> reads_r_offset_h{new uint32_t[max_r_rds_its]};
   unique_ptr<uint32_t[]> rds_l_cnt_offset_h{new uint32_t[max_slice_size]};
   unique_ptr<uint32_t[]> rds_r_cnt_offset_h{new uint32_t[max_slice_size]};
   unique_ptr<uint32_t[]> term_counts_h{new uint32_t[3]};
-  unique_ptr<char[]> longest_walks_r_h{new char[max_slice_size * max_walk_len * iterations]};  // reserve memory for all the walks
-  unique_ptr<char[]> longest_walks_l_h{
-      new char[max_slice_size * max_walk_len * iterations]};  // not needed on device, will re-use right walk memory
+  unique_ptr<char[]> longest_walks_r_h{new char[all_walk_size]};  // reserve memory for all the walks
+  unique_ptr<char[]> longest_walks_l_h{new char[all_walk_size]};  // not needed on device, will re-use right walk memory
   unique_ptr<uint32_t[]> final_walk_lens_r_h{new uint32_t[max_slice_size * iterations]};  // reserve memory for all the walks.
-  unique_ptr<uint32_t[]> final_walk_lens_l_h{
-      new uint32_t[max_slice_size * iterations]};  // not needed on device, will re use right walk memory
+  unique_ptr<uint32_t[]> final_walk_lens_l_h{new uint32_t[max_slice_size * iterations]};  // not needed on device, will re use right walk memory
   unique_ptr<uint32_t[]> prefix_ht_size_h{new uint32_t[max_slice_size]};
 
-  gpu_mem_req = sizeof(int32_t) * max_slice_size * 6 + sizeof(int32_t) * 3 + sizeof(int32_t) * max_l_rds_its +
-                sizeof(int32_t) * max_r_rds_its + sizeof(char) * max_ctg_len_it + sizeof(char) * max_l_rds_its * max_read_size * 2 +
-                sizeof(char) * max_r_rds_its * max_read_size * 2 + sizeof(double) * max_slice_size + sizeof(loc_ht) * max_ht +
-                sizeof(char) * max_slice_size * max_walk_len + (max_mer_len + max_walk_len) * sizeof(char) * max_slice_size +
-                sizeof(loc_ht_bool) * max_slice_size * max_walk_len;
+  gpu_mem_req = sizeof(int32_t) * max_slice_size * 2                            // prefix_ht_size_d, ctg_seq_offsets_d
+                + sizeof(int32_t) * max_slice_size * 2                          // rds_l_cnt_offset_d, rds_r_cnt_offset_d
+                + sizeof(int32_t) * max_slice_size                              // final_walk_lens_d
+                + sizeof(int64_t) * max_slice_size * 2                          // cid_d
+                + sizeof(int32_t) * (max_r_rds_its + max_l_rds_its)             // reads_l_offset_d, reads_r_offset_d
+                + sizeof(char) * max_ctg_len_its                                // ctg_seqs_d (contigs' sequence)
+                + sizeof(char) * max_l_rds_its * max_read_size * 2              // reads_left_d, quals_left_d
+                + sizeof(char) * max_r_rds_its * max_read_size * 2              // reads_right_d, quals_right_d
+                + sizeof(double) * max_slice_size                               // depth_h
+                + sizeof(int32_t) * 3                                           // term_counts_d
+                + sizeof(loc_ht) * (max_ht + 1)                                 // d_ht // changed to try the new method
+                + sizeof(loc_ht_bool) * (max_slice_size * max_walk_len + 1)     // d_ht_bool
+                + sizeof(char) * max_slice_size * (max_walk_len + max_mer_len)  // mer_walk_temp_d
+                + sizeof(char) * max_slice_size * max_walk_len                  // longest_walks_d
+      ;
 
   uint32_t *ctg_seq_offsets_d, *reads_l_offset_d, *reads_r_offset_d;
   uint64_t *cid_d;
@@ -264,7 +273,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   ERROR_CHECK(Malloc(&reads_r_offset_d, sizeof(uint32_t) * max_r_rds_its));
   ERROR_CHECK(Malloc(&rds_l_cnt_offset_d, sizeof(uint32_t) * max_slice_size));
   ERROR_CHECK(Malloc(&rds_r_cnt_offset_d, sizeof(uint32_t) * max_slice_size));
-  ERROR_CHECK(Malloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_it));
+  ERROR_CHECK(Malloc(&ctg_seqs_d, sizeof(char) * max_ctg_len_its));
   ERROR_CHECK(Malloc(&reads_left_d, sizeof(char) * max_read_size * max_l_rds_its));
   ERROR_CHECK(Malloc(&reads_right_d, sizeof(char) * max_read_size * max_r_rds_its));
   ERROR_CHECK(Malloc(&depth_d, sizeof(double) * max_slice_size));
@@ -335,6 +344,9 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
         read_l_index++;
       }
       rds_l_cnt_offset_h[i] = read_l_index;  // running sum of left reads count
+      if (read_l_index > max_l_rds_its || reads_l_offset_sum > TOO_BIG)
+        fprintf(stderr, "WARN: my_rank=%d read_l_index=%lu > max_l_rds_its=%lu reads_l_offset_sum=%lu\n", my_rank, read_l_index,
+                max_l_rds_its, reads_l_offset_sum);
 
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
         auto read_size = temp_data.reads_right[j].seq.size();
@@ -359,6 +371,10 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
         read_r_index++;
       }
       rds_r_cnt_offset_h[i] = read_r_index;  // running sum of right reads count
+      if (read_r_index > max_r_rds_its || reads_r_offset_sum > TOO_BIG)
+        fprintf(stderr, "WARN: my_rank=%d read_r_index=%lu > max_r_rds_its=%lu reads_r_offset_sum=%lu\n", my_rank, read_r_index,
+                max_r_rds_its, reads_r_offset_sum);
+
     }                                        // data packing for loop ends
     if (num_bad) fprintf(stderr, "WARN: myrank=%d found %d excess sized reads from line %d\n", my_rank, num_bad, debug_line);
 
