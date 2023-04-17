@@ -481,7 +481,7 @@ def main():
         gpus_per_node = 8
         tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
         cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
-               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--compress', '--bcast=/tmp/']
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
         os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
@@ -491,7 +491,7 @@ def main():
         gpus_per_node = 8
         tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
         cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
-               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--compress', '--bcast=/tmp/']
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
         os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher

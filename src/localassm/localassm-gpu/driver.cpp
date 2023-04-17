@@ -208,10 +208,12 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
 
   // allocating maximum possible memory for a single iteration
   uint64_t all_walk_size = tot_extensions * max_walk_len;
+#ifdef DEBUG
   if (!my_rank)
     fprintf(stderr,
             "Allocating memory for iterations=%u max_slice_size=%lu and tot_extensions=%lu of max_walk_len=%u and 2x walks %lu\n",
             iterations, max_slice_size, tot_extensions, max_walk_len, all_walk_size);
+#endif
 
   uint64_t max_ctg_seqs_h = max_ctg_size * max_slice_size;
   unique_ptr<char[]> ctg_seqs_h{new char[max_ctg_seqs_h]};
