@@ -139,10 +139,10 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   uint64_t tot_extensions = data_in.size();
   uint32_t max_read_count = max_r_count > max_l_count ? max_r_count : max_l_count;
   int max_walk_len = walk_len_limit;
-  uint64_t ht_tot_size = accumulate(sizes_vecs.ht_sizes.begin(), sizes_vecs.ht_sizes.end(), 0);
-  uint64_t total_r_reads = accumulate(sizes_vecs.r_reads_count.begin(), sizes_vecs.r_reads_count.end(), 0);
-  uint64_t total_l_reads = accumulate(sizes_vecs.l_reads_count.begin(), sizes_vecs.l_reads_count.end(), 0);
-  uint64_t total_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin(), sizes_vecs.ctg_sizes.end(), 0);
+  uint64_t ht_tot_size = accumulate(sizes_vecs.ht_sizes.begin(), sizes_vecs.ht_sizes.end(), (uint64_t) 0);
+  uint64_t total_r_reads = accumulate(sizes_vecs.r_reads_count.begin(), sizes_vecs.r_reads_count.end(), (uint64_t) 0);
+  uint64_t total_l_reads = accumulate(sizes_vecs.l_reads_count.begin(), sizes_vecs.l_reads_count.end(), (uint64_t) 0);
+  uint64_t total_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin(), sizes_vecs.ctg_sizes.end(), (uint64_t) 0);
 
   size_t gpu_mem_req = sizeof(int32_t) * tot_extensions * 2                            // prefix_ht_size_d, ctg_seq_offsets_d
                        + sizeof(int32_t) * tot_extensions * 2                          // rds_l_cnt_offset_d, rds_r_cnt_offset_d
@@ -163,14 +163,23 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   assert(gpu_mem_avail > 0);
   // factor is to buffer for the extra mem that is used when allocating once and using again
   float factor = 0.80;
-  unsigned iterations = ceil(((double)gpu_mem_req) / ((double)gpu_mem_avail * factor));
+  uint64_t iterations = ceil(((double)gpu_mem_req) / ((double)gpu_mem_avail * factor));
+  iterations = std::max(iterations, (max_ctg_size * tot_extensions + TOO_BIG - 1) / TOO_BIG);
+  iterations = std::max(iterations, (ht_tot_size + TOO_BIG - 1) / TOO_BIG);
+  iterations = std::max(iterations, (total_r_reads * max_read_size + TOO_BIG - 1) / TOO_BIG);
+  iterations = std::max(iterations, (total_l_reads * max_read_size + TOO_BIG - 1) / TOO_BIG);
+  iterations = std::max(iterations, (total_ctg_len + TOO_BIG - 1) / TOO_BIG);
   assert(iterations > 0);
 
   // run more iterations to ensure no int32 overflows
-  while (max_ctg_size * tot_extensions / iterations > TOO_BIG || ht_tot_size / iterations > TOO_BIG ||
-         total_r_reads * max_read_size / iterations > TOO_BIG || total_l_reads * max_read_size / iterations > TOO_BIG ||
-         total_ctg_len / iterations > TOO_BIG)
-    iterations *= 2;
+  if (max_ctg_size * tot_extensions / iterations > TOO_BIG || ht_tot_size / iterations > TOO_BIG ||
+      total_r_reads * max_read_size / iterations > TOO_BIG || total_l_reads * max_read_size / iterations > TOO_BIG ||
+      total_ctg_len / iterations > TOO_BIG)
+    fprintf(stderr,
+            "WARN potential overflow rank=%d tot_extensions=%lu iterations=%lu max_ctg_size=%u ht_tot_size=%lu total_r_reads=%lu "
+            "total_l_reads=%lu max_read_size=%u total_ctg_len=%lu\n",
+            my_rank, tot_extensions, iterations, max_ctg_size, ht_tot_size, total_r_reads, total_l_reads, max_read_size,
+            total_ctg_len);
 
   const uint64_t max_slice_size = (tot_extensions + iterations - 1) / iterations;
   assert(max_slice_size < TOO_BIG);
@@ -186,13 +195,13 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
     uint64_t temp_max_ht = 0, temp_max_r_rds = 0, temp_max_l_rds = 0, temp_max_ctg_len = 0;
 
     temp_max_ht = accumulate(sizes_vecs.ht_sizes.begin() + extensions_offset,
-                             sizes_vecs.ht_sizes.begin() + extensions_offset + num_extensions, 0);
+                             sizes_vecs.ht_sizes.begin() + extensions_offset + num_extensions, (uint64_t) 0);
     temp_max_r_rds = accumulate(sizes_vecs.r_reads_count.begin() + extensions_offset,
-                                sizes_vecs.r_reads_count.begin() + extensions_offset + num_extensions, 0);
+                                sizes_vecs.r_reads_count.begin() + extensions_offset + num_extensions, (uint64_t) 0);
     temp_max_l_rds = accumulate(sizes_vecs.l_reads_count.begin() + extensions_offset,
-                                sizes_vecs.l_reads_count.begin() + extensions_offset + num_extensions, 0);
+                                sizes_vecs.l_reads_count.begin() + extensions_offset + num_extensions, (uint64_t) 0);
     temp_max_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin() + extensions_offset,
-                                  sizes_vecs.ctg_sizes.begin() + extensions_offset + num_extensions, 0);
+                                  sizes_vecs.ctg_sizes.begin() + extensions_offset + num_extensions, (uint64_t) 0);
 
     if (temp_max_ht > max_ht) max_ht = temp_max_ht;
     if (temp_max_r_rds > max_r_rds_its) max_r_rds_its = temp_max_r_rds;
@@ -202,7 +211,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
   }
   if (max_ht > TOO_BIG || max_r_rds_its > TOO_BIG || max_l_rds_its > TOO_BIG || max_ctg_len_its > TOO_BIG)
     fprintf(stderr,
-            "overflow with iterations=%u max_slice_size=%lu for tot_extensions=%lu max_ht=%lu max_r_rds_its=%lu max_l_rds_its=%lu "
+            "overflow with iterations=%lu max_slice_size=%lu for tot_extensions=%lu max_ht=%lu max_r_rds_its=%lu max_l_rds_its=%lu "
             "max_ctg_len_its=%lu\n",
             iterations, max_slice_size, tot_extensions, max_ht, max_r_rds_its, max_l_rds_its, max_ctg_len_its);
 
@@ -211,7 +220,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
 #ifdef DEBUG
   if (!my_rank)
     fprintf(stderr,
-            "Allocating memory for iterations=%u max_slice_size=%lu and tot_extensions=%lu of max_walk_len=%u and 2x walks %lu\n",
+            "Allocating memory for iterations=%lu max_slice_size=%lu and tot_extensions=%lu of max_walk_len=%u and 2x walks %lu\n",
             iterations, max_slice_size, tot_extensions, max_walk_len, all_walk_size);
 #endif
 
@@ -329,7 +338,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
           if (!num_bad)
             fprintf(stderr,
                     "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq read_size=%lu qual_size=%lu i=%u of %lu, cid=%lu "
-                    "reads_l_offset_sum=%lu max_reads_left_h=%u max_l_rds_its=%lu slice=%u of %u\n",
+                    "reads_l_offset_sum=%lu max_reads_left_h=%u max_l_rds_its=%lu slice=%u of %lu\n",
                     my_rank, j, temp_data.reads_left.size(), read_size, qual_size, i, this_slice_size, temp_data.cid,
                     reads_l_offset_sum, max_reads_left_h, max_l_rds_its, slice, iterations);
           num_bad++;
@@ -357,7 +366,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads> &data_in, uint32_t 
           if (!num_bad)
             fprintf(stderr,
                     "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq read_size=%lu quals_size=%lu i=%u of %lu, cid=%lu "
-                    "reads_r_offset_sum=%lu max_reads_right_h=%u max_r_rds_its=%lu slice=%u of %u\n",
+                    "reads_r_offset_sum=%lu max_reads_right_h=%u max_r_rds_its=%lu slice=%u of %lu\n",
                     my_rank, j, temp_data.reads_right.size(), read_size, qual_size, i, this_slice_size, temp_data.cid,
                     reads_r_offset_sum, max_reads_right_h, max_r_rds_its, slice, iterations);
           num_bad++;
