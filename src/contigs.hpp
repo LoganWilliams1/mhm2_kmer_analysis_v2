@@ -75,7 +75,8 @@ class Contigs {
 
   void set_capacity(int64_t sz);
 
-  void add_contig(Contig contig);
+  void add_contig(const Contig &contig);
+  void add_contig(Contig &&contig);
 
   size_t size();
 

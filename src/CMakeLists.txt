@@ -290,9 +290,6 @@ endif()
 
 target_link_libraries(mhm2 ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
                       ${UPCXX_UTILS_LIBRARIES})
-if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
-  target_link_options(mhm2 PUBLIC "-Wl,--build-id")
-endif()
 
 set(MHM2_LINK_LIBRARIES
     ${MHM2_LINK_LIBRARIES}
@@ -306,6 +303,11 @@ elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebug")
   set(MHM2PY_RUNTIME_ENV "GASNET_BACKTRACE='1',GASNET_BACKTRACE_MT='1', ")
 elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
   set(MHM2PY_RUNTIME_ENV "GASNET_BACKTRACE='1',GASNET_BACKTRACE_MT='1', ")
+else()
+  # FIXME when UPCXX Debug builds on frontier are fixed
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
+      target_link_options(mhm2 PUBLIC "-Wl,--build-id")
+  endif()
 endif()
 configure_file(mhm2.py ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py)
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py

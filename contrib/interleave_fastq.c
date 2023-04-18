@@ -52,7 +52,10 @@ int main(int argc, char *argv[])
   }
   kseq2 = kseq_init(FQ2);
 
-  IFQ = fopen(argv[3], "w");
+  char tmp[2048];
+  strncpy(tmp, argv[3], 2040);
+  strncat(tmp, ".tmp", 5);
+  IFQ = fopen(tmp, "w");
   if(IFQ == NULL)
   {
  	printf("Can't write to %s\n", argv[3]);
@@ -91,7 +94,6 @@ int main(int argc, char *argv[])
   gzclose(FQ1);
   gzclose(FQ2);
   fclose(IFQ);
-
-  return 0;
+  return rename(tmp, argv[3]);
 
 }

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
  # HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  # through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -481,12 +481,22 @@ def main():
         gpus_per_node = 8
         tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
         cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
-               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms']
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
         os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
         print("This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
 
+    if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "frontier":
+        gpus_per_node = 8
+        tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
+        cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
+        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
+            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
+        os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
+        print("This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        
     if 'UPCXX_SHARED_HEAP_SIZE' in os.environ and 'GASNET_MAX_SEGSIZE' not in os.environ:
         print("Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ", os.environ['UPCXX_SHARED_HEAP_SIZE'], " to avoid gasnet memory probe")
         os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']

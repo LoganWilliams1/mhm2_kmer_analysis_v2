@@ -143,24 +143,27 @@ static string get_uuid_str(char uuid_bytes[16]) {
 }
 
 vector<string> gpu_utils::get_gpu_uuids() {
-  vector<string> uuids;
-  int num_devs = get_gpu_device_count();
-  for (int i = 0; i < num_devs; ++i) {
-    DeviceProp &prop = get_gpu_properties(i);
-    bool set_dev = false;
+  static vector<string> uuids = []() {
+    vector<string> uuids;
+    int num_devs = get_gpu_device_count();
+    for (int i = 0; i < num_devs; ++i) {
+      DeviceProp &prop = get_gpu_properties(i);
+      bool set_dev = false;
 #ifdef CUDA_GPU
 #if (CUDA_VERSION >= 10000)
-    uuids.push_back(get_uuid_str(prop.uuid.bytes));
-    set_dev = true;
-#endif
-#endif
-    if (!set_dev) {
-      ostringstream os;
-      os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;
-      uuids.push_back(os.str());
+      uuids.push_back(get_uuid_str(prop.uuid.bytes));
       set_dev = true;
+#endif
+#endif
+      if (!set_dev) {
+        ostringstream os;
+        os << prop.name << ':' << prop.pciDeviceID << ':' << prop.pciBusID;
+        uuids.push_back(os.str());
+        set_dev = true;
+      }
     }
-  }
+    return uuids;
+  }();
   return uuids;
 }
 
