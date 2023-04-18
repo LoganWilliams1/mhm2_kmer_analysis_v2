@@ -33,3 +33,6 @@ upcxx --version
 nvcc --version
 
 export MHM2_CMAKE_EXTRAS="-DCMAKE_C_COMPILER=$(which cc) -DCMAKE_CXX_COMPILER=$(which CC) -DCMAKE_CUDA_COMPILER=$(which nvcc)"
+
+echo "Environment for perlmutter GPU"
+env | grep '^GASNET\|^UPCXX\|^FI_'
