@@ -173,23 +173,23 @@ void asynch_mem_copies_dth(gpu_alignments* gpu_data, short* alAbeg, short* alBbe
 void asynch_mem_copies_htd_t(gpu_alignments* gpu_data, gpu_alignments_traceback* gpu_data_traceback, unsigned* offsetA_h, unsigned* offsetB_h, char* strA, char* strA_d, char* strB,
                            char* strB_d, unsigned half_length_A, unsigned half_length_B, unsigned totalLengthA,
                            unsigned totalLengthB, int sequences_per_stream, int sequences_stream_leftover,
-                           cudaStream_t* streams_cuda, int max_rlen) {
+                           Stream_t* streams_cuda, int max_rlen) {
 
-  ERROR_CHECK(MemcpyAsync(gpu_data->offset_ref_gpu, offsetA_h, (sequences_per_stream) * sizeof(int), cudaMemcpyHostToDevice,
+  ERROR_CHECK(MemcpyAsync(gpu_data->offset_ref_gpu, offsetA_h, (sequences_per_stream) * sizeof(int), MemcpyHostToDevice,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(gpu_data->offset_ref_gpu + sequences_per_stream, offsetA_h + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(int), cudaMemcpyHostToDevice,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(int), MemcpyHostToDevice,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(gpu_data->offset_query_gpu, offsetB_h, (sequences_per_stream) * sizeof(int), cudaMemcpyHostToDevice,
+  ERROR_CHECK(MemcpyAsync(gpu_data->offset_query_gpu, offsetB_h, (sequences_per_stream) * sizeof(int), MemcpyHostToDevice,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(gpu_data->offset_query_gpu + sequences_per_stream, offsetB_h + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(int), cudaMemcpyHostToDevice,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(int), MemcpyHostToDevice,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(strA_d, strA, half_length_A * sizeof(char), cudaMemcpyHostToDevice, streams_cuda[0]));
+  ERROR_CHECK(MemcpyAsync(strA_d, strA, half_length_A * sizeof(char), MemcpyHostToDevice, streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(strA_d + half_length_A, strA + half_length_A, (totalLengthA - half_length_A) * sizeof(char),
-                             cudaMemcpyHostToDevice, streams_cuda[1]));
+                             MemcpyHostToDevice, streams_cuda[1]));
 
   size_t size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
   if (size_strB < totalLengthB) {
@@ -202,51 +202,51 @@ void asynch_mem_copies_htd_t(gpu_alignments* gpu_data, gpu_alignments_traceback*
               << "half_length_B " << half_length_B << " max rlen " << max_rlen << "\n";
     std::abort();
   }
-  ERROR_CHECK(MemcpyAsync(strB_d, strB, half_length_B * sizeof(char), cudaMemcpyHostToDevice, streams_cuda[0]));
+  ERROR_CHECK(MemcpyAsync(strB_d, strB, half_length_B * sizeof(char), MemcpyHostToDevice, streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(strB_d + half_length_B, strB + half_length_B, (totalLengthB - half_length_B) * sizeof(char),
-                             cudaMemcpyHostToDevice, streams_cuda[1]));
+                             MemcpyHostToDevice, streams_cuda[1]));
 }
 
 void asynch_mem_copies_dth_t(gpu_alignments* gpu_data, gpu_alignments_traceback* gpu_data_traceback, short* alAbeg, short* alBbeg,
                               short* alAend, short* alBend,
                               short* top_scores_cpu, char* cigar_cpu, int maxCIGAR, int sequences_per_stream,
-                              int sequences_stream_leftover, cudaStream_t* streams_cuda) {
+                              int sequences_stream_leftover, Stream_t* streams_cuda) {
 
-  ERROR_CHECK(MemcpyAsync(alAbeg, gpu_data->ref_start_gpu, sequences_per_stream * sizeof(short), cudaMemcpyDeviceToHost,
+  ERROR_CHECK(MemcpyAsync(alAbeg, gpu_data->ref_start_gpu, sequences_per_stream * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(alAbeg + sequences_per_stream, gpu_data->ref_start_gpu + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), cudaMemcpyDeviceToHost,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(alBbeg, gpu_data->query_start_gpu, sequences_per_stream * sizeof(short), cudaMemcpyDeviceToHost,
+  ERROR_CHECK(MemcpyAsync(alBbeg, gpu_data->query_start_gpu, sequences_per_stream * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(alBbeg + sequences_per_stream, gpu_data->query_start_gpu + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), cudaMemcpyDeviceToHost,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(alAend, gpu_data->ref_end_gpu, sequences_per_stream * sizeof(short), cudaMemcpyDeviceToHost,
+  ERROR_CHECK(MemcpyAsync(alAend, gpu_data->ref_end_gpu, sequences_per_stream * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(alAend + sequences_per_stream, gpu_data->ref_end_gpu + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), cudaMemcpyDeviceToHost,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(alBend, gpu_data->query_end_gpu, sequences_per_stream * sizeof(short), cudaMemcpyDeviceToHost,
+  ERROR_CHECK(MemcpyAsync(alBend, gpu_data->query_end_gpu, sequences_per_stream * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(alBend + sequences_per_stream, gpu_data->query_end_gpu + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), cudaMemcpyDeviceToHost,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(top_scores_cpu, gpu_data->scores_gpu, sequences_per_stream * sizeof(short), cudaMemcpyDeviceToHost,
+  ERROR_CHECK(MemcpyAsync(top_scores_cpu, gpu_data->scores_gpu, sequences_per_stream * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[0]));
   ERROR_CHECK(MemcpyAsync(top_scores_cpu + sequences_per_stream, gpu_data->scores_gpu + sequences_per_stream,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), cudaMemcpyDeviceToHost,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(short), MemcpyDeviceToHost,
                              streams_cuda[1]));
 
-  ERROR_CHECK(MemcpyAsync(cigar_cpu, gpu_data_traceback->CIGAR_gpu, sequences_per_stream * sizeof(char) * maxCIGAR, cudaMemcpyDeviceToHost,
+  ERROR_CHECK(MemcpyAsync(cigar_cpu, gpu_data_traceback->CIGAR_gpu, sequences_per_stream * sizeof(char) * maxCIGAR, MemcpyDeviceToHost,
                              streams_cuda[0]));
 
   ERROR_CHECK(MemcpyAsync(cigar_cpu + sequences_per_stream * maxCIGAR, gpu_data_traceback->CIGAR_gpu + sequences_per_stream * maxCIGAR,
-                             (sequences_per_stream + sequences_stream_leftover) * sizeof(char) * maxCIGAR, cudaMemcpyDeviceToHost,
+                             (sequences_per_stream + sequences_stream_leftover) * sizeof(char) * maxCIGAR, MemcpyDeviceToHost,
                              streams_cuda[1]));
 }
 
@@ -643,7 +643,7 @@ void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, 
   size_t   ShmemBytes = totShmem + alignmentPad + sizeof(int) * (maxContigSize + maxReadSize + 2 );
   
   if (ShmemBytes > 48000)
-    ERROR_CHECK(FuncSetAttribute(gpu_bsw::sequence_dna_kernel_traceback, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
+    ERROR_CHECK(FuncSetAttribute((const void *)gpu_bsw::sequence_dna_kernel_traceback, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
   LaunchKernelGGL(gpu_bsw::sequence_dna_kernel_traceback, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0],
       driver_state->strA_d, driver_state->strB_d,

@@ -100,7 +100,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
         //std::string cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
         std::string cig = "";
 	      int k = i*maxCIGAR;
-	      while (aln_results.cigar[k] != NULL) {
+	      while (aln_results.cigar[k]) {
           cig += aln_results.cigar[k];
           k++;
         }
