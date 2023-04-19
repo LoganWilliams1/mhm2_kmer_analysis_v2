@@ -67,6 +67,7 @@ _proc = None
 _output_dir = ''
 _err_thread = None
 _stop_thread = False
+_start_time = None
 
 def print_red(*args):
     print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
@@ -377,7 +378,7 @@ def print_err_msgs(err_msgs, return_status):
             if return_status == 9: # SIGKILL
                 suspect_oom = "Got SIGKILLed"
             err_msgs.append("Return status: %d\n" % (return_status))
-            print_red("mhm2.py: MHM2 failed")
+            print_red("mhm2.py: MHM2 failed, elapsed %.2f s" % (time.time() - _start_time))
         # keep track of all msg copies so we don't print duplicates
         seen_msgs = {}
         per_rank_dir = _output_dir + 'per_rank/'
@@ -412,8 +413,9 @@ def main():
     global _proc
     global _output_dir
     global _err_thread
+    global _start_time
 
-    start_time = time.time()
+    _start_time = time.time()
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_interrupt)
 
@@ -666,7 +668,7 @@ def main():
                 else:
                     err_msgs.append("Could not find the final assembly!  It should be at %s\n" % (final_assembly))
                 print_err_msgs(err_msgs, _proc.returncode)
-                print('Overall time taken (including any restarts): %.2f s' % (time.time() - start_time))
+                print('Overall time taken (including any restarts): %.2f s' % (time.time() - _start_time))
                 break
         except:
             print_red("Got an exception")
