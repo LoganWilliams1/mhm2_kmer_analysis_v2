@@ -154,13 +154,13 @@ __device__ bool ext_conflict(ext_count_t *ext_counts, int start_idx) {
 
 template <int MAX_K>
 __global__ void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerCountsMap<MAX_K> ctg_kmers,
-                                    unsigned int *insert_counts) {
+                                    uint64_t *insert_counts) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   int8_t ext_map[4] = {'A', 'C', 'G', 'T'};
   int N_LONGS = KmerArray<MAX_K>::N_LONGS;
-  int attempted_inserts = 0;
-  int dropped_inserts = 0;
-  int new_inserts = 0;
+  uint64_t attempted_inserts = 0;
+  uint64_t dropped_inserts = 0;
+  uint64_t new_inserts = 0;
   if (threadid < ctg_kmers.capacity) {
     count_t kmer_count = ctg_kmers.vals[threadid].kmer_count;
     ext_count_t *ext_counts = ctg_kmers.vals[threadid].ext_counts;
@@ -200,11 +200,11 @@ __global__ void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerC
 }
 
 template <int MAX_K>
-__global__ void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> compact_elems, unsigned int *elem_counts) {
+__global__ void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> compact_elems, uint64_t *elem_counts) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
-  int dropped_inserts = 0;
-  int unique_inserts = 0;
+  uint64_t dropped_inserts = 0;
+  uint64_t unique_inserts = 0;
   int8_t ext_map[4] = {'A', 'C', 'G', 'T'};
   if (threadid < elems.capacity) {
     if (elems.vals[threadid].kmer_count) {
@@ -242,14 +242,14 @@ __global__ void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> co
 }
 
 template <int MAX_K>
-__global__ void gpu_purge_invalid(KmerCountsMap<MAX_K> elems, unsigned int *elem_counts) {
+__global__ void gpu_purge_invalid(KmerCountsMap<MAX_K> elems, uint64_t *elem_counts) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   int N_LONGS = KmerArray<MAX_K>::N_LONGS;
-  int num_purged = 0;
-  int num_elems = 0;
+  uint64_t num_purged = 0;
+  uint64_t num_elems = 0;
   if (threadid < elems.capacity) {
     if (elems.vals[threadid].kmer_count) {
-      int ext_sum = 0;
+      uint64_t ext_sum = 0;
       for (int j = 0; j < 8; j++) ext_sum += elems.vals[threadid].ext_counts[j];
       if (elems.vals[threadid].kmer_count < 2 || !ext_sum) {
         memset(&elems.vals[threadid], 0, sizeof(CountsArray));
@@ -353,8 +353,8 @@ __device__ bool get_kmer_from_supermer(SupermerBuff supermer_buff, uint32_t buff
 
 template <int MAX_K>
 __device__ bool gpu_insert_kmer(KmerCountsMap<MAX_K> elems, uint64_t hash_val, KmerArray<MAX_K> &kmer, char left_ext,
-                                char right_ext, char prev_left_ext, char prev_right_ext, count_t kmer_count, int &new_inserts,
-                                int &dropped_inserts, bool ctg_kmers, bool use_qf, bool update_only) {
+                                char right_ext, char prev_left_ext, char prev_right_ext, count_t kmer_count, uint64_t &new_inserts,
+                                uint64_t &dropped_inserts, bool ctg_kmers, bool use_qf, bool update_only) {
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
   uint64_t slot = hash_val % elems.capacity;
   auto start_slot = slot;
@@ -425,7 +425,7 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
                                           bool ctg_kmers, InsertStats *insert_stats, two_choice_filter::TCF *tcf) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
-  int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0, num_unique_qf = 0, dropped_inserts_qf = 0;
+  uint64_t attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0, num_unique_qf = 0, dropped_inserts_qf = 0;
   if (threadid > 0 && threadid < buff_len) {
     attempted_inserts++;
     KmerArray<MAX_K> kmer;
@@ -632,7 +632,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 }
 
 template <int MAX_K>
-void HashTableGPUDriver<MAX_K>::init_ctg_kmers(int max_elems, size_t gpu_avail_mem) {
+void HashTableGPUDriver<MAX_K>::init_ctg_kmers(uint64_t max_elems, size_t gpu_avail_mem) {
   pass_type = CTG_KMERS_PASS;
   // free up space
   if (dstate->tcf) two_choice_filter::TCF::free_on_device(dstate->tcf);
@@ -703,12 +703,12 @@ void HashTableGPUDriver<MAX_K>::insert_supermer(const string &supermer_seq, coun
 }
 
 template <int MAX_K>
-void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries) {
+void HashTableGPUDriver<MAX_K>::purge_invalid(uint64_t &num_purged, uint64_t &num_entries) {
   num_purged = num_entries = 0;
-  unsigned int *counts_gpu;
+  uint64_t *counts_gpu;
   int NUM_COUNTS = 2;
-  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
-  ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(unsigned int)));
+  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(uint64_t)));
+  ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(uint64_t)));
   GPUTimer t;
   int gridsize, threadblocksize;
   get_kernel_config(read_kmers_dev.capacity, gpu_purge_invalid<MAX_K>, gridsize, threadblocksize);
@@ -718,8 +718,8 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(int &num_purged, int &num_entries)
   t.stop();
   dstate->kernel_timer.inc(t.get_elapsed());
 
-  unsigned int counts_host[NUM_COUNTS];
-  ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(unsigned int), MemcpyDeviceToHost));
+  uint64_t counts_host[NUM_COUNTS];
+  ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(uint64_t), MemcpyDeviceToHost));
   num_purged = counts_host[0];
   num_entries = counts_host[1];
 #ifdef DEBUG
@@ -742,8 +742,8 @@ void HashTableGPUDriver<MAX_K>::flush_inserts() {
 }
 
 template <int MAX_K>
-void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_unique, int &num_purged) {
-  int num_entries = 0;
+void HashTableGPUDriver<MAX_K>::done_all_inserts(uint64_t &num_dropped, uint64_t &num_unique, uint64_t &num_purged) {
+  uint64_t num_entries = 0;
   purge_invalid(num_purged, num_entries);
   read_kmers_dev.num = num_entries;
   if (elem_buff_host.seqs) delete[] elem_buff_host.seqs;
@@ -756,10 +756,10 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   // overallocate to reduce collisions
   num_entries *= 1.3;
   // now compact the hash table entries
-  unsigned int *counts_gpu;
+  uint64_t *counts_gpu;
   int NUM_COUNTS = 2;
-  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
-  ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(unsigned int)));
+  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(uint64_t)));
+  ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(uint64_t)));
   KmerExtsMap<MAX_K> compact_read_kmers_dev;
   compact_read_kmers_dev.init(num_entries);
   GPUTimer t;
@@ -770,8 +770,8 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
   t.stop();
   dstate->kernel_timer.inc(t.get_elapsed());
   read_kmers_dev.clear();
-  unsigned int counts_host[NUM_COUNTS];
-  ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(unsigned int), MemcpyDeviceToHost));
+  uint64_t counts_host[NUM_COUNTS];
+  ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(uint64_t), MemcpyDeviceToHost));
   ERROR_CHECK(Free(counts_gpu));
   num_dropped = counts_host[0];
   num_unique = counts_host[1];
@@ -792,11 +792,11 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(int &num_dropped, int &num_uniq
 }
 
 template <int MAX_K>
-void HashTableGPUDriver<MAX_K>::done_ctg_kmer_inserts(int &attempted_inserts, int &dropped_inserts, int &new_inserts) {
-  unsigned int *counts_gpu;
+void HashTableGPUDriver<MAX_K>::done_ctg_kmer_inserts(uint64_t &attempted_inserts, uint64_t &dropped_inserts, uint64_t &new_inserts) {
+  uint64_t *counts_gpu;
   int NUM_COUNTS = 3;
-  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(unsigned int)));
-  ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(unsigned int)));
+  ERROR_CHECK(Malloc(&counts_gpu, NUM_COUNTS * sizeof(uint64_t)));
+  ERROR_CHECK(Memset(counts_gpu, 0, NUM_COUNTS * sizeof(uint64_t)));
   GPUTimer t;
   int gridsize, threadblocksize;
   get_kernel_config(ctg_kmers_dev.capacity, gpu_merge_ctg_kmers<MAX_K>, gridsize, threadblocksize);
@@ -805,8 +805,8 @@ void HashTableGPUDriver<MAX_K>::done_ctg_kmer_inserts(int &attempted_inserts, in
   t.stop();
   dstate->kernel_timer.inc(t.get_elapsed());
   ctg_kmers_dev.clear();
-  unsigned int counts_host[NUM_COUNTS];
-  ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(unsigned int), MemcpyDeviceToHost));
+  uint64_t counts_host[NUM_COUNTS];
+  ERROR_CHECK(Memcpy(&counts_host, counts_gpu, NUM_COUNTS * sizeof(uint64_t), MemcpyDeviceToHost));
   ERROR_CHECK(Free(counts_gpu));
   attempted_inserts = counts_host[0];
   dropped_inserts = counts_host[1];
