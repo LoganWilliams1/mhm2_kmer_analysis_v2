@@ -725,7 +725,7 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(uint64_t &num_purged, uint64_t &nu
 #ifdef DEBUG
   auto expected_num_entries = read_kmers_stats.new_inserts - num_purged;
   if (num_entries != (int)expected_num_entries)
-    WARN("mismatch %d != %u diff %d new inserts %u num purged %d", num_entries, expected_num_entries,
+    WARN("mismatch %lu != %lu diff %lu new inserts %lu num purged %lu", num_entries, expected_num_entries,
          (num_entries - (int)expected_num_entries), read_kmers_stats.new_inserts, num_purged);
 #endif
   read_kmers_dev.num = num_entries;
@@ -776,7 +776,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(uint64_t &num_dropped, uint64_t
   num_dropped = counts_host[0];
   num_unique = counts_host[1];
 #ifdef DEBUG
-  if (num_unique != read_kmers_dev.num) WARN("mismatch in expected entries %d != %u", num_unique, read_kmers_dev.num);
+  if (num_unique != read_kmers_dev.num) WARN("mismatch in expected entries %lu != %lu", num_unique, read_kmers_dev.num);
 #endif
   // now copy the gpu hash table values across to the host
   // We only do this once, which requires enough memory on the host to store the full GPU hash table, but since the GPU memory

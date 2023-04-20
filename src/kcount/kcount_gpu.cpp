@@ -305,7 +305,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   insert_timer.start();
   if (state->ht_gpu_driver.pass_type == CTG_KMERS_PASS) {
     LOG_MEM("Before done_ctg_kmer_inserts");
-    int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0;
+    uint64_t attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0;
     state->ht_gpu_driver.done_ctg_kmer_inserts(attempted_inserts, dropped_inserts, new_inserts);
     barrier();
     LOG_MEM("After done_ctg_kmer_inserts");
@@ -326,7 +326,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   barrier();
   LOG_MEM("before done_all_inserts");
   Timings::wait_pending();
-  int num_dropped = 0, num_entries = 0, num_purged = 0;
+  uint64_t num_dropped = 0, num_entries = 0, num_purged = 0;
   state->ht_gpu_driver.done_all_inserts(num_dropped, num_entries, num_purged);
   barrier();
   LOG_MEM("after done_all_inserts");

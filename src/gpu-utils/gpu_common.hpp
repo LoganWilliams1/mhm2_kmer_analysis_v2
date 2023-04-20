@@ -103,19 +103,21 @@ class GPUTimer {
   double get_elapsed();
 };
 
-inline __device__ int warpReduceSum(int val, int n) {
+template<typename T>
+inline __device__ int warpReduceSum(T val, int n) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
 #ifdef HIP_GPU
-  for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
+  for (T offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
 #endif
 #ifdef CUDA_GPU
   unsigned mask = __ballot_sync(0xffffffff, threadid < n);
-  for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down_sync(mask, val, offset);
+  for (T offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down_sync(mask, val, offset);
 #endif
   return val;
-}
+};
 
-inline __device__ int blockReduceSum(int val, int n) {
+template<typename T>
+inline __device__ int blockReduceSum(T val, int n) {
   static __shared__ int shared[32];  // Shared mem for 32 partial sums
   int lane_id = threadIdx.x % warpSize;
   int warp_id = threadIdx.x / warpSize;
@@ -132,12 +134,13 @@ inline __device__ int blockReduceSum(int val, int n) {
   if (warp_id == 0) val = warpReduceSum(val, n);  // Final reduce within first warp
   __syncthreads();
   return val;
-}
+};
 
-inline __device__ void reduce(int count, int num, unsigned int *result) {
-  int block_num = blockReduceSum(count, num);
+template<typename T>
+inline __device__ void reduce(T count, int num, T *result) {
+  T block_num = blockReduceSum(count, num);
   if (threadIdx.x == 0) atomicAdd(result, block_num);
-}
+};
 
 template <class T>
 inline void get_kernel_config(unsigned max_val, T func, int &gridsize, int &threadblocksize) {
