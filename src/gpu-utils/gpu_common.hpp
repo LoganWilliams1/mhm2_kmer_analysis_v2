@@ -137,7 +137,7 @@ inline __device__ int blockReduceSum(T val, int n) {
 };
 
 inline __device__ void reduce(uint32_t count, int num, uint32_t *result) {
-  T block_num = blockReduceSum(count, num);
+  uint32_t block_num = blockReduceSum(count, num);
   if (threadIdx.x == 0) atomicAdd(result, block_num);
 }
 
