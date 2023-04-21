@@ -136,11 +136,15 @@ inline __device__ int blockReduceSum(T val, int n) {
   return val;
 };
 
-template<typename T>
-inline __device__ void reduce(T count, int num, T *result) {
+inline __device__ void reduce(uint32_t count, int num, uint32_t *result) {
   T block_num = blockReduceSum(count, num);
   if (threadIdx.x == 0) atomicAdd(result, block_num);
-};
+}
+
+inline __device__ void reduce(uint64_t count, int num, uint64_t *result) {
+  unsigned long long int block_num = blockReduceSum(count, num);
+  if (threadIdx.x == 0) atomicAdd((unsigned long long int*)result, block_num);
+}
 
 template <class T>
 inline void get_kernel_config(unsigned max_val, T func, int &gridsize, int &threadblocksize) {

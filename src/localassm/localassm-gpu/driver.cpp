@@ -334,7 +334,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
       for (unsigned j = 0; j < temp_data.reads_left.size(); j++) {
         auto read_size = temp_data.reads_left[j].seq.size();
         auto qual_size = temp_data.reads_left[j].quals.size();
-        if (read_size != qual_size || read_size > max_read_size || reads_l_offset_sum + max_read_size > max_reads_left_h) {
+        if (read_size != qual_size || read_size > max_read_size || reads_l_offset_sum + max_read_size > (uint64_t) max_reads_left_h) {
           if (!num_bad)
             fprintf(stderr,
                     "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq read_size=%lu qual_size=%lu i=%u of %lu, cid=%lu "
@@ -362,7 +362,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
         auto read_size = temp_data.reads_right[j].seq.size();
         auto qual_size = temp_data.reads_right[j].quals.size();
-        if (read_size != qual_size || read_size > max_read_size || reads_r_offset_sum + max_read_size > max_reads_right_h) {
+        if (read_size != qual_size || read_size > max_read_size || reads_r_offset_sum + max_read_size > (uint64_t) max_reads_right_h) {
           if (!num_bad)
             fprintf(stderr,
                     "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq read_size=%lu quals_size=%lu i=%u of %lu, cid=%lu "
