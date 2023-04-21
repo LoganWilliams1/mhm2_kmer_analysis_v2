@@ -43,3 +43,5 @@
 void init_devices() {}
 
 void done_init_devices() {}
+
+void tear_down_devices() {}

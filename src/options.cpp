@@ -180,6 +180,8 @@ double Options::setup_output_dir() {
       }
     }
 
+#ifdef NOT_FRONTIER
+    // don't stripe on frontier
     // always ensure striping is set or reset wide when lustre is available
     auto status = std::system("which lfs 2>&1 > /dev/null");
     bool set_lfs_stripe = WIFEXITED(status) & (WEXITSTATUS(status) == 0);
@@ -210,11 +212,13 @@ double Options::setup_output_dir() {
       else
         cout << "Failed to set Lustre striping on output directory: " << WEXITSTATUS(status) << endl;
     }
-
+#endif
+    
     // ensure per_rank dir exists (and additionally has stripe 1, if lfs exists)
     string per_rank = output_dir + "/per_rank";
-    status = mkdir(per_rank.c_str(), S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID /*use default mode/umask */);
+    auto status = mkdir(per_rank.c_str(), S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID /*use default mode/umask */);
     if (status != 0 && errno != EEXIST) SDIE("Could not create '", per_rank, "'! ", strerror(errno));
+#ifdef NOT_FRONTIER    
     if (set_lfs_stripe) {
       // stripe per_rank directory with count 1
       string cmd = "lfs setstripe --stripe-count 1 " + per_rank;
@@ -224,7 +228,7 @@ double Options::setup_output_dir() {
       else
         cout << "Failed to set Lustre striping on per_rank output directory: " << WEXITSTATUS(status) << endl;
     }
-
+#endif
     // this should avoid contention on the filesystem when ranks start racing to creating these top levels
     char basepath[256];
     for (int i = 0; i < rank_n(); i += 1000) {

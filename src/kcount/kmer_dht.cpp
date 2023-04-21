@@ -104,8 +104,8 @@ int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 template <int MAX_K>
 KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight,
                         bool use_qf, int sequencing_depth)
-    : local_kmers({})
-    , ht_inserter({})
+    : local_kmers(KmerMap<MAX_K>{})
+    , ht_inserter(HashTableInserter<MAX_K>{})
     , kmer_store()
     , max_kmer_store_bytes(max_kmer_store_bytes)
     , my_num_kmers(my_num_kmers)

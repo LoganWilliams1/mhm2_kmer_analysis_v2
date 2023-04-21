@@ -63,6 +63,7 @@ using namespace upcxx_utils;
 
 void init_devices();
 void done_init_devices();
+void teardown_devices();
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
                  bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
