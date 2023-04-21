@@ -251,12 +251,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   ProgressBar progbar(alns.size(), "Processing alignments");
   for (auto &aln : alns) {
     progbar.update();
-    aln.check_quality();
-    // require at least this much overlap with the read
-    // what this does is drop alns that hang too much over the ends of contigs
+    //aln.check_quality();
     // this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
-    // In practice, when using aln depths for scaffolding, this tends to reduce misassemblies without any benefits so we only
-    // use it in the final round, i.e. if min_ctg_len > 0
     if (min_ctg_len && aln.calc_identity() < 97) {
       num_bad_alns++;
       continue;
