@@ -789,8 +789,14 @@ void FastqReader::seek_start() {
 }
 
 FastqReader::~FastqReader() {
+  close();
+  DBG("Deconstructed FQR on ", fname, " - ", (void *)this, "\n");
+}
+
+void FastqReader::close() {
+  DBG("Closing FQR on ", fname, " - ", (void*)this, "\n");
   if (!open_fut.ready()) {
-    WARN("Destructor called before opening completed\n");
+    WARN("Close called before opening completed\n");
     open_fut.wait();
   }
 
@@ -798,12 +804,10 @@ FastqReader::~FastqReader() {
     io_t.start();
     in->close();
     io_t.stop();
+    io_t.done_all_async();  // will print in Timings' order eventually
+    FastqReader::overall_io_t += io_t.get_elapsed();
   }
   in.reset();
-
-  io_t.done_all_async();  // will print in Timings' order eventually
-  FastqReader::overall_io_t += io_t.get_elapsed();
-  DBG("Deconstructed FQR on ", fname, " - ", (void *)this, "\n");
 }
 
 string FastqReader::get_fname() const { return fname; }

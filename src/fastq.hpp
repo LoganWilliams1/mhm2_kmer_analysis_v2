@@ -147,6 +147,7 @@ class FastqReader {
   upcxx::future<> continue_open_default_per_rank_boundaries();
 
   ~FastqReader();
+  void close();
 
   string get_fname() const;
 
