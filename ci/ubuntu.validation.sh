@@ -63,14 +63,14 @@ echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
 mv test-arctic-sample0 ${RUN_PREFIX}/rwdi-test-arctic-sample0
 echo "Starting debug run on with reduced workflow using ${DBG}/mhm2"
-${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
+timeout -k 1m 25m ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
 echo "verify dbg-k3163 results $(ls -la ${RUN_PREFIX}/dbg-k3163)"
 if [ ! -f ${RUN_PREFIX}/dbg-k3163/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on dbg-k3163" ; fi
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
-${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg-k3163 --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || echo "WARN did not pass check_asm_quality.py for dbg-k3163 with reduced workflow k31k63"
+timeout -k 1m 10m ${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg-k3163 --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || echo "WARN did not pass check_asm_quality.py for dbg-k3163 with reduced workflow k31k63"
 if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 

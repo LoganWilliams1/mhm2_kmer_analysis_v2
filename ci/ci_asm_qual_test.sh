@@ -32,7 +32,7 @@ else
 fi
 uptime
 set -x
-$mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
+timeout -k 1m 30m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
 status=$?
 if [ $status -ne 0 ]
 then
@@ -40,7 +40,7 @@ then
   exit 1
 fi
 uptime
-$mhm2_install_dir/bin/check_asm_quality.py --asm-dir $test_dir --expected-quals $mhm2_install_dir/share/good-arctic-sample0.txt --refs $wd/$refs 2>&1 \
+timeout -k 1m 10m $mhm2_install_dir/bin/check_asm_quality.py --asm-dir $test_dir --expected-quals $mhm2_install_dir/share/good-arctic-sample0.txt --refs $wd/$refs 2>&1 \
    | tee $test_dir/check_asm_quality_test.log
 status="$? ${PIPESTATUS[*]}"
 if [ "$status" != "0 0 0" ]
