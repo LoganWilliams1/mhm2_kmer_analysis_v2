@@ -321,7 +321,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
       depth_h[i] = temp_data.depth;
       // convert string to c-string
       auto ctg_seq_size = temp_data.seq.size();
-      if (ctg_seq_size > TOO_BIG || ctgs_offset_sum + ctg_seq_size >= max_ctg_seqs_h)
+      if (ctg_seq_size > TOO_BIG || ctgs_offset_sum + ctg_seq_size > max_ctg_seqs_h)
         printf("Invalid ctg_seq_size=%ld my_rank=%d i=%d of %lu cid=%ld ctgs_offset_sum=%lu max_ctg_seqs_h=%lu\n", ctg_seq_size,
                my_rank, i, this_slice_size, temp_data.cid, ctgs_offset_sum, max_ctg_seqs_h);
       char *ctgs_ptr = ctg_seqs_h.get() + ctgs_offset_sum;
