@@ -338,7 +338,7 @@ if(ENABLE_CUDA)
 endif()
 
 install(PROGRAMS ci/check_asm_quality.py ci/ci_asm_qual_test.sh
-                 ci/ci_asm_qual_test-full.sh
+                 ci/ci_asm_qual_test-full.sh ci/ci_asm_qual_test-tiny.sh
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(FILES ci/good-arctic-sample0.txt ci/good-arctic-sample0-k63.txt
               ci/good-arctic-sample0-k31k63.txt ci/good-arcticsynth.txt
