@@ -92,6 +92,7 @@ class FastqReader {
   bool _trim_comment;
   bool _is_bgzf;
   IntermittentTimer io_t;
+  IntermittentTimer read_io_t;
   struct PromStartStop {
     promise<int64_t> start_prom, stop_prom;
     upcxx::future<> set(FastqReader &fqr) {
