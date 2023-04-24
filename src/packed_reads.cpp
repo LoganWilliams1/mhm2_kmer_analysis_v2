@@ -373,8 +373,7 @@ upcxx::future<> PackedReads::load_reads_nb() {
     reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
   }
   fqr.reset();
-  auto sh_progbar = make_shared<ProgressBar>(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
-  ProgressBar &progbar = *sh_progbar;
+  ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;
   int lines = 0;
   while (true) {
@@ -396,8 +395,8 @@ upcxx::future<> PackedReads::load_reads_nb() {
   auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
   auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
   auto fut_report = when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
-      .then([sh_progbar, max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records, int64_t all_num_records,
-                                                            int64_t all_num_bases) {
+      .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records, int64_t all_num_records,
+                                                int64_t all_num_bases) {
         SLOG_VERBOSE("Loaded ", all_num_records, " reads (estimated ", all_estimated_records, " with ", all_under_estimated,
                      " ranks underestimated) max_read=", max_read_len, " tot_bases=", all_num_bases, "\n");
       });
@@ -448,8 +447,7 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
   int64_t num_kmers = 0;
   int64_t num_reads = 0;
   int64_t tot_num_reads = PackedReads::get_total_local_num_reads(packed_reads_list);
-  auto sh_progbar = make_shared<ProgressBar>(tot_num_reads, "Scanning reads to estimate number of kmers");
-  ProgressBar &progbar = *sh_progbar;
+  ProgressBar progbar(tot_num_reads, "Scanning reads to estimate number of kmers");
   for (auto packed_reads : packed_reads_list) {
     packed_reads->reset();
     string id, seq, quals;
@@ -470,7 +468,7 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
   auto fut_all_num_kmers = pr.reduce_all(num_kmers, op_fast_add);
 
   auto fut_log = when_all(Timings::get_pending(), fut_all_num_reads, fut_all_tot_num_reads, fut_all_num_kmers, fut)
-                     .then([sh_progbar](int64_t all_num_reads, int64_t all_tot_num_reads, int64_t all_num_kmers) {
+                     .then([](int64_t all_num_reads, int64_t all_tot_num_reads, int64_t all_num_kmers) {
                        SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
                                     (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
                      });

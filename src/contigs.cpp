@@ -239,8 +239,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   auto stop_offset = dist_stop_prom->get_future().wait();
 
   size_t tot_len = 0;
-  auto sh_progbar = make_shared<ProgressBar>(stop_offset - start_offset, "Parsing contigs");
-  ProgressBar &progbar = *sh_progbar;
+  ProgressBar progbar(stop_offset - start_offset, "Parsing contigs");
   // these can be equal if the contigs are very long and there are many ranks so this one doesn't get even a full contig
   ctgs_file.seekg(start_offset);
   while (!ctgs_file.eof()) {
@@ -266,7 +265,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   auto fut_tot_contigs = pr.reduce_one(contigs.size(), op_fast_add, 0);
   auto fut_tot_len = pr.reduce_one(tot_len, op_fast_add, 0);
   auto fut_done = progbar.set_done();
-  auto fut_report = when_all(fut_tot_contigs, fut_tot_len, fut_done).then([ctgs_fname, sh_progbar](uint64_t tot_contigs, uint64_t tot_len) {
+  auto fut_report = when_all(fut_tot_contigs, fut_tot_len, fut_done).then([ctgs_fname](uint64_t tot_contigs, uint64_t tot_len) {
     SLOG_VERBOSE("Loaded ", tot_contigs, " contigs (", get_size_str(tot_len), ") from ", ctgs_fname, "\n");
   });
   Timings::set_pending(fut_report);
