@@ -75,7 +75,7 @@ echo "verify dbg-k3163 results $(ls -la ${RUN_PREFIX}/dbg-k3163)"
 if [ ! -f ${RUN_PREFIX}/dbg-k3163/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on dbg-k3163" ; fi
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
-timeout -k 1m -s INT --foreground -v 10m ${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg-k3163 --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || echo "WARN did not pass check_asm_quality.py for dbg-k3163 with reduced workflow k31k63"
+timeout -k 1m -s INT --foreground -v 10m ${DBG}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/dbg-k3163 --expected-quals ${DBG}/../share/good-arctic-sample0-k31k63.txt --refs ${HIPMER_DATA}/arcticsynth-refs.fa || FAILED="${FAILED} did not pass check_asm_quality.py for dbg-k3163 with reduced workflow k31k63"
 if [ -z "$FAILED" ] ; then  true ; else echo "Something failed somehow - ${FAILED}"; false ; fi
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
