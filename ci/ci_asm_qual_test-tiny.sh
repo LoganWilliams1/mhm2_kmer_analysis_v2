@@ -30,7 +30,7 @@ reads=${reads_tiny}
 wait
 
 wd=`pwd`
-test_dir=$wd/test-arctic-sample0
+test_dir=$wd/test-arctic-sample0-tiny
 if [[ "$*" != *"--restart"* ]]
 then
   rm -rf $test_dir
