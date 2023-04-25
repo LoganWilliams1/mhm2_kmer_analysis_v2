@@ -52,9 +52,14 @@ export DBG=${INSTALL_PREFIX}/mhm2-dbg/bin/
 export RWDI=${INSTALL_PREFIX}/mhm2-rwdi/bin/
 export REL=${INSTALL_PREFIX}/mhm2-rel/bin/
 
-echo "Starting RelWithDebInfo mhm2 on Arctic $reads using ${RWDI}/mhm2"
 if [ ! -f arctic_sample_0.fq -a -f $reads ] ; then ln -s $reads ; fi
 if [ ! -f arcticsynth-refs.fa -a -f ${HIPMER_DATA}/arcticsynth-refs.fa ] ; then ln -s ${HIPMER_DATA}/arcticsynth-refs.fa ; fi
+
+echo "Starting Debug tiny CI using ${DBG}/mhm2"
+${DBG}/ci_asm_qual_test-tiny.sh || FAILED="${FAILED} Could not run ci_asm_qual_test-tiny"
+echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
+
+echo "Starting RelWithDebInfo mhm2 on Arctic $reads using ${RWDI}/mhm2"
 ${RWDI}/ci_asm_qual_test.sh || FAILED="${FAILED} Could not run ci_asm_qual_test"
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 

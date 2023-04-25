@@ -25,7 +25,13 @@ if [ ! -f "$reads_tiny" ]; then
     # get 1M reads from the middle of the file
     head -3500000 $reads | tail -1000000 > ${reads_tiny}.tmp && mv ${reads_tiny}.tmp ${reads_tiny}
 fi
-reads=${reads_tiny}
+reads_tiny2=arctic_sample_0_tiny2.fq
+if [ ! -f "$reads_tiny2" ]; then
+    # get 1M reads from the middle of the file
+    head -5500000 $reads | tail -40000 > ${reads_tiny2}.tmp && mv ${reads_tiny2}.tmp ${reads_tiny2}
+fi
+
+reads="${reads_tiny} ${reads_tiny2}"
 
 wait
 
