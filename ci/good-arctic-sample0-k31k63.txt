@@ -1,24 +1,24 @@
 All statistics are based on contigs of size >= 500 bp, unless otherwise noted (e.g., "# contigs (>= 0 bp)" and "Total length (>= 0 bp)" include all contigs).
 
 Assembly                     final_assembly
-# contigs (>= 0 bp)          18102         
-# contigs (>= 1000 bp)       7204          
-# contigs (>= 5000 bp)       451           
-# contigs (>= 10000 bp)      130           
-# contigs (>= 25000 bp)      6             
+# contigs (>= 0 bp)          17823         
+# contigs (>= 1000 bp)       6928          
+# contigs (>= 5000 bp)       416           
+# contigs (>= 10000 bp)      102           
+# contigs (>= 25000 bp)      4             
 # contigs (>= 50000 bp)      0             
-Total length (>= 0 bp)       23597856      
-Total length (>= 1000 bp)    16045501      
-Total length (>= 5000 bp)    3622823
-Total length (>= 10000 bp)   1472662       
-Total length (>= 25000 bp)   197265        
+Total length (>= 0 bp)       22590553      
+Total length (>= 1000 bp)    15050828      
+Total length (>= 5000 bp)    3569587
+Total length (>= 10000 bp)   1455126       
+Total length (>= 25000 bp)   151709        
 Total length (>= 50000 bp)   0             
-# contigs                    18102         
+# contigs                    17823         
 Largest contig               43029         
 Total length                 22627756      
 Reference length             102521842     
 N50                          1448          
-N90                          621           
+N90                          614           
 auN                          3112
 L50                          3750
 L90                          13853         
@@ -39,7 +39,7 @@ Duplication ratio            1.000
 Largest alignment            43029         
 Total aligned length         22624519      
 NA50                         1447          
-NA90                         621           
+NA90                         613           
 auNA                         3111
 LA50                         3754          
 LA90                         13869         
