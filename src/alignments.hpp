@@ -58,6 +58,7 @@ struct Aln {
   int score1, score2;       // TODO can this be uint16_t (for short reads only)?
   int mismatches;           // TODO can this be uint16_t (for short reads only)?
   string sam_string;
+  string cigar;
   int16_t read_group_id;
   char orient;  // TODO can this be bool?
 
@@ -74,6 +75,7 @@ struct Aln {
   bool is_valid() const;
   std::pair<int, int> get_unaligned_overlaps() const;
   double calc_identity() const;
+  bool check_quality() const;
 };
 
 class Alns {

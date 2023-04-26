@@ -81,6 +81,7 @@ Aln::Aln()
     , score2(0)
     , mismatches(0)
     , sam_string({})
+    , cigar({})
     , read_group_id(-1)
     , orient() {}
 
@@ -98,6 +99,7 @@ Aln::Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, in
     , score2(score2)
     , mismatches(mismatches)
     , sam_string({})
+    , cigar({})
     , read_group_id(read_group_id)
     , orient(orient) {
   // DBG_VERBOSE(read_id, " cid=", cid, " RG=", read_group_id, " mismatches=", mismatches, "\n");
@@ -125,6 +127,7 @@ void Aln::set(int ref_begin, int ref_end, int query_begin, int query_end, int to
 
 void Aln::set_sam_string(std::string_view read_seq, string cigar) {
   assert(is_valid());
+  this->cigar = cigar;
   sam_string = read_id + "\t";
   string tmp;
   if (orient == '-') {
@@ -222,6 +225,34 @@ double Aln::calc_identity() const {
   return 100.0 * (aln_len - mismatches) / aln_len;
 }
 
+bool Aln::check_quality() const {
+  int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
+  double perc_id = 100.0 * (aln_len - mismatches) / aln_len;
+  int cigar_aln_len = 0;
+  int cigar_mismatches = 0;
+  string num_str = "";
+  for (int i = 0; i < cigar.length(); i++) {
+    if (isdigit(cigar[i])) {
+      num_str += cigar[i];
+      continue;
+    }
+    int count = stoi(num_str);
+    if (cigar[i] != 'S') cigar_aln_len += count;
+    num_str = "";
+    switch (cigar[i]) {
+      case 'X':
+      case 'I':
+      case 'D': cigar_mismatches++; break;
+      case '=':
+      case 'M':
+      case 'S': break;
+      default: WARN("unexpected type in cigar: '", cigar[i], "'");
+    };
+  }
+  DBG_VERBOSE(cigar, " ", aln_len, " ", mismatches, " [", cigar_aln_len, " ", cigar_mismatches, "]\n");
+  return true;
+}
+
 //
 // class Alns
 //
@@ -236,6 +267,12 @@ void Alns::clear() {
 }
 
 void Alns::add_aln(Aln &aln) {
+  auto new_identity = aln.calc_identity();
+  // This is not done in bbmap - poorer alns are kept. This filtering is done when computing aln depths
+  // if (new_identity < 97) {
+  //   num_bad++;
+  //   return;
+  // }
   //  check for multiple read-ctg alns. Check backwards from most recent entry, since all alns for a read are grouped
   for (auto it = alns.rbegin(); it != alns.rend();) {
     // we have no more entries for this read
@@ -244,20 +281,21 @@ void Alns::add_aln(Aln &aln) {
       num_dups++;
       auto old_identity = it->calc_identity();
       auto new_identity = aln.calc_identity();
-      //SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, " ", num_dups, "\n");
+      // SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, "
+      // ", num_dups, "\n");
       it++;
-      if (new_identity > old_identity) {
+      if ((new_identity > old_identity) || (new_identity == old_identity && (aln.rstop - aln.rstart > it->rstop - it->rstart))) {
         // new one is better - erase the old one
         it = vector<Aln>::reverse_iterator(alns.erase(it.base()));
         // can only happen once because previous add_aln calls will have ensured there is only the best single aln for that cid
         break;
       } else {
-        // new one is worse - don't add
+        // new one is no better - don't add
         return;
       }
     } else {
       it++;
-      }
+    }
   }
   if (!aln.is_valid()) DIE("Invalid alignment: ", aln.to_paf_string());
   assert(aln.is_valid());
@@ -267,7 +305,7 @@ void Alns::add_aln(Aln &aln) {
   // Only filter out if the SAM string is not set, i.e. we are using the alns internally rather than for post processing output
   auto [unaligned_left, unaligned_right] = aln.get_unaligned_overlaps();
   auto unaligned = unaligned_left + unaligned_right;
-  int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
+  // int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
   if (!aln.sam_string.empty() || (unaligned_left <= KLIGN_UNALIGNED_THRES && unaligned_right <= KLIGN_UNALIGNED_THRES))
     alns.push_back(aln);
   else
@@ -277,6 +315,7 @@ void Alns::add_aln(Aln &aln) {
 void Alns::append(Alns &more_alns) {
   alns.insert(alns.end(), more_alns.alns.begin(), more_alns.alns.end());
   num_dups += more_alns.num_dups;
+  num_bad += more_alns.num_bad;
   more_alns.clear();
 }
 
@@ -290,9 +329,9 @@ void Alns::reserve(size_t capacity) { alns.reserve(capacity); }
 
 void Alns::reset() { alns.clear(); }
 
-int64_t Alns::get_num_dups() { return upcxx::reduce_one(num_dups, upcxx::op_fast_add, 0).wait(); }
+int64_t Alns::get_num_dups() { return num_dups; }
 
-int64_t Alns::get_num_bad() { return upcxx::reduce_one(num_bad, upcxx::op_fast_add, 0).wait(); }
+int64_t Alns::get_num_bad() { return num_bad; }
 
 void Alns::dump_rank_file(string fname) const {
   get_rank_path(fname, rank_me());
