@@ -72,7 +72,7 @@ def main():
         elif not test_exec_mq:
             sys.exit('ERROR: requires shifter, docker or metaquast.py in the path to check')
         while True:
-            print('Running metaquast:', cmd)
+            print('Running metaquast:', ' '.join(cmd))
             try:
                 subprocess.check_output(cmd)#, stderr=subprocess.STDOUT)
                 break
