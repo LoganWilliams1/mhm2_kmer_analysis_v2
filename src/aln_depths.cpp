@@ -252,11 +252,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   ProgressBar progbar(alns.size(), "Processing alignments");
   for (auto &aln : alns) {
     progbar.update();
-    // require at least this much overlap with the read
-    // what this does is drop alns that hang too much over the ends of contigs
+    //aln.check_quality();
     // this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
-    // In practice, when using aln depths for scaffolding, this tends to reduce misassemblies without any benefits so we only
-    // use it in the final round, i.e. if min_ctg_len > 0
     if (min_ctg_len && aln.calc_identity() < 97) {
       num_bad_alns++;
       continue;
@@ -294,17 +291,17 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   auto all_num_bad_alns = reduce_one(num_bad_alns, op_fast_add, 0).wait();
   if (all_num_bad_alns) SLOG_VERBOSE("Dropped ", perc_str(all_num_bad_alns, all_num_alns), " low quality alns\n");
   // get string to dump
-  shared_ptr<upcxx_utils::dist_ofstream> sh_of;
+  shared_ptr<upcxx_utils::dist_ofstream> ctg_ofstream;
   if (fname != "") {
     if (read_groups.empty()) SDIE("No read groups passed in for file names - this is incorrect usage");
-    sh_of = make_shared<upcxx_utils::dist_ofstream>(fname);
+    ctg_ofstream = make_shared<upcxx_utils::dist_ofstream>(fname);
     if (!upcxx::rank_me()) {
-      *sh_of << "contigName\tcontigLen\ttotalAvgDepth";
+      *ctg_ofstream << "contigName\tcontigLen\ttotalAvgDepth";
       for (auto rg_name : read_groups) {
         string shortname = upcxx_utils::get_basename(rg_name);
-        *sh_of << "\t" << shortname << "-avg_depth\t" << shortname << "-var_depth";
+        *ctg_ofstream << "\t" << shortname << "-avg_depth\t" << shortname << "-var_depth";
       }
-      *sh_of << "\n";
+      *ctg_ofstream << "\n";
     }
   }
   // FIXME: the depths need to be in the same order as the contigs in the final_assembly.fasta file. This is an inefficient
@@ -315,14 +312,14 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
     auto &ctg = *it;
     if ((int)ctg.seq.length() < min_ctg_len) continue;
     auto fut_rg_avg_vars = ctgs_depths.fut_get_depth(ctg.id);
-    fut_chain = when_all(fut_chain, fut_rg_avg_vars).then([&sh_of, it = it, &num_read_groups](vector<AvgVar<float>> rg_avg_vars) {
+    fut_chain = when_all(fut_chain, fut_rg_avg_vars).then([&ctg_ofstream, it = it, &num_read_groups](vector<AvgVar<float>> rg_avg_vars) {
       auto &ctg = *it;
-      if (sh_of) {
-        *sh_of << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << rg_avg_vars[num_read_groups].avg;
+      if (ctg_ofstream) {
+        *ctg_ofstream << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << rg_avg_vars[num_read_groups].avg;
         for (int rg = 0; rg < num_read_groups; rg++) {
-          *sh_of << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
+          *ctg_ofstream << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
         }
-        *sh_of << "\n";
+        *ctg_ofstream << "\n";
       }
       ctg.depth = rg_avg_vars[num_read_groups].avg;
     });
@@ -333,8 +330,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   fut_chain.wait();
   barrier();
   if (fname != "") {
-    assert(sh_of);
+    assert(ctg_ofstream);
     DBG("Prepared contig depths for '", fname, "\n");
-    sh_of->close();  // sync and print stats
+    ctg_ofstream->close();  // sync and print stats
   }
 }
