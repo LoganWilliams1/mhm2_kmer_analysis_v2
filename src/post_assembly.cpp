@@ -92,9 +92,9 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   bool report_cigar = true;
   int kmer_len = POST_ASM_ALN_K;
   const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
-  double kernel_elapsed = find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight,
-                                                 ctgs, alns, KLIGN_SEED_SPACE, rlen_limit, report_cigar,
-                                                 options->optimize_for == "contiguity", options->min_ctg_print_len);
+  double kernel_elapsed =
+      find_alignments<MAX_K>(POST_ASM_ALN_K, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
+                             KLIGN_SEED_SPACE, rlen_limit, report_cigar, true, options->min_ctg_print_len);
   stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
   stage_timers.alignments->stop();
   LOG_MEM("Aligned Post Assembly Reads");

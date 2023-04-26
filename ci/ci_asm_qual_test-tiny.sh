@@ -20,10 +20,23 @@ if [ ! -f "$reads" ]; then
     gunzip ${reads}.gz &
 fi 
 
+reads_tiny=arctic_sample_0_tiny.fq
+if [ ! -f "$reads_tiny" ]; then
+    # get 1M reads from the middle of the file
+    head -3500000 $reads | tail -1000000 > ${reads_tiny}.tmp && mv ${reads_tiny}.tmp ${reads_tiny}
+fi
+reads_tiny2=arctic_sample_0_tiny2.fq
+if [ ! -f "$reads_tiny2" ]; then
+    # get 1M reads from the middle of the file
+    head -5500000 $reads | tail -40000 > ${reads_tiny2}.tmp && mv ${reads_tiny2}.tmp ${reads_tiny2}
+fi
+
+reads="${reads_tiny} ${reads_tiny2}"
+
 wait
 
 wd=`pwd`
-test_dir=$wd/test-arctic-sample0
+test_dir=$wd/test-arctic-sample0-tiny
 if [[ "$*" != *"--restart"* ]]
 then
   rm -rf $test_dir
@@ -32,7 +45,7 @@ else
 fi
 uptime
 set -x
-timeout -k 1m -s INT --foreground -v 30m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
+timeout -k 1m -s INT --foreground -v 5m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
 status=$?
 if [ $status -ne 0 ]
 then
@@ -40,7 +53,7 @@ then
   exit 1
 fi
 uptime
-timeout -k 1m -s INT --foreground -v 10m $mhm2_install_dir/bin/check_asm_quality.py --asm-dir $test_dir --expected-quals $mhm2_install_dir/share/good-arctic-sample0.txt --refs $wd/$refs 2>&1 \
+timeout -k 1m -s INT --foreground -v 5m $mhm2_install_dir/bin/check_asm_quality.py --asm-dir $test_dir --expected-quals $mhm2_install_dir/share/good-arctic-sample0_tiny.txt --refs $wd/$refs 2>&1 \
    | tee $test_dir/check_asm_quality_test.log
 status="$? ${PIPESTATUS[*]}"
 if [ "$status" != "0 0 0" ]
