@@ -239,7 +239,6 @@ bool Aln::check_quality() const {
     int count = stoi(num_str);
     if (cigar[i] != 'S') cigar_aln_len += count;
     num_str = "";
-    // SLOG(count, " ", cigar[i], " ");
     switch (cigar[i]) {
       case 'X':
       case 'I':
@@ -250,8 +249,7 @@ bool Aln::check_quality() const {
       default: WARN("unexpected type in cigar: '", cigar[i], "'");
     };
   }
-  SLOG(cigar, " ", aln_len, " ", mismatches, " [", cigar_aln_len, " ", cigar_mismatches, "]\n");
-  // SLOG("\n");
+  DBG_VERBOSE(cigar, " ", aln_len, " ", mismatches, " [", cigar_aln_len, " ", cigar_mismatches, "]\n");
   return true;
 }
 
