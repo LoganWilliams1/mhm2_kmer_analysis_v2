@@ -85,7 +85,9 @@ void Contigs::clear() {
 
 void Contigs::set_capacity(int64_t sz) { contigs.reserve(sz); }
 
-void Contigs::add_contig(Contig contig) { contigs.push_back(contig); }
+void Contigs::add_contig(const Contig &contig) { contigs.push_back(contig); }
+
+void Contigs::add_contig(Contig &&contig) { contigs.emplace_back(std::move(contig)); }
 
 size_t Contigs::size() { return contigs.size(); }
 

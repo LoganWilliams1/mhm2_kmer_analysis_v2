@@ -60,9 +60,10 @@ static double gpu_startup_duration = 0;
 static int num_gpus_on_node = 0;
 
 size_t get_gpu_avail_mem_per_rank() {
-  barrier(local_team());
-  auto avail_mem = (gpu_utils::get_gpu_avail_mem() * num_gpus_on_node) / local_team().rank_n();
-  barrier(local_team());
+  auto &gpu_team = get_gpu_team();
+  barrier(gpu_team);
+  auto avail_mem = gpu_utils::get_gpu_avail_mem() / gpu_team.rank_n();
+  barrier(gpu_team);
   return avail_mem;
 }
 
@@ -73,6 +74,24 @@ static vector<string> &get_gpu_uuids() {
     uuids = gpu_utils::get_gpu_uuids();
   }
   return uuids;
+}
+
+upcxx::team &get_gpu_team() {
+  static upcxx::team tm = []() {
+    assert(upcxx::master_persona().active_with_caller() && "Called from master persona");
+    upcxx::intrank_t color = upcxx::team::color_none;
+    if (gpu_utils::gpus_present()) {
+      auto my_uuid = gpu_utils::get_gpu_uuid();
+      color = std::hash<string>{}(my_uuid) & 0xffffffff;
+      if (color < 0) color = -color;
+    } else {
+      color = 0;  // i.e. just a copy of the local team
+    }
+    assert(color != upcxx::team::color_none);
+    log_local("GPU team color", std::to_string(color));
+    return upcxx::local_team().split(color, upcxx::local_team().rank_me());
+  }();
+  return tm;
 }
 
 void init_devices() {
@@ -150,6 +169,11 @@ void done_init_devices() {
       SDIE("No GPUs available - this build requires GPUs");
     }
   }
+}
+
+void tear_down_devices() {
+  auto &gpu_team = get_gpu_team();
+  gpu_team.destroy();
 }
 
 void log_gpu_uuid() {
