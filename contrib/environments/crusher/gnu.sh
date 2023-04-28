@@ -7,11 +7,10 @@ module load cmake
 module rm xl
 module rm gcc
 module load gcc/11.2.0
-# need to load > 5.1 to avoid the background HIP thread
-module load rocm/5.3.0
+module load rocm
 # this causes a remap failure when using GPUs
 #module load craype-hugepages2M
-module use /gpfs/alpine/csc296/world-shared/crusher/modulefiles
+module use /lustre/orion/csc296/world-shared/crusher/modulefiles
 module rm upcxx
 module load upcxx
 export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
@@ -27,7 +26,7 @@ which upcxx
 
 module load cray-python
 
-export MHM2_CMAKE_EXTRAS="-DCMAKE_C_COMPILER=$(which cc) -DCMAKE_CXX_COMPILER=$(which CC) -DENABLE_CUDA=Off -DENABLE_HIP=On"
+export MHM2_CMAKE_EXTRAS="-DCMAKE_C_COMPILER=$(which cc) -DCMAKE_CXX_COMPILER=$(which CC) -DENABLE_CUDA=Off -DENABLE_HIP=On -DUPCXX_UTILS_IO_NO_THREAD=1"
 export MHM2_BUILD_THREADS=8
 
-# salloc/sbatch with: -A BIF115_crusher --ntasks-per-node=64 
+# salloc/sbatch with: -A BIF115_crusher  --gpus-per-node=8 --ntasks-per-gpu=7
