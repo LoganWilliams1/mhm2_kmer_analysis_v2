@@ -473,5 +473,7 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
                                     (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
                      });
   Timings::set_pending(fut_log);
+  Timings::wait_pending();
+  fut_log.wait();
   return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
 }

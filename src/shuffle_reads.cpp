@@ -358,6 +358,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   auto fut_progbar = progbar.set_done();
   read_target_store.flush_updates();
   read_target_store.clear();
+  Timings::wait_pending();
   fut_progbar.wait();
   barrier();
   auto tot_reads_found = reduce_one(read_to_target_map->size(), op_fast_add, 0).wait();

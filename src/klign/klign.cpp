@@ -753,8 +753,10 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
     }
   }
-  when_all(fetch_fut_chain, progbar.set_done()).wait();
+  fetch_fut_chain.wait();
   upcxx_utils::flush_outstanding_futures();
+  upcxx_utils::Timings::set_pending(progbar.set_done());
+  Timings::wait_pending();
   barrier();
   auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
   auto all_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
@@ -801,8 +803,9 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
     }
   }
   aligner.flush_remaining(read_group_id, timers);
+  Timings::set_pending(progbar.set_done());
+  Timings::wait_pending();
   barrier();
-  progbar.set_done().wait();
   read_records.clear();
   aligner.sort_alns();
   aligner.log_ctg_bytes_fetched();
