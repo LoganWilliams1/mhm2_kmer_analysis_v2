@@ -221,22 +221,25 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   if (rank_me() == 0) {
     file_size = upcxx_utils::get_file_size(ctgs_fname);
   }
+  file_size = upcxx::broadcast(file_size, 0).wait();
+  DBG("Got filesize=", file_size, "\n");
   ifstream ctgs_file(ctgs_fname);
   if (!ctgs_file.is_open()) DIE("Could not open ctgs file '", ctgs_fname, "': ", strerror(errno));
-  file_size = upcxx::broadcast(file_size, 0).wait();
 
   auto start_offset = get_file_offset_for_rank(ctgs_file, rank_me(), ctg_prefix, file_size);
   if (rank_me() > 0) {
     // notify previous rank of its stop offset
     rpc_ff(
         rank_me() - 1,
-        [](dist_object<promise<size_t>> &dist_stop_prom, size_t stop_offset) { dist_stop_prom->fulfill_result(stop_offset); },
+        [](dist_object<promise<size_t>> &dist_stop_prom, size_t stop_offset) { dist_stop_prom->fulfill_result(stop_offset); LOG("received stop_offset=", stop_offset, "\n"); },
         dist_stop_prom, start_offset);
+    LOG("Sent my start_offset to ", rank_me() - 1, " ", start_offset, "\n");
   }
   if (rank_me() == rank_n() - 1) {
     dist_stop_prom->fulfill_result(file_size);
   }
   auto stop_offset = dist_stop_prom->get_future().wait();
+  LOG("Got my stop_offset=", stop_offset, "\n");
 
   size_t tot_len = 0;
   ProgressBar progbar(stop_offset - start_offset, "Parsing contigs");
@@ -261,6 +264,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   }
   if (ctgs_file.tellg() < stop_offset)
     DIE("Did not read the entire contigs file from ", start_offset, " to ", stop_offset, " tellg=", ctgs_file.tellg());
+  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, "\n");
   auto &pr = Timings::get_promise_reduce();
   auto fut_tot_contigs = pr.reduce_one(contigs.size(), op_fast_add, 0);
   auto fut_tot_len = pr.reduce_one(tot_len, op_fast_add, 0);
