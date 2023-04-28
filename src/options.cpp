@@ -50,6 +50,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <string_view>
 #include <upcxx/upcxx.hpp>
 
