@@ -809,10 +809,11 @@ void FastqReader::close() {
     io_t.start();
     in->close();
     io_t.stop();
-    io_t.done_all_async();  // will print in Timings' order eventually
-    read_io_t.done_all_async();
-    FastqReader::overall_io_t += io_t.get_elapsed() + read_io_t.get_elapsed();
   }
+  io_t.done_all_async();  // will print in Timings' order eventually
+  read_io_t.done_all_async();
+  FastqReader::overall_io_t += io_t.get_elapsed() + read_io_t.get_elapsed();
+  
   in.reset();
 }
 
