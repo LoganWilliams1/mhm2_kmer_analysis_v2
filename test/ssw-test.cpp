@@ -256,7 +256,7 @@ TEST(MHMTest, AdeptSW) {
 
   double init_time = 0;
   adept_sw::GPUDriver gpu_driver(0, 1, (short)aln_scoring.match, (short)-aln_scoring.mismatch, (short)-aln_scoring.gap_opening,
-                                 (short)-aln_scoring.gap_extending, 300, init_time);
+                                 (short)-aln_scoring.gap_extending, 300, false, init_time);
   // std::cout << "Initialized gpu in " << time_to_initialize << "s and " << init_time << "s\n";
 #endif
 
