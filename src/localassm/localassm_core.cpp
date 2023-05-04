@@ -446,6 +446,7 @@ void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsT
                    SLOG_VERBOSE("Found ", perc_str(tot_num_read_maps_found, tot_num_reads), " reads that map to contigs\n");
                  });
 
+  Timings::wait_pending();
   all_done.wait();
   // implicit barrier on exit
 }

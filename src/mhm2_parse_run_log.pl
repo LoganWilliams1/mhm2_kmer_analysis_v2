@@ -176,7 +176,7 @@ while (<>) {
             $stats{'tmpMergedReads'} += $1;
         }
 
-        if (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/) {
+        if (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/ || / kcount found total of (\d+) unique kmers/) {
             $stats{"DistinctKmersWithFP"} = $1;
         }
         if (defined $stats{"DistinctKmersWithFP"} && /Purged (\d+) kmers \( /) {

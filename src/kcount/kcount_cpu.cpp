@@ -509,6 +509,7 @@ void HashTableInserter<MAX_K>::flush_inserts() {
   if (tot_num_dropped) SLOG_CPU_HT("  Number dropped ", perc_str(tot_num_dropped, tot_kmers), "\n");
   auto tot_num_overrides = reduce_one(state->kmers->get_num_singleton_overrides(), op_fast_add, 0).wait();
   if (tot_num_overrides) SLOG_CPU_HT("  Number singleton overrides ", perc_str(tot_num_overrides, tot_kmers), "\n");
+  SLOG_VERBOSE("CPU kcount found total of ", tot_num_kmers + tot_num_dropped, " unique kmers including singletons and dropped\n");
   if (100.0 * tot_num_dropped / tot_kmers > 0.1)
     SWARN("Lack of memory caused ", perc_str(tot_num_dropped, tot_kmers), " kmers to be dropped (singleton overrides ",
           perc_str(tot_num_overrides, tot_kmers), ")\n");
