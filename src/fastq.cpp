@@ -999,6 +999,7 @@ void FastqReader::reset() {
     first_file = true;
     DBG("reset on ", fname, " tellg=", in->tellg(), "\n");
   }
+  _first_pair = true;
   if (fqr2) fqr2->reset();
 }
 
