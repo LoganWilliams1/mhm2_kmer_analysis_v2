@@ -176,24 +176,40 @@ while (<>) {
             $stats{'tmpMergedReads'} += $1;
         }
 
-        if (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/ || / kcount found total of (\d+) unique kmers/) {
+        if (/kcount found total of (\d+) unique kmers including singletons/) { # kcount_gpu & kcount_cpu
             $stats{"DistinctKmersWithFP"} = $1;
         }
-        if (defined $stats{"DistinctKmersWithFP"} && /Purged (\d+) kmers \( /) {
-            $stats{'MinDepthKmers'} = $stats{"DistinctKmersWithFP"} - $1;
+        if (not defined $stats{"DistinctKmersWithFP"} && /Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/) { # legacy
+            $stats{"DistinctKmersWithFP"} = $1;
         }
-        if (/After purge of kmers < .*, there are (\d+) unique kmers/) {
-            if (defined $stats{"MinDepthKmers"}) {
-                $stats{"DistinctKmersWithFP"} = $stats{"MinDepthKmers"}; # the previous one
+
+        if (/Purged (\d+) kmers / || /purged (\d) singleton kmers/) { # kcount_cpu || kcount_gpu
+            $stats{'Purged'} = $1;
+        }
+        
+        if (/For (\d+) kmers, average kmer count /) { # kcount_cpu
+            $stats{"MinDepthKmers"} = $1;
+        }
+        if (not defined $stats{"MinDepthKmers"}) { # legacy
+            if (/After purge of kmers < .*, there are (\d+) unique kmers/) {
+                if (defined $stats{"MinDepthKmers"} && not defined $stats{"DistinctKmersWithFP"}) {
+                    $stats{"DistinctKmersWithFP"} = $stats{"MinDepthKmers"}; # the previous one
+                }
+                $stats{"MinDepthKmers"} = $1; # the last one
             }
-            $stats{"MinDepthKmers"} = $1; # the last one
+            if (not defined $stats{'MinDepthKmers'}) {
+                if (/ hash table final size is (\d+) entries and final load factor/) {
+                    $stats{'MinDepthKmers'} = $1;
+                }
+            }
         }
-        if (not defined $stats{'MinDepthKmers'}) {
-           if (/ hash table final size is (\d+) entries and final load factor/) {
-            $stats{'MinDepthKmers'} = $1;
-           }
+        if (defined $stats{"DistinctKmersWithFP"} && defined $stats{'Purged'} /) {
+            my $x = $stats{"DistinctKmersWithFP"} - $stats{'Purged'};
+            if (not defined $stats{'MinDepthKmers'}) {
+                $stats{'MinDepthKmers'} = $x;
+            }
         }
-        if (not defined $stats{'DistinctKmersWithFP'}) {
+        if (not defined $stats{'DistinctKmersWithFP'}) { # legacy
           if (/read kmers hash table: purged \d+ .* singleton kmers out of (\d+)/) {
             $stats{'DistinctKmersWithFP'} = $1;
           }
