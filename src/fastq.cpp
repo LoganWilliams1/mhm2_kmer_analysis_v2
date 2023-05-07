@@ -974,7 +974,7 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   num_bases += seq.length();
   num_reads++;
   DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
-  if (_is_paired && is_first_file()) num_pairs++;
+  if ((_is_paired && is_first_file() && !_is_interleaved) || (_is_interleaved && _first_pair) ) num_pairs++;
   _first_pair = !_first_pair;
   return bytes_read;
 }

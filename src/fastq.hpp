@@ -199,7 +199,7 @@ class FastqReader {
   uint64_t get_num_bases() const { return num_bases + (fqr2 ? fqr2->get_num_bases() : 0); }
   uint64_t get_num_reads() const { return num_reads + (fqr2 ? fqr2->get_num_reads() : 0); }
   uint64_t get_num_pairs() const { return num_pairs; }
-  bool is_first_file() const { return (_is_paired && !fqr2) || _is_interleaved || !_is_paired; }
+  bool is_first_file() const { return (_is_paired && fqr2) || _is_interleaved || !_is_paired; }
 
 }; // FastqReader
 
