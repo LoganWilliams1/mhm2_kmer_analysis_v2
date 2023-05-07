@@ -1005,6 +1005,7 @@ void FastqReader::reset() {
     num_reads = num_pairs = num_bases = 0;
     DBG("reset on ", fname, " tellg=", in->tellg(), "\n");
   }
+  _first_pair = true;
   if (fqr2) fqr2->reset();
 }
 
