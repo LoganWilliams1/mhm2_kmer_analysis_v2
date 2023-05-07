@@ -576,7 +576,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   LOG_MEM("After inserting into local hashtable");
   auto tot_num_purged = reduce_one(num_purged, op_fast_add, 0).wait();
   auto tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
-  SLOG_CPU_HT("Purged ", tot_num_purged, " kmers ( ", perc_str(tot_num_purged, tot_num_kmers), ")\n");
+  SLOG_CPU_HT("CPU Hashtable: purged ", perc_str(tot_num_purged, tot_num_kmers), " singleton kmers out of ", tot_num_kmers, "\n");
   auto final_load_factor = (double)reduce_one(local_kmers->load_factor(), op_fast_add, 0).wait() / rank_n();
   auto max_final_load_factor = (double)reduce_one(local_kmers->load_factor(), op_fast_max, 0).wait();
   auto all_kmers_inserted = reduce_all(num_inserted, op_fast_add).wait();

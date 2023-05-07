@@ -98,7 +98,7 @@ while (<>) {
         #fixme
         $stats{"Config"} = $1;
     }
-    if (/ kmer-lens = \s+\[(\d+.*?)\]/) {
+    if (/ kmer-lens = \s+\[(\d+.*?)\]/ || / kmer-lens = \s+(\d+.*)/) {
         $stats{"ContigKmers"} = $1;
         $stats{"ContigKmers"} =~ s/ *$//;
         $stats{"ContigKmers"} =~ s/[ ,]/-/g;
@@ -195,21 +195,15 @@ while (<>) {
         if (/merged (\d+) .* pairs/) {
             $stats{'tmpMergedReads'} += $1;
         }
-
-        if (/kcount found total of (\d+) unique kmers including singletons/) { # kcount_gpu & kcount_cpu
-            $stats{"DistinctKmersWithFP"} = $1;
+        if (/[pP]urged (\d+) .* singleton kmers out of (\d+)/) { # kcount_cpu & kcount gpu
+            $stats{'Purged'} = $1;
+            $stats{'DistinctKmersWithFP'} = $2;
+            $stats{'MinDepthKmers'} = $2 - $1;
         }
         if ((not defined $stats{"DistinctKmersWithFP"}) && (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/)) { # legacy
             $stats{"DistinctKmersWithFP"} = $1;
         }
 
-        if (/Purged (\d+) kmers / || /purged (\d) singleton kmers/) { # kcount_cpu || kcount_gpu
-            $stats{'Purged'} = $1;
-        }
-        
-        if (/For (\d+) kmers, average kmer count /) { # kcount_cpu
-            $stats{"MinDepthKmers"} = $1;
-        }
         if (not defined $stats{"MinDepthKmers"}) { # legacy
             if (/After purge of kmers < .*, there are (\d+) unique kmers/) {
                 if (defined $stats{"MinDepthKmers"} && (not defined $stats{"DistinctKmersWithFP"})) {
@@ -229,7 +223,7 @@ while (<>) {
             }
         }
         if (not defined $stats{'DistinctKmersWithFP'}) { # legacy
-          if (/read kmers hash table: purged \d+ .* singleton kmers out of (\d+)/) {
+          if (/: purged \d+ .* singleton kmers out of (\d+)/) {
             $stats{'DistinctKmersWithFP'} = $1;
           }
         }
