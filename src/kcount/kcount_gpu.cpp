@@ -256,11 +256,11 @@ void HashTableInserter<MAX_K>::flush_inserts() {
   auto fut_max_num_gpu_calls = pr.reduce_one(state->ht_gpu_driver.get_num_gpu_calls(), op_fast_max, 0);
   // a bunch of stats about the hash table on the GPU
   auto insert_stats = state->ht_gpu_driver.get_stats();
-  uint64_t fut_num_dropped_elems = pr.reduce_one((uint64_t)insert_stats.dropped, op_fast_add, 0);
-  uint64_t fut_num_attempted_inserts = pr.reduce_one((uint64_t)insert_stats.attempted, op_fast_add, 0);
-  uint64_t fut_num_inserts = pr.reduce_one((uint64_t)insert_stats.new_inserts, op_fast_add, 0);
+  auto fut_num_dropped_elems = pr.reduce_one((uint64_t)insert_stats.dropped, op_fast_add, 0);
+  auto fut_num_attempted_inserts = pr.reduce_one((uint64_t)insert_stats.attempted, op_fast_add, 0);
+  auto fut_num_inserts = pr.reduce_one((uint64_t)insert_stats.new_inserts, op_fast_add, 0);
   uint64_t capacity = state->ht_gpu_driver.get_capacity();
-  uint64_t fut_all_capacity = pr.reduce_one(capacity, op_fast_add, 0);
+  auto fut_all_capacity = pr.reduce_one(capacity, op_fast_add, 0);
 
   upcxx::future<> fut_report =
       when_all(fut_avg_num_gpu_calls, fut_max_num_gpu_calls, fut_num_dropped_elems, fut_num_attempted_inserts, fut_num_inserts,
