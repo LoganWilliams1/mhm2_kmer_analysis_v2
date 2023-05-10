@@ -262,7 +262,7 @@ void HashTableInserter<MAX_K>::flush_inserts() {
   uint64_t capacity = state->ht_gpu_driver.get_capacity();
   uint64_t fut_all_capacity = pr.reduce_one(capacity, op_fast_add, 0);
 
-  upcxx::future<> fut_report1 =
+  upcxx::future<> fut_report =
       when_all(fut_avg_num_gpu_calls, fut_max_num_gpu_calls, fut_num_dropped_elems, fut_num_attempted_inserts, fut_num_inserts,
                fut_all_capacity)
           .then([=](auto avg_num_gpu_calls, auto max_num_gpu_calls, auto num_dropped_elems, auto num_attempted_inserts,
