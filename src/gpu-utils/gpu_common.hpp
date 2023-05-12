@@ -107,11 +107,11 @@ template<typename T>
 inline __device__ T warpReduceSum(T val, int n) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
 #ifdef HIP_GPU
-  for (T offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
 #endif
 #ifdef CUDA_GPU
   unsigned mask = __ballot_sync(0xffffffff, threadid < n);
-  for (T offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down_sync(mask, val, offset);
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down_sync(mask, val, offset);
 #endif
   return val;
 };
