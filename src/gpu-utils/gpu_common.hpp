@@ -104,7 +104,7 @@ class GPUTimer {
 };
 
 template<typename T>
-inline __device__ int warpReduceSum(T val, int n) {
+inline __device__ T warpReduceSum(T val, int n) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
 #ifdef HIP_GPU
   for (T offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
@@ -117,8 +117,8 @@ inline __device__ int warpReduceSum(T val, int n) {
 };
 
 template<typename T>
-inline __device__ int blockReduceSum(T val, int n) {
-  static __shared__ int shared[32];  // Shared mem for 32 partial sums
+inline __device__ T blockReduceSum(T val, int n) {
+  static __shared__ T shared[32];  // Shared mem for 32 partial sums
   int lane_id = threadIdx.x % warpSize;
   int warp_id = threadIdx.x / warpSize;
 
