@@ -48,6 +48,8 @@
 #include <unordered_set>
 
 #include <algorithm>
+#include <forward_list>
+#include <iterator>
 #include <iostream>
 #include <thread>
 #include <upcxx/upcxx.hpp>
@@ -186,7 +188,7 @@ struct RgetRequest {
 
 template <int MAX_K>
 class KmerCtgDHT {
-  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, vector<CtgLoc>>;
+  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, forward_list<CtgLoc>>;
   using kmer_map_t = dist_object<local_kmer_map_t>;
   kmer_map_t kmer_map;
   vector<global_ptr<char>> global_ctg_seqs;
@@ -217,7 +219,7 @@ class KmerCtgDHT {
         it = kmer_map->insert({kmer_and_ctg_loc.kmer, {ctg_loc}}).first;
       } else {
         if (allow_multi_kmers) {
-          it->second.push_back(ctg_loc);
+          it->second.push_front(ctg_loc);
         } else {
           // there are conflicts so don't allow any kmer mappings. This improves the assembly when scaffolding k is smaller than
           // the final contigging k, e.g. sk=33
@@ -270,17 +272,16 @@ class KmerCtgDHT {
   }
 
   void flush_add_kmers() {
-    size_t max_ctgs = 0;
-    // determine max number of ctgs mapped to by a single kmer
-    for (auto &elem : *kmer_map) {
-      max_ctgs = ::max(max_ctgs, elem.second.size());
-    }
-    barrier();
-    auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
-    if (all_max_ctgs > 1) SLOG_VERBOSE("Max contigs mapped by a single kmer: ", all_max_ctgs, "\n");
     BarrierTimer timer(__FILEFUNC__, false);  // barrier on exit, not entrance
     kmer_store.flush_updates();
     kmer_store.clear();
+    size_t max_ctgs = 0;
+    // determine max number of ctgs mapped to by a single kmer
+    for (auto &elem : *kmer_map) {
+      max_ctgs = ::max(max_ctgs, (size_t)distance(elem.second.begin(), elem.second.end())); // .size());
+    }
+    auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
+    if (all_max_ctgs > 1) SLOG_VERBOSE("Max contigs mapped by a single kmer: ", all_max_ctgs, "\n");
   }
 
   future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
