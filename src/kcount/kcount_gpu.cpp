@@ -249,48 +249,71 @@ void HashTableInserter<MAX_K>::insert_supermer(const std::string &supermer_seq, 
 template <int MAX_K>
 void HashTableInserter<MAX_K>::flush_inserts() {
   state->ht_gpu_driver.flush_inserts();
-  auto avg_num_gpu_calls = reduce_one(state->ht_gpu_driver.get_num_gpu_calls(), op_fast_add, 0).wait() / rank_n();
-  auto max_num_gpu_calls = reduce_one(state->ht_gpu_driver.get_num_gpu_calls(), op_fast_max, 0).wait();
-  if (state->ht_gpu_driver.pass_type == kcount_gpu::READ_KMERS_PASS)
-    SLOG_GPU("GPU hash table stats for read kmers pass:\n");
-  else
-    SLOG_GPU("GPU hash table stats for ctg kmers pass:\n");
-  SLOG_GPU("  number of calls to hash table GPU driver: ", avg_num_gpu_calls, " avg, ", max_num_gpu_calls, " max\n");
+  auto &pr = upcxx_utils::Timings::get_promise_reduce();
+  auto fut_avg_num_gpu_calls = pr.reduce_one(state->ht_gpu_driver.get_num_gpu_calls(), op_fast_add, 0).then([](auto sum_num_calls) {
+    return sum_num_calls / rank_n();
+  });
+  auto fut_max_num_gpu_calls = pr.reduce_one(state->ht_gpu_driver.get_num_gpu_calls(), op_fast_max, 0);
   // a bunch of stats about the hash table on the GPU
   auto insert_stats = state->ht_gpu_driver.get_stats();
-  uint64_t num_dropped_elems = reduce_one((uint64_t)insert_stats.dropped, op_fast_add, 0).wait();
-  uint64_t num_attempted_inserts = reduce_one((uint64_t)insert_stats.attempted, op_fast_add, 0).wait();
-  uint64_t num_inserts = reduce_one((uint64_t)insert_stats.new_inserts, op_fast_add, 0).wait();
+  auto fut_num_dropped_elems = pr.reduce_one((uint64_t)insert_stats.dropped, op_fast_add, 0);
+  auto fut_num_attempted_inserts = pr.reduce_one((uint64_t)insert_stats.attempted, op_fast_add, 0);
+  auto fut_num_inserts = pr.reduce_one((uint64_t)insert_stats.new_inserts, op_fast_add, 0);
   uint64_t capacity = state->ht_gpu_driver.get_capacity();
-  uint64_t all_capacity = reduce_one(capacity, op_fast_add, 0).wait();
-  if (num_dropped_elems) {
-    if (num_dropped_elems > num_attempted_inserts / 10000)
-      SWARN("GPU hash table: failed to insert ", perc_str(num_dropped_elems, num_attempted_inserts), " elements; capacity ",
-            all_capacity);
-    else
-      SLOG_GPU("  failed to insert ", perc_str(num_dropped_elems, num_attempted_inserts), " elements; capacity ", all_capacity,
-               "\n");
-  }
+  auto fut_all_capacity = pr.reduce_one(capacity, op_fast_add, 0);
+
+  upcxx::future<> fut_report =
+      when_all(fut_avg_num_gpu_calls, fut_max_num_gpu_calls, fut_num_dropped_elems, fut_num_attempted_inserts, fut_num_inserts,
+               fut_all_capacity)
+          .then([=](auto avg_num_gpu_calls, auto max_num_gpu_calls, auto num_dropped_elems, auto num_attempted_inserts,
+                    auto num_inserts, auto all_capacity) {
+            if (state->ht_gpu_driver.pass_type == kcount_gpu::READ_KMERS_PASS)
+              SLOG_GPU("GPU hash table stats for read kmers pass:\n");
+            else
+              SLOG_GPU("GPU hash table stats for ctg kmers pass:\n");
+            SLOG_GPU("  number of calls to hash table GPU driver: ", avg_num_gpu_calls, " avg, ", max_num_gpu_calls, " max\n");
+            if (num_dropped_elems) {
+              if (num_dropped_elems > num_attempted_inserts / 10000)
+                SWARN("GPU hash table: failed to insert ", perc_str(num_dropped_elems, num_attempted_inserts),
+                      " elements; capacity ", all_capacity);
+              else
+                SLOG_GPU("  failed to insert ", perc_str(num_dropped_elems, num_attempted_inserts), " elements; capacity ",
+                         all_capacity, "\n");
+            }
+          });
+
   if (use_qf && state->ht_gpu_driver.pass_type == kcount_gpu::READ_KMERS_PASS) {
-    uint64_t num_unique_qf = reduce_all((uint64_t)insert_stats.num_unique_qf, op_fast_add).wait();
-    if (num_unique_qf) {
-      // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
-      SLOG_GPU("  QF filtered out ", perc_str(num_unique_qf - num_inserts, num_unique_qf), " singletons\n");
-      auto qf_max_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_max, 0).wait();
-      auto qf_tot_load = reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_add, 0).wait();
-      double qf_avg_load = (double)qf_tot_load / rank_n();
-      SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ", qf_avg_load / qf_max_load,
-               " balance\n");
-      uint64_t num_dropped_qf_elems = reduce_one((uint64_t)insert_stats.dropped_qf, op_fast_add, 0).wait();
-      if (num_dropped_qf_elems)
-        SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf_elems, num_attempted_inserts), " elements");
-    }
+    auto fut_num_unique_qf = pr.reduce_all((uint64_t)insert_stats.num_unique_qf, op_fast_add);
+    auto fut_num_dropped_qf = pr.reduce_all((uint64_t)insert_stats.dropped_qf, op_fast_add);
+    auto fut_qf_max_load = pr.reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_max, 0);
+    auto fut_qf_tot_load = pr.reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_add, 0);
+    fut_report = when_all(fut_report, fut_num_unique_qf, fut_num_dropped_qf, fut_qf_max_load, fut_qf_tot_load,
+                          fut_num_inserts, fut_num_attempted_inserts)
+                     .then([=](auto num_unique_qf, auto num_dropped_qf, auto qf_max_load, auto qf_tot_load,
+                               auto num_inserts, auto num_attempted_inserts) {
+                       if (num_unique_qf) {
+                         // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
+                         SLOG_GPU("  QF filtered out ", perc_str(num_unique_qf - num_inserts, num_unique_qf), " singletons\n");
+                         double qf_avg_load = (double)qf_tot_load / rank_n();
+                         SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ",
+                                  qf_avg_load / qf_max_load, " balance\n");
+                         SLOG_VERBOSE("QF kcount found total of ", num_unique_qf + num_dropped_qf, " unique kmers including singletons and dropped\n");
+
+                         if (num_dropped_qf)
+                           SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf, num_attempted_inserts), " elements");
+                       }
+                     });
   }
   double load = (double)(insert_stats.new_inserts) / capacity;
-  double avg_load_factor = reduce_one(load, op_fast_add, 0).wait() / rank_n();
-  double max_load_factor = reduce_one(load, op_fast_max, 0).wait();
-  SLOG_GPU("  load factor ", fixed, setprecision(2), avg_load_factor, " avg, ", max_load_factor, " max\n");
-  SLOG_GPU("  final size per rank is ", insert_stats.new_inserts, " entries\n");
+  auto fut_avg_load_factor =
+      pr.reduce_one(load, op_fast_add, 0).then([](auto sum_load_factor) { return sum_load_factor / rank_n(); });
+  auto fut_max_load_factor = pr.reduce_one(load, op_fast_max, 0);
+  fut_report = when_all(fut_report, fut_avg_load_factor, fut_max_load_factor).then([=](auto avg_load_factor, auto max_load_factor) {
+    SLOG_GPU("  load factor ", fixed, setprecision(2), avg_load_factor, " avg, ", max_load_factor, " max\n");
+    SLOG_GPU("  final size per rank is ", insert_stats.new_inserts, " entries\n");
+  });
+  upcxx_utils::Timings::set_pending(fut_report);
+  upcxx_utils::Timings::wait_pending();
 }
 
 template <int MAX_K>
@@ -305,7 +328,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   insert_timer.start();
   if (state->ht_gpu_driver.pass_type == CTG_KMERS_PASS) {
     LOG_MEM("Before done_ctg_kmer_inserts");
-    int attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0;
+    uint64_t attempted_inserts = 0, dropped_inserts = 0, new_inserts = 0;
     state->ht_gpu_driver.done_ctg_kmer_inserts(attempted_inserts, dropped_inserts, new_inserts);
     barrier();
     LOG_MEM("After done_ctg_kmer_inserts");
@@ -326,7 +349,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   barrier();
   LOG_MEM("before done_all_inserts");
   Timings::wait_pending();
-  int num_dropped = 0, num_entries = 0, num_purged = 0;
+  uint64_t num_dropped = 0, num_entries = 0, num_purged = 0;
   state->ht_gpu_driver.done_all_inserts(num_dropped, num_entries, num_purged);
   barrier();
   LOG_MEM("after done_all_inserts");

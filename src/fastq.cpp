@@ -377,6 +377,10 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     , in(nullptr)
     , max_read_len(0)
     , read_count(0)
+    , avg_bytes_per_read(0)
+    , num_reads(0)
+    , num_pairs(0)
+    , num_bases(0)
     , fqr2(nullptr)
     , first_file(true)
     , _is_paired(true)
@@ -805,6 +809,19 @@ void FastqReader::close() {
     open_fut.wait();
   }
 
+  if (is_first_file()) {
+    auto &pr = upcxx_utils::Timings::get_promise_reduce();
+    auto fut_num_reads = pr.reduce_one(get_num_reads(), op_fast_add);
+    auto fut_num_pairs = pr.reduce_one(get_num_pairs(), op_fast_add);
+    auto fut_num_bases = pr.reduce_one(get_num_bases(), op_fast_add);
+    auto fut_report = when_all(fut_num_reads, fut_num_pairs, fut_num_bases)
+                          .then([fname = this->fname](auto tot_num_reads, auto tot_num_pairs, auto tot_num_bases) {
+                            SLOG_VERBOSE("Finished reading ", get_basename(fname), " tot_num_reads=", tot_num_reads,
+                                         " tot_num_pairs=", tot_num_pairs, " tot_num_bases=", tot_num_bases, "\n");
+                          });
+    upcxx_utils::Timings::set_pending(fut_report);
+  }
+
   if (in) {
     io_t.start();
     in->close();
@@ -968,7 +985,10 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
     DIE("Invalid FASTQ in ", fname, ": sequence length ", seq.length(), " != ", quals.length(), " quals length\n", "id:   ", id,
         "\nseq:  ", seq, "\nquals: ", quals);
   set_max_read_len(seq.length());
+  num_bases += seq.length();
+  num_reads++;
   DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
+  if ((_is_paired && is_first_file() && !_is_interleaved) || (_is_interleaved && _first_pair) ) num_pairs++;
   _first_pair = !_first_pair;
   return bytes_read;
 }
@@ -997,6 +1017,7 @@ void FastqReader::reset() {
     if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
     read_count = 0;
     first_file = true;
+    num_reads = num_pairs = num_bases = 0;
     DBG("reset on ", fname, " tellg=", in->tellg(), "\n");
   }
   _first_pair = true;
