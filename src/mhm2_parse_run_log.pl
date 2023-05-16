@@ -28,8 +28,11 @@ $module_map{'ParCC'} = 'NA2';
 $module_map{'GapClosing'} = 'NA3';
 $module_map{'ContigEndAnalyzer'} = 'NA4';
 
-our @metrics = qw {Date Operator DataSetName GBofFASTQ NumReads MinDepth ContigKmers DistinctKmersWithFP MinDepthKmers Assembled>5kbp Version HipmerWorkflow Nodes Threads CoresPerNode NumRestarts ManualRestarts TotalTime NodeHours CalculatedTotalTime NumStages StageTime };
-our @fields = (@metrics, @modules, "RunDir", "RunOptions");
+our @metrics = qw {Date Operator DataSetName GBofFASTQ NumReads MinDepth ContigKmers DistinctKmersWithFP 
+                   MinDepthKmers Assembled>5kbp Version HipmerWorkflow Nodes Threads CoresPerNode NumRestarts 
+                   ManualRestarts TotalTime NodeHours CalculatedTotalTime NumStages StageTime };
+our @fields = (@metrics, @modules, "RunDir", "RunOptions", "NumRawReads", "RawGbp", "NumMergedReads", 
+                "NumRawPairs", "MergedGbp", "TotalAssembled");
 foreach my $module (@modules) {
     $stats{$module} = 0;
 }
@@ -54,6 +57,11 @@ $stats{"Operator"} = $ENV{"USER"};
 my ($diploid, $zygo, $cgraph, $meta);
 $stats{"NumRestarts"} = 0;
 $stats{"ManualRestarts"} = 0;
+$stats{"NumRawReads"} = 0;
+$stats{"NumRawPairs"} = 0;
+$stats{"RawGbp"} = 0;
+$stats{'MergedGbp'} = 0;
+$stats{'NumMergedReads'} = 0;
 
 our %h_units = ( 'B' => 1./1024./1024./1024., 'K' => 1./1024./1024., 'M' => 1./1024., 'G' => 1., 'T' => 1024.);
 my $stage_pat = '\w+\.[hc]pp';
@@ -90,10 +98,10 @@ while (<>) {
         #fixme
         $stats{"Config"} = $1;
     }
-    if (/ kmer-lens = \s+(\d+.*)/) {
+    if (/ kmer-lens = \s+\[(\d+.*?)\]/ || / kmer-lens = \s+(\d+.*)/) {
         $stats{"ContigKmers"} = $1;
         $stats{"ContigKmers"} =~ s/ *$//;
-        $stats{"ContigKmers"} =~ s/ /-/g;
+        $stats{"ContigKmers"} =~ s/[ ,]/-/g;
     }
     if (/output = \s+(\S+)/) {
         $stats{"RunDir"} = $1;
@@ -146,6 +154,9 @@ while (<>) {
     if (/ > 5kbp: \s+(\d+) /) {
         $stats{'Assembled>5kbp'} = $1;
     }
+    if (/Total assembled length:\s+(\d+)/) {
+        $stats{'TotalAssembled'} = $1;
+    }
 
     if (/Finished in ([\d\.]+) s at (\d+)\/(\d+)\/(\d+) /) {
         $stats{"Date"} = "20" . $4 . "-" . $2 . "-" . $3;
@@ -163,6 +174,15 @@ while (<>) {
         $stats{"PostAlignment"} = $1;
     }
 
+    if (/Loaded .*: reads=(\d+) tot_bases=(\d+) names=/) {
+        $stats{'NumMergedReads'} += $1;
+        $stats{'MergedGbp'} += $2 / 1000000000;
+    }
+    if (/Finished reading .* tot_num_reads=(\d+) tot_num_pairs=(\d+) tot_num_bases=(\d+)/) {
+        $stats{"NumRawReads"} += $1;
+        $stats{"NumRawPairs"} += $2;
+        $stats{"RawGbp"} += $3 / 1000000000;
+    }
 
     if ($firstUFX) {
         if (/Processed a total of (\d+) reads/) {
@@ -175,26 +195,35 @@ while (<>) {
         if (/merged (\d+) .* pairs/) {
             $stats{'tmpMergedReads'} += $1;
         }
-
-        if (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/) {
+        if (/[pP]urged (\d+) .* singleton kmers out of (\d+)/) { # kcount_cpu & kcount gpu
+            $stats{'Purged'} = $1;
+            $stats{'DistinctKmersWithFP'} = $2;
+            $stats{'MinDepthKmers'} = $2 - $1;
+        }
+        if ((not defined $stats{"DistinctKmersWithFP"}) && (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/)) { # legacy
             $stats{"DistinctKmersWithFP"} = $1;
         }
-        if (defined $stats{"DistinctKmersWithFP"} && /Purged (\d+) kmers \( /) {
-            $stats{'MinDepthKmers'} = $stats{"DistinctKmersWithFP"} - $1;
-        }
-        if (/After purge of kmers < .*, there are (\d+) unique kmers/) {
-            if (defined $stats{"MinDepthKmers"}) {
-                $stats{"DistinctKmersWithFP"} = $stats{"MinDepthKmers"}; # the previous one
+
+        if (not defined $stats{"MinDepthKmers"}) { # legacy
+            if (/After purge of kmers < .*, there are (\d+) unique kmers/) {
+                if (defined $stats{"MinDepthKmers"} && (not defined $stats{"DistinctKmersWithFP"})) {
+                    $stats{"DistinctKmersWithFP"} = $stats{"MinDepthKmers"}; # the previous one
+                }
+                $stats{"MinDepthKmers"} = $1; # the last one
             }
-            $stats{"MinDepthKmers"} = $1; # the last one
+            if (not defined $stats{'MinDepthKmers'}) {
+                if (/ hash table final size is (\d+) entries and final load factor/) {
+                    $stats{'MinDepthKmers'} = $1;
+                }
+            }
         }
-        if (not defined $stats{'MinDepthKmers'}) {
-           if (/ hash table final size is (\d+) entries and final load factor/) {
-            $stats{'MinDepthKmers'} = $1;
-           }
+        if (defined $stats{"DistinctKmersWithFP"} && defined $stats{'Purged'}) {
+            if (not defined $stats{'MinDepthKmers'}) {
+                $stats{'MinDepthKmers'} = $stats{"DistinctKmersWithFP"} - $stats{'Purged'};
+            }
         }
-        if (not defined $stats{'DistinctKmersWithFP'}) {
-          if (/read kmers hash table: purged \d+ .* singleton kmers out of (\d+)/) {
+        if (not defined $stats{'DistinctKmersWithFP'}) { # legacy
+          if (/: purged \d+ .* singleton kmers out of (\d+)/) {
             $stats{'DistinctKmersWithFP'} = $1;
           }
         }
@@ -202,7 +231,9 @@ while (<>) {
             $firstUFX = 0;
         }
     }
-
+    if ((not defined $stats{'MinDepthKmers'}) && (defined $stats{'DistinctKmersWithFP'} && defined $stats{'Purged'})) {
+        $stats{'MinDepthKmers'} = $stats{'DistinctKmersWithFP'} - $stats{'Purged'};
+    }
 }
 $stats{"CoresPerNode"} = $stats{"Threads"} / $stats{"Nodes"};
 
@@ -230,7 +261,7 @@ foreach my $module (@modules) {
 
 $stats{"GBofFASTQ"} =~ s/(\.\d)\d*/$1/;
 if (not defined $stats{'NumReads'}) {
-  if (not defined $stats{'tmpLoadedReads'} or not defined $stats{'tmpMergedReads'} or $stats{'tmpLoadedReads'} < $stats{'tmpMergedReads'}) { print STDERR "Wrong number of loaded vs merged reads  $stats{'tmpLoadedReads'} vs  $stats{'tmpMergedReads'}\n"; }
+  if ((not defined $stats{'tmpLoadedReads'}) or (not defined $stats{'tmpMergedReads'}) or $stats{'tmpLoadedReads'} < $stats{'tmpMergedReads'}) { print STDERR "Wrong number of loaded vs merged reads  $stats{'tmpLoadedReads'} vs  $stats{'tmpMergedReads'}\n"; }
   $stats{'NumReads'} = $stats{'tmpMergedReads'} + $stats{'tmpLoadedReads'} - $stats{'tmpMergedReads'}
 }
 

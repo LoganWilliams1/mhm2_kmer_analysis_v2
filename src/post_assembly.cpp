@@ -76,6 +76,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
       fut_chain = when_all(fut_chain, fut);
       progress();
     }
+    Timings::wait_pending();
     fut_chain.wait();
   }
   LOG_MEM("Read Post Assembly Reads");

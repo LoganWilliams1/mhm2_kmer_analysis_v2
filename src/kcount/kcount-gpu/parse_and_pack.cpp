@@ -144,11 +144,11 @@ __global__ void parse_and_pack(char *seqs, int minimizer_len, int kmer_len, int 
 
 inline __device__ bool is_valid_base(char base) { return (base != '_' && base != 'N'); }
 
-__global__ void build_supermers(char *seqs, int *kmer_targets, int num_kmers, int kmer_len, int seqs_len,
+__global__ void build_supermers(char *seqs, int *kmer_targets, unsigned int num_kmers, int kmer_len, int seqs_len,
                                 kcount_gpu::SupermerInfo *supermers, unsigned int *num_supermers, unsigned int *num_valid_kmers,
                                 int rank_me) {
   // builds a single supermer starting at a given kmer, but only if the kmer is a valid start to a supermer
-  int my_valid_kmers = 0;
+  unsigned int my_valid_kmers = 0;
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   if (threadid == 0 && kmer_targets[threadid] != -1) my_valid_kmers++;
   if (threadid > 0 && threadid < num_kmers) {

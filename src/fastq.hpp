@@ -78,6 +78,7 @@ class FastqReader {
   int64_t end_read;                          // may be bgzf_virtual_file_pointer int
   unsigned max_read_len;
   unsigned avg_bytes_per_read;
+  uint64_t num_reads, num_pairs, num_bases;
   int subsample_pct = 100;
   string buf;
   int qual_offset;
@@ -195,8 +196,12 @@ class FastqReader {
   FastqReader &get_fqr2();
   void set_avg_bytes_per_read(unsigned bytes);
   unsigned get_avg_bytes_per_read() const;
+  uint64_t get_num_bases() const { return num_bases + (fqr2 ? fqr2->get_num_bases() : 0); }
+  uint64_t get_num_reads() const { return num_reads + (fqr2 ? fqr2->get_num_reads() : 0); }
+  uint64_t get_num_pairs() const { return num_pairs; }
+  bool is_first_file() const { return (_is_paired && fqr2) || _is_interleaved || !_is_paired; }
 
-};
+}; // FastqReader
 
 class FastqReaders {
   // singleton class to hold as set of fastq readers open and re-usable
@@ -432,4 +437,4 @@ class FastqReaders {
   static void close(const string fname);
 
   static void close_all();
-};
+}; // FastqReaders
