@@ -817,11 +817,11 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   auto all_num_dups = reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0).wait();
   auto all_num_bad = reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0).wait();
   auto all_num_good = reduce_one(alns_for_sample.size(), op_fast_add, 0).wait();
-  SLOG("Found ", all_num_alns, " alignments:\n");
-  SLOG("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
-  SLOG("  good ", perc_str(all_num_good, all_num_alns), "\n");
-  SLOG("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
-  SLOG("  duplicates ", perc_str(all_num_dups, all_num_alns), "\n");
+  SLOG_VERBOSE("Found ", all_num_alns, " alignments:\n");
+  SLOG_VERBOSE("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
+  SLOG_VERBOSE("  good ", perc_str(all_num_good, all_num_alns), "\n");
+  SLOG_VERBOSE("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
+  SLOG_VERBOSE("  duplicates ", perc_str(all_num_dups, all_num_alns), "\n");
   SLOG_VERBOSE("Mapped ", perc_str(all_num_reads_aligned, all_num_reads), " reads to contigs, average mappings per read ",
                (double)all_num_alns / all_num_reads_aligned, "\n");
   alns.append(alns_for_sample);
