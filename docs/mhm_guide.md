@@ -311,6 +311,9 @@ Write merged FASTQ input files to the output directory. The file will be named `
 
 Write *k*-mers to files in the output directory. The *k*-mers are written in each contigging stage immediately after *k*-mer counting. The files will be written on a per process basis into the `per_rank` subdirectory, named `kmers-<k>.txt.gz`, where `k` is the value for the contigging round. The default is false.
 
+**`--subsample-pct INT`**
+
+Percentage of input read files to use in the assembly. The value is from 0 to 100. This option enables to user to test a dataset with a smaller part of it, e.g. 10%. All of the input files will be reduced to the percentage specified.
 
 **`--procs INT`**
 

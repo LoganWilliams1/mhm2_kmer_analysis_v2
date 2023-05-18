@@ -402,8 +402,6 @@ bool Options::load(int argc, char **argv) {
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
       ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
   // performance trade-offs
-  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (can be set to all).")
-      ->check(CLI::Range(1, 100));
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
       ->check(CLI::Range(0, 5000));
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
@@ -417,13 +415,14 @@ bool Options::load(int argc, char **argv) {
                  "or NUMA domains (cpu, core, numa, none).")
       ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}));
   app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
-  // debugging assistance
+  // miscellaneous
   add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
   add_flag_def(app, "--use-qf", use_qf,
                "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
   add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
       ->multi_option_policy();
   add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")->check(CLI::Range(1, 100));
 
   try {
     app.parse(argc, argv);

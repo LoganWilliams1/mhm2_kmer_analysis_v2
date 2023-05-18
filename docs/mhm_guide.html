@@ -155,6 +155,7 @@
     .display.math{display: block; text-align: center; margin: 0.5rem auto;}
   </style>
   <center><h1>MHM User Guide</h1><h3>Version 2.1.0.2 (01/31/2023)</h3></center>
+  <center><h1>MHM User Guide</h1><h3>Version 2.1.0.2 (01/31/2023)</h3></center>
 </head>
 <body>
 <style type="text/css">
@@ -1013,6 +1014,11 @@ is false.</p>
 basis into the <code>per_rank</code> subdirectory, named
 <code>kmers-&lt;k&gt;.txt.gz</code>, where <code>k</code> is the value
 for the contigging round. The default is false.</p>
+<p><strong><code>--subsample-pct INT</code></strong></p>
+<p>Percentage of input read files to use in the assembly. The value is
+from 0 to 100. This option enables to user to test a dataset with a
+smaller part of it, e.g. 10%. All of the input files will be reduced to
+the percentage specified.</p>
 <p><strong><code>--procs INT</code></strong></p>
 <p>Set the number of processes used when running MHM2. By default, MHM2
 automatically detects the number of available cores and runs with one
