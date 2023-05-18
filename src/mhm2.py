@@ -68,6 +68,7 @@ _output_dir = ''
 _err_thread = None
 _stop_thread = False
 _start_time = None
+_show_help = False
 
 def print_red(*args):
     print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
@@ -419,7 +420,10 @@ def main():
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    argparser = argparse.ArgumentParser(add_help=False)
+    argparser = argparse.ArgumentParser(add_help=False,
+                                        description="mhm2.py is a wrapper script that launches the mhm2 binary. " +\
+                                            "There are several optional parameters to mhm2.py:",
+                                        epilog="The mhm2 binary will now be executed and will output its own help message:")
     argparser.add_argument("--auto-resume", action="store_true", help="Automatically resume after a failure")
     argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
@@ -431,6 +435,11 @@ def main():
     argparser.add_argument("--binary", default="mhm2", help="File name for UPC++ binary (default mhm2)")
 
     options, unknown_options = argparser.parse_known_args()
+
+    if '-h' in unknown_options or '--help' in unknown_options:
+        _show_help = True
+        argparser.print_help()
+        print()
 
     if options.auto_resume:
         print("--auto-resume is enabled: will try to restart if run fails")
@@ -498,7 +507,7 @@ def main():
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
         os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
         print("This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
-        
+
     if 'UPCXX_SHARED_HEAP_SIZE' in os.environ and 'GASNET_MAX_SEGSIZE' not in os.environ:
         print("Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ", os.environ['UPCXX_SHARED_HEAP_SIZE'], " to avoid gasnet memory probe")
         os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']
@@ -534,7 +543,10 @@ def main():
         runtime_vars += runtime_output_vars
 
     if options.gasnet_trace:
-        runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_TRACEMASK="U", GASNET_STATSMASK="", '
+        runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_STATSMASK=""'
+        if not "GASNET_TRACEMASK" in os.environ:
+            runtime_vars += ', GASNET_TRACEMASK="GPWBNIH"'
+        runtime_vars += ', '
         print("Ignoring SIGUSR2 as gasnet traces will be generated when that is sent")
         signal.signal(signal.SIGUSR2, log_signal)
 
@@ -686,7 +698,6 @@ def main():
                     traceback.print_tb(sys.exc_info()[2], limit=100)
                     raise
             raise
-
     return 0
 
 if __name__ == "__main__":
