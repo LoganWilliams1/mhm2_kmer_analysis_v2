@@ -423,7 +423,7 @@ def main():
     argparser = argparse.ArgumentParser(add_help=False,
                                         description="mhm2.py is a wrapper script that launches the mhm2 binary. " +\
                                             "There are several optional parameters to mhm2.py:",
-                                        epilog="The mhm2 binary will now be executed and will output its own help message:")
+                                        epilog="The options for the mhm2 binary are listed below.")
     argparser.add_argument("--auto-resume", action="store_true", help="Automatically resume after a failure")
     argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
