@@ -1,5 +1,5 @@
 title="MHM User Guide"
-revision="Version 2.0 (09/30/2020)"
+revision="Version 2.1.0.2 (01/31/2023)"
 
 TARGET = mhm_guide
 INPUT = copy-ack-legal.md mhm_guide.md
