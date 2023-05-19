@@ -62,8 +62,9 @@ using namespace upcxx;
 
 #include "fastq.hpp"
 #include "packed_reads.hpp"
-#include "upcxx_utils.hpp"
 #include "upcxx_utils/ofstream.hpp"
+#include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/progress_bar.hpp"
 #include "utils.hpp"
 #include "zstr.hpp"
 #include "kmer.hpp"

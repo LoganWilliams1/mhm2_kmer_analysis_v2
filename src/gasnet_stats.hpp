@@ -42,8 +42,6 @@
  form.
 */
 
-#include "upcxx_utils.hpp"
-
 #if defined(ENABLE_GASNET_STATS)
 
 // We may be compiling with debug-mode GASNet with optimization.

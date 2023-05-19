@@ -40,7 +40,7 @@
  form.
 */
 
-#include "upcxx_utils.hpp"
+#include "upcxx_utils/log.hpp"
 
 #if defined(ENABLE_GASNET_STATS)
 
@@ -60,7 +60,7 @@
 
 #include "gasnet_stats.hpp"
 
-#include "upcxx_utils.hpp"
+#include "upcxx_utils/log.hpp"
 
 using namespace std;
 using namespace upcxx;

@@ -49,7 +49,8 @@
 #include "klign.hpp"
 #include "packed_reads.hpp"
 #include "stage_timers.hpp"
-#include "upcxx_utils.hpp"
+#include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 
 using namespace upcxx_utils;
 

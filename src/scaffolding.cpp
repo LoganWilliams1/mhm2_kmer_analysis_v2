@@ -47,6 +47,8 @@
 #include "histogrammer.hpp"
 #include "klign.hpp"
 #include "stage_timers.hpp"
+#include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 
 using namespace upcxx;
 using namespace upcxx_utils;
