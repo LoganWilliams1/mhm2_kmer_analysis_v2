@@ -87,7 +87,9 @@ add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 # number of rget requests buffered together for a target rank
 add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
 # how many kmers are buffered before doing a kmer-ctg-map fetch
-add_definitions(-DKLIGN_KMERS_BUF_SIZE=1000000)
+add_definitions(-DKLIGN_KMERS_BUF_SIZE=256000)
+# percent of max free memory to use in buffering within klign's per_rank buffers
+add_definitions(-DKLIGN_MAX_MEM_PCT=10)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)

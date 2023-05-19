@@ -49,6 +49,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <random>
 #include <thread>
 #include <upcxx/upcxx.hpp>
 
@@ -57,7 +58,9 @@
 #include "ssw.hpp"
 #include "upcxx_utils/limit_outstanding.hpp"
 #include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/progress_bar.hpp"
+#include "upcxx_utils/rrdvz.hpp"
 #include "upcxx_utils/three_tier_aggr_store.hpp"
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
@@ -104,17 +107,17 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
 struct CtgLoc {
   cid_t cid;
   global_ptr<char> seq_gptr;
-  int clen;
+  int32_t clen;
   float depth;
-  int pos;
-  bool is_rc;
+  int32_t pos : 31;    // pack int 31 bits
+  uint32_t is_rc : 1;  // bool
 };
 
 struct CtgAndReadLoc {
   CtgLoc ctg_loc;
   int32_t cstart;
-  int32_t pos_in_read : 31;
-  int32_t read_is_rc : 1;
+  int32_t pos_in_read : 31;  // pack into 31 bits
+  uint32_t read_is_rc : 1;   // bool
 };
 
 template <int MAX_K>
@@ -165,11 +168,19 @@ struct KmersReadsBuffer {
     read_records.push_back({read_record, read_offset, read_is_rc});
   }
 
-  size_t size() { return kmers.size(); }
+  size_t size() const { return kmers.size(); }
+
+  static size_t get_size_per() { return sizeof(Kmer<MAX_K>) + sizeof(ReadRecordPtr); }
 
   void clear() {
     kmers.clear();
     read_records.clear();
+  }
+
+  bool empty() const { return kmers.empty(); }
+  void reserve(size_t sz) {
+    kmers.reserve(sz);
+    read_records.reserve(sz);
   }
 };
 
@@ -285,7 +296,7 @@ class KmerCtgDHT {
 
   future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
-    return rpc(
+    auto fut_rpc = rpc(
         target_rank,
         [allow_multi_kmers = this->allow_multi_kmers](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
           vector<CtgLocAndKmerIdx> ctg_locs;
@@ -299,9 +310,11 @@ class KmerCtgDHT {
               ctg_locs.push_back({ctg_loc, i});
             }
           }
-          return ctg_locs;
+          return upcxx_utils::RRendezVous(std::move(ctg_locs), KLIGN_KMERS_BUF_SIZE);
         },
         kmers, kmer_map);
+    auto fut_val = fut_rpc.then([](auto rrndvz) { return rrndvz.get(); });
+    return fut_val;
   }
 
   void dump_ctg_kmers() {
@@ -519,15 +532,17 @@ class Aligner {
     cleanup_aligner();
   }
 
-  int64_t get_num_perfect_alns(bool all = false) {
-    if (!all) return reduce_one(num_perfect_alns, op_fast_add, 0).wait();
-    return reduce_all(num_perfect_alns, op_fast_add).wait();
+  auto fut_get_num_perfect_alns(bool all = false) {
+    if (!all) return reduce_one(num_perfect_alns, op_fast_add, 0);
+    return reduce_all(num_perfect_alns, op_fast_add);
   }
+  int64_t get_num_perfect_alns(bool all = false) { return fut_get_num_perfect_alns(all).wait(); }
 
-  int64_t get_num_alns(bool all = false) {
-    if (!all) return reduce_one(num_alns, op_fast_add, 0).wait();
-    return reduce_all(num_alns, op_fast_add).wait();
+  auto fut_get_num_alns(bool all = false) {
+    if (!all) return reduce_one(num_alns, op_fast_add, 0);
+    return reduce_all(num_alns, op_fast_add);
   }
+  int64_t get_num_alns(bool all = false) { return fut_get_num_alns(all).wait(); }
 
   void clear_aln_bufs() {
     kernel_alns.clear();
@@ -697,18 +712,32 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   int64_t num_kmers = 0;
   int64_t num_rpcs = 0;
 
+  auto num_local_reads = packed_reads->get_local_num_reads();
+  ProgressBar progbar(num_local_reads,
+                      "Fetching ctg maps for alignments - " + upcxx_utils::get_basename(packed_reads->get_fname()));
+
   upcxx::future<> fetch_fut_chain = make_future();
-  vector<KmersReadsBuffer<MAX_K>> kmers_reads_buffers(rank_n());
+  vector<KmersReadsBuffer<MAX_K>> kmers_reads_buffers(num_local_reads > 0 ? rank_n() : 0);
   vector<Kmer<MAX_K>> kmers;
   int kmer_len = Kmer<MAX_K>::get_k();
 
   // Do not exceed 256KB RPC messages in either direction
-  size_t max_rdzv_message_size = 256 * 1024;
-  size_t max_rdvz_buffer_size = max_rdzv_message_size / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
-  size_t max_kmer_buffer_size = ::min((size_t)KLIGN_KMERS_BUF_SIZE / rank_n(), max_rdvz_buffer_size);
+  size_t max_rdvz_buffer_size = KLIGN_KMERS_BUF_SIZE / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
 
-  ProgressBar progbar(packed_reads->get_local_num_reads(), "Fetching ctg maps for alignments");
-  for (int ri = 0; ri < packed_reads->get_local_num_reads(); ri++) {
+  // further limit private memory buffering (per rank) to 10% of memory
+  size_t max_mem = KLIGN_MAX_MEM_PCT * upcxx_utils::get_max_free_mem_per_rank() / 100;
+  size_t max_mem_buffer_size =
+      (max_mem - rank_n() * (sizeof(KmersReadsBuffer<MAX_K>))) / (rank_n() * KmersReadsBuffer<MAX_K>::get_size_per());
+  max_rdvz_buffer_size = ::min(max_rdvz_buffer_size, max_mem_buffer_size) + 1;
+
+  LOG("max_mem for buffers=", get_size_str(max_mem), " KLIGN_KMERS_BUF_SIZE=", get_size_str(KLIGN_KMERS_BUF_SIZE),
+      " max_mem_buffer_size=", max_mem_buffer_size, " max_rdvz_buffer_size=", max_rdvz_buffer_size, "\n");
+
+  // stagger first batches with a reduced count before flush
+  size_t max_kmer_buffer_size = max_rdvz_buffer_size / 3 + rand() % (2 * max_rdvz_buffer_size / 3) + 1;
+  int stagger_count = 0;
+
+  for (int ri = 0; ri < num_local_reads; ri++) {
     progress();
     progbar.update();
     string read_seq;
@@ -734,49 +763,65 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       }
       assert(kmer_lc->is_least());
       auto target = kmer_ctg_dht.get_target_rank(*kmer_lc);
-      kmers_reads_buffers[target].add(*kmer_lc, &read_records[ri], i, is_rc);
-      if (kmers_reads_buffers[target].size() >= max_kmer_buffer_size) {
-        auto fetch_fut =
-            fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
-                                      bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+      auto &tgt_kr_buf = kmers_reads_buffers[target];
+      if (tgt_kr_buf.empty()) tgt_kr_buf.reserve(max_rdvz_buffer_size);  // lazy but avoid excessive resizes
+      tgt_kr_buf.add(*kmer_lc, &read_records[ri], i, is_rc);
+      if (tgt_kr_buf.size() >= max_kmer_buffer_size) {
+        auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
+                                                   bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
         upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
+        if (++stagger_count > 2 * rank_n() / 3)
+          max_kmer_buffer_size = max_rdvz_buffer_size;  // stagger achieved on first 2/3 of ranks, reset to max size
+        assert(tgt_kr_buf.empty());
       }
     }
     kmers.clear();
   }
-  for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
-    if (kmers_reads_buffers[target].size()) {
-      auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
-                                                 bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
-      fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
-      upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
+  if (num_local_reads > 0) {
+    for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
+      auto &tgt_kr_buf = kmers_reads_buffers[target];
+      if (tgt_kr_buf.size()) {
+        auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
+                                                   bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+        fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+        upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
+      }
     }
   }
   fetch_fut_chain.wait();
   upcxx_utils::flush_outstanding_futures();
   upcxx_utils::Timings::set_pending(progbar.set_done());
-  Timings::wait_pending();
-  barrier();
-  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
-  auto all_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
-  auto all_bytes_sent = reduce_one(bytes_sent, op_fast_add, 0).wait();
-  auto all_bytes_received = reduce_one(bytes_received, op_fast_add, 0).wait();
-  auto all_max_bytes_sent = reduce_one(max_bytes_sent, op_fast_max, 0).wait();
-  auto all_max_bytes_received = reduce_one(max_bytes_received, op_fast_max, 0).wait();
-  auto all_num_rpcs = reduce_one(num_rpcs, op_fast_add, 0).wait();
-  auto all_excess_alns_reads = reduce_one(num_excess_alns_reads, op_fast_add, 0).wait();
-  if (rank_me() == 0) {
-    SLOG_VERBOSE("Parsed ", all_num_reads, " reads and extracted ", all_num_kmers, " kmers\n");
-    SLOG_VERBOSE("Sent ", get_size_str(all_bytes_sent), " (", get_size_str(all_num_rpcs > 0 ? all_bytes_sent / all_num_rpcs : 0),
-                 " avg msg, ", get_size_str(all_max_bytes_sent), " max msg) of kmers and received ",
-                 get_size_str(all_bytes_received), " (", get_size_str(all_num_rpcs > 0 ? all_bytes_received / all_num_rpcs : 0),
-                 " avg msg, ", get_size_str(all_max_bytes_received), " max msg )\n");
-    if (all_excess_alns_reads)
-      SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
-  }
+
+  auto &pr = upcxx_utils::Timings::get_promise_reduce();
+
+  auto fut_all_num_reads = pr.reduce_one(num_reads, op_fast_add, 0);
+  auto fut_all_num_kmers = pr.reduce_one(num_kmers, op_fast_add, 0);
+  auto fut_all_bytes_sent = pr.reduce_one(bytes_sent, op_fast_add, 0);
+  auto fut_all_bytes_received = pr.reduce_one(bytes_received, op_fast_add, 0);
+  auto fut_all_max_bytes_sent = pr.reduce_one(max_bytes_sent, op_fast_max, 0);
+  auto fut_all_max_bytes_received = pr.reduce_one(max_bytes_received, op_fast_max, 0);
+  auto fut_all_num_rpcs = pr.reduce_one(num_rpcs, op_fast_add, 0);
+  auto fut_all_excess_alns_reads = pr.reduce_one(num_excess_alns_reads, op_fast_add, 0);
+  auto fut_report =
+      when_all(fut_all_num_reads, fut_all_num_kmers, fut_all_bytes_sent, fut_all_bytes_received, fut_all_max_bytes_sent,
+               fut_all_max_bytes_received, fut_all_num_rpcs, fut_all_excess_alns_reads)
+          .then([=](auto all_num_reads, auto all_num_kmers, auto all_bytes_sent, auto all_bytes_received, auto all_max_bytes_sent,
+                    auto all_max_bytes_received, auto all_num_rpcs, auto all_excess_alns_reads) {
+            if (rank_me() == 0) {
+              SLOG_VERBOSE("Parsed ", all_num_reads, " reads and extracted ", all_num_kmers, " kmers\n");
+              SLOG_VERBOSE("Sent ", get_size_str(all_bytes_sent), " (",
+                           get_size_str(all_num_rpcs > 0 ? all_bytes_sent / all_num_rpcs : 0), " avg msg, ",
+                           get_size_str(all_max_bytes_sent), " max msg) of kmers and received ", get_size_str(all_bytes_received),
+                           " (", get_size_str(all_num_rpcs > 0 ? all_bytes_received / all_num_rpcs : 0), " avg msg, ",
+                           get_size_str(all_max_bytes_received), " max msg )\n");
+              if (all_excess_alns_reads)
+                SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ,
+                             " per read\n");
+            }
+          });
+  upcxx_utils::Timings::set_pending(fut_report);
   timers.fetch_ctg_maps.stop();
-  barrier();
 }
 
 template <int MAX_K>
@@ -789,7 +834,8 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   Alns alns_for_sample;
   Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
-  ProgressBar progbar(packed_reads->get_local_num_reads(), "Computing alignments");
+  ProgressBar progbar(packed_reads->get_local_num_reads(),
+                      "Computing alignments - " + upcxx_utils::get_basename(packed_reads->get_fname()));
   for (auto &read_record : read_records) {
     progress();
     progbar.update();
@@ -804,29 +850,37 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   }
   aligner.flush_remaining(read_group_id, timers);
   Timings::set_pending(progbar.set_done());
-  Timings::wait_pending();
-  barrier();
+
   read_records.clear();
   aligner.sort_alns();
   aligner.log_ctg_bytes_fetched();
 
-  auto all_num_reads = reduce_one(num_reads, op_fast_add, 0).wait();
-  auto all_num_reads_aligned = reduce_one(num_reads_aligned, op_fast_add, 0).wait();
-  auto all_num_alns = aligner.get_num_alns();
-  auto all_num_perfect = aligner.get_num_perfect_alns();
-  auto all_num_dups = reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0).wait();
-  auto all_num_bad = reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0).wait();
-  auto all_num_good = reduce_one(alns_for_sample.size(), op_fast_add, 0).wait();
-  SLOG_VERBOSE("Found ", all_num_alns, " alignments:\n");
-  SLOG_VERBOSE("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
-  SLOG_VERBOSE("  good ", perc_str(all_num_good, all_num_alns), "\n");
-  SLOG_VERBOSE("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
-  SLOG_VERBOSE("  duplicates ", perc_str(all_num_dups, all_num_alns), "\n");
-  SLOG_VERBOSE("Mapped ", perc_str(all_num_reads_aligned, all_num_reads), " reads to contigs, average mappings per read ",
-               (double)all_num_alns / all_num_reads_aligned, "\n");
+  auto &pr = upcxx_utils::Timings::get_promise_reduce();
+
+  auto fut_all_num_reads = pr.reduce_one(num_reads, op_fast_add, 0);
+  auto fut_all_num_reads_aligned = reduce_one(num_reads_aligned, op_fast_add, 0);
+  auto fut_all_num_alns = aligner.fut_get_num_alns();
+  auto fut_all_num_perfect = aligner.fut_get_num_perfect_alns();
+  auto fut_all_num_dups = reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0);
+  auto fut_all_num_bad = reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0);
+  auto fut_all_num_good = reduce_one(alns_for_sample.size(), op_fast_add, 0);
+
+  auto fut_report =
+      when_all(fut_all_num_reads, fut_all_num_reads_aligned, fut_all_num_alns, fut_all_num_perfect, fut_all_num_dups,
+               fut_all_num_bad, fut_all_num_good)
+          .then([=](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns, auto all_num_perfect, auto all_num_dups,
+                    auto all_num_bad, auto all_num_good) {
+            SLOG_VERBOSE("Found ", all_num_alns, " alignments:\n");
+            SLOG_VERBOSE("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
+            SLOG_VERBOSE("  good ", perc_str(all_num_good, all_num_alns), "\n");
+            SLOG_VERBOSE("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
+            SLOG_VERBOSE("  duplicates ", perc_str(all_num_dups, all_num_alns), "\n");
+            SLOG_VERBOSE("Mapped ", perc_str(all_num_reads_aligned, all_num_reads), " reads to contigs, average mappings per read ",
+                         (double)all_num_alns / all_num_reads_aligned, "\n");
+          });
+  Timings::set_pending(fut_report);
   alns.append(alns_for_sample);
   timers.compute_alns.stop();
-  barrier();
 }
 
 template <int MAX_K>
@@ -856,6 +910,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
                         timers);
     read_group_id++;
   }
+  upcxx_utils::Timings::wait_pending();
   barrier();
   timers.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
