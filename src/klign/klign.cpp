@@ -415,9 +415,9 @@ class Aligner {
   CPUAligner cpu_aligner;
 
   int64_t ctg_bytes_fetched = 0;
-  int rget_calls = 0;
-  int local_ctg_fetches = 0;
-  int remote_ctg_fetches = 0;
+  int64_t rget_calls = 0;
+  int64_t local_ctg_fetches = 0;
+  int64_t remote_ctg_fetches = 0;
 
   Alns *alns;
 
