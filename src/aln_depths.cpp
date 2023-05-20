@@ -235,8 +235,17 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
                         bool double_count_merged_region) {
   BarrierTimer timer(__FILEFUNC__);
   int edge_base_len = (min_ctg_len >= 75 ? 75 : 0);
-  CtgsDepths ctgs_depths(edge_base_len, read_groups.size());
+  size_t bases = 0;
+  for (auto &ctg : ctgs) {
+    int clen = ctg.seq.length();
+    if (clen < min_ctg_len) continue;
+    bases += clen;
+  }
   int num_read_groups = (read_groups.empty() ? 1 : read_groups.size());
+  LOG("Locally processing ", ctgs.size(), " contigs with ", bases,
+      " total bases. mem=", get_size_str(bases * num_read_groups * sizeof(CtgBaseDepths::base_count_t::value_type)), "\n");
+  CtgsDepths ctgs_depths(edge_base_len, read_groups.size());
+  LOG_MEM("Before allocating per_base ctgs_depths");
   SLOG_VERBOSE("Processing contigs, using an edge base length of ", edge_base_len, " and a min ctg len of ", min_ctg_len, "\n");
   for (auto &ctg : ctgs) {
     int clen = ctg.seq.length();
@@ -244,6 +253,7 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
     ctgs_depths.add_new_ctg(ctg.id, num_read_groups, clen);
     upcxx::progress();
   }
+  LOG_MEM("After allocating per_base ctgs_depths");
   barrier();
   auto unmerged_rlen = alns.calculate_unmerged_rlen();
   int64_t num_bad_alns = 0;
@@ -252,8 +262,8 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
   ProgressBar progbar(alns.size(), "Processing alignments");
   for (auto &aln : alns) {
     progbar.update();
-    //aln.check_quality();
-    // this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
+    // aln.check_quality();
+    //  this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
     if (min_ctg_len && aln.calc_identity() < 97) {
       num_bad_alns++;
       continue;
@@ -312,17 +322,18 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
     auto &ctg = *it;
     if ((int)ctg.seq.length() < min_ctg_len) continue;
     auto fut_rg_avg_vars = ctgs_depths.fut_get_depth(ctg.id);
-    fut_chain = when_all(fut_chain, fut_rg_avg_vars).then([&ctg_ofstream, it = it, &num_read_groups](vector<AvgVar<float>> rg_avg_vars) {
-      auto &ctg = *it;
-      if (ctg_ofstream) {
-        *ctg_ofstream << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << rg_avg_vars[num_read_groups].avg;
-        for (int rg = 0; rg < num_read_groups; rg++) {
-          *ctg_ofstream << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
-        }
-        *ctg_ofstream << "\n";
-      }
-      ctg.depth = rg_avg_vars[num_read_groups].avg;
-    });
+    fut_chain =
+        when_all(fut_chain, fut_rg_avg_vars).then([&ctg_ofstream, it = it, &num_read_groups](vector<AvgVar<float>> rg_avg_vars) {
+          auto &ctg = *it;
+          if (ctg_ofstream) {
+            *ctg_ofstream << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << rg_avg_vars[num_read_groups].avg;
+            for (int rg = 0; rg < num_read_groups; rg++) {
+              *ctg_ofstream << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
+            }
+            *ctg_ofstream << "\n";
+          }
+          ctg.depth = rg_avg_vars[num_read_groups].avg;
+        });
     limit_outstanding_futures(fut_chain).wait();
     upcxx::progress();
   }

@@ -186,7 +186,8 @@ class PackedReads {
 
   int64_t get_local_bases() const;
 
-  int64_t get_bases();
+  upcxx::future<uint64_t> fut_get_bases() const;
+  uint64_t get_bases() const;
 
   int get_qual_offset();
 

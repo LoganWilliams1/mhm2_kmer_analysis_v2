@@ -617,23 +617,33 @@ class Aligner {
   void sort_alns() {
     if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
     if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
-    active_kernel_fut.wait();
-    alns->sort_alns().wait();
+    wait_wrapper(active_kernel_fut);
+    wait_wrapper(alns->sort_alns());
   }
 
-  void log_ctg_bytes_fetched() {
-    auto all_rget_calls = reduce_one(rget_calls, op_fast_add, 0).wait();
-    auto all_ctg_bytes_fetched = reduce_one(ctg_bytes_fetched, op_fast_add, 0).wait();
-    auto max_ctg_bytes_fetched = reduce_one(ctg_bytes_fetched, op_fast_max, 0).wait();
-    if (all_ctg_bytes_fetched > 0)
-      SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
-                   (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
-                   get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
+  upcxx::future<> log_ctg_bytes_fetched() {
+    auto &pr = Timings::get_promise_reduce();
+    auto fut_all_rget_calls = pr.reduce_one(rget_calls, op_fast_add, 0);
+    auto fut_all_ctg_bytes_fetched = pr.reduce_one(ctg_bytes_fetched, op_fast_add, 0);
+    auto fut_max_ctg_bytes_fetched = pr.reduce_one(ctg_bytes_fetched, op_fast_max, 0);
+    auto fut_all_local_ctg_fetches = pr.reduce_one(local_ctg_fetches, op_fast_add, 0);
+    auto fut_all_remote_ctg_fetches = pr.reduce_one(remote_ctg_fetches, op_fast_add, 0);
     ctg_bytes_fetched = 0;
-    auto all_local_ctg_fetches = reduce_one(local_ctg_fetches, op_fast_add, 0).wait();
-    auto all_remote_ctg_fetches = reduce_one(remote_ctg_fetches, op_fast_add, 0).wait();
-    if (all_local_ctg_fetches > 0)
-      SLOG_VERBOSE("Local contig fetches ", perc_str(all_local_ctg_fetches, all_local_ctg_fetches + all_remote_ctg_fetches), "\n");
+    auto fut_report = when_all(fut_all_rget_calls, fut_all_ctg_bytes_fetched, fut_max_ctg_bytes_fetched, fut_all_local_ctg_fetches,
+                               fut_all_remote_ctg_fetches)
+                          .then([=](auto all_rget_calls, auto all_ctg_bytes_fetched, auto max_ctg_bytes_fetched,
+                                    auto all_local_ctg_fetches, auto all_remote_ctg_fetches) {
+                            if (all_ctg_bytes_fetched > 0)
+                              SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
+                                           (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched),
+                                           " average rget size ", get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
+
+                            if (all_local_ctg_fetches > 0)
+                              SLOG_VERBOSE("Local contig fetches ",
+                                           perc_str(all_local_ctg_fetches, all_local_ctg_fetches + all_remote_ctg_fetches), "\n");
+                          });
+    Timings::set_pending(fut_report);
+    return fut_report;
   }
 };
 
@@ -853,7 +863,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
 
   read_records.clear();
   aligner.sort_alns();
-  aligner.log_ctg_bytes_fetched();
+  auto fut1 = aligner.log_ctg_bytes_fetched();
 
   auto &pr = upcxx_utils::Timings::get_promise_reduce();
 
@@ -866,7 +876,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   auto fut_all_num_good = reduce_one(alns_for_sample.size(), op_fast_add, 0);
 
   auto fut_report =
-      when_all(fut_all_num_reads, fut_all_num_reads_aligned, fut_all_num_alns, fut_all_num_perfect, fut_all_num_dups,
+      when_all(fut1, fut_all_num_reads, fut_all_num_reads_aligned, fut_all_num_alns, fut_all_num_perfect, fut_all_num_dups,
                fut_all_num_bad, fut_all_num_good)
           .then([=](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns, auto all_num_perfect, auto all_num_dups,
                     auto all_num_bad, auto all_num_good) {
