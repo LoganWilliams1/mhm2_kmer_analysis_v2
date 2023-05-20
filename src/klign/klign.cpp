@@ -714,7 +714,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 
   auto num_local_reads = packed_reads->get_local_num_reads();
   ProgressBar progbar(num_local_reads,
-                      "Fetching ctg maps for alignments - " + upcxx_utils::get_basename(packed_reads->get_fname()));
+                      string("Fetching ctg maps for alignments - ") + upcxx_utils::get_basename(packed_reads->get_fname()));
 
   upcxx::future<> fetch_fut_chain = make_future();
   vector<KmersReadsBuffer<MAX_K>> kmers_reads_buffers(num_local_reads > 0 ? rank_n() : 0);
@@ -835,7 +835,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(),
-                      "Computing alignments - " + upcxx_utils::get_basename(packed_reads->get_fname()));
+                      string("Computing alignments - ") + upcxx_utils::get_basename(packed_reads->get_fname()));
   for (auto &read_record : read_records) {
     progress();
     progbar.update();

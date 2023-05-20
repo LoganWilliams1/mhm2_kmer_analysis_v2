@@ -148,7 +148,7 @@ class PackedReads {
 
  public:
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
-  PackedReads(int qual_offset, PackedReadsContainer &packed_reads);
+  PackedReads(int qual_offset, PackedReadsContainer &packed_reads, const string &fname);
   ~PackedReads();
 
   bool get_next_read(string &id, string &seq, string &quals);
