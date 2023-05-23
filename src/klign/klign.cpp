@@ -294,11 +294,11 @@ class KmerCtgDHT {
     kmer_store.clear();
   }
 
-  future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
+  future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, const vector<Kmer<MAX_K>> &kmers) {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
     auto fut_rpc = rpc(
         target_rank,
-        [allow_multi_kmers = this->allow_multi_kmers](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
+        [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
           vector<CtgLocAndKmerIdx> ctg_locs;
           for (int i = 0; i < kmers.size(); i++) {
             auto &kmer = kmers[i];
