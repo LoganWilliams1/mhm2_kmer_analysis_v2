@@ -419,7 +419,7 @@ void PackedReads::report_size() {
   auto all_num_names_fut = pr.reduce_one(name_bytes, upcxx::op_fast_add, 0);
   auto min_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
   auto max_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
-  auto fut_pr = pr.fulfill().then([](PromiseReduce::Vals ignore) {});
+  auto fut_pr = pr.fulfill().then([](const PromiseReduce::Vals &ignore) {});
   auto fut =
       when_all(fut_pr, Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut,
                max_rank_fut)

@@ -152,7 +152,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                                  vector<UpdateCidReadsBuffer> &update_buffer) {
   auto fut = rpc(
                  target,
-                 [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, vector<uint64_t> kmers) -> vector<int64_t> {
+                 [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, const vector<uint64_t> &kmers) -> vector<int64_t> {
                    vector<int64_t> cids;
                    cids.resize(kmers.size());
                    for (int i = 0; i < kmers.size(); i++) {
@@ -162,7 +162,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                    return cids;
                  },
                  kmer_to_cid_map, kmer_req_buf.kmers)
-                 .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](vector<int64_t> cids) {
+                 .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](const vector<int64_t> &cids) {
                    if (cids.size() != read_ids.size()) WARN("buff size is wrong, ", cids.size(), " != ", read_ids.size());
                    for (int i = 0; i < cids.size(); i++) {
                      // if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
@@ -481,7 +481,7 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
 
   auto fut =
       when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
-          .then([msm_num_reads, all_num_reads](MinSumMax<uint64_t> shuffled_msm_num_reads, MinSumMax<uint64_t> shuffled_msm_num_bases) {
+          .then([msm_num_reads, all_num_reads](const MinSumMax<uint64_t> &shuffled_msm_num_reads, const MinSumMax<uint64_t> &shuffled_msm_num_bases) {
             SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
             SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
             SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");

@@ -929,7 +929,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
   // finish all file writing and report
   auto fut_msm = pr.msm_reduce_one(read_files_t.get_elapsed());
-  fut_summary = when_all(fut_summary, fut_msm).then([](upcxx_utils::MinSumMax<double> msm) {
+  fut_summary = when_all(fut_summary, fut_msm).then([](const upcxx_utils::MinSumMax<double> &msm) {
     SLOG_VERBOSE("Total time reading fastq files: ", msm.to_string(), "\n");
   });
 

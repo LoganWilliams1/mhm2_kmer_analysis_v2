@@ -287,7 +287,7 @@ class KmerCtgDHT {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
     return rpc(
         target_rank,
-        [allow_multi_kmers = this->allow_multi_kmers](vector<Kmer<MAX_K>> kmers, kmer_map_t &kmer_map) {
+        [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
           vector<CtgLocAndKmerIdx> ctg_locs;
           for (int i = 0; i < kmers.size(); i++) {
             auto &kmer = kmers[i];
@@ -639,7 +639,7 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
   auto fut_rpc_returned =
       fut_get_ctgs
           .then([target_rank, &kmers_reads_buffer = *sh_krb, &num_alns, &num_excess_alns_reads, &bytes_received,
-                 &max_bytes_received](const vector<CtgLocAndKmerIdx> ctg_locs_and_kmers_idx) {
+                 &max_bytes_received](const vector<CtgLocAndKmerIdx> &ctg_locs_and_kmers_idx) {
             int64_t received_msg_size = (sizeof(CtgLocAndKmerIdx) * ctg_locs_and_kmers_idx.size());
             bytes_received += received_msg_size;
             max_bytes_received = std::max(max_bytes_received, received_msg_size);

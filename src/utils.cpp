@@ -379,7 +379,7 @@ void log_local(std::string header, std::string msg) {
   if (upcxx::local_team().rank_me()) {
     rpc(
         upcxx::local_team(), 0,
-        [](upcxx::dist_object<vector<upcxx::promise<string>>> &msgs, string msg, int from) { (*msgs)[from].fulfill_result(msg); },
+        [](upcxx::dist_object<vector<upcxx::promise<string>>> &msgs, const string &msg, int from) { (*msgs)[from].fulfill_result(msg); },
         msgs, msg, upcxx::local_team().rank_me())
         .wait();
   } else {  // local rank 0
