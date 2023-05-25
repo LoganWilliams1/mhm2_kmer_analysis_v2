@@ -48,6 +48,8 @@
 #include <unordered_set>
 
 #include <algorithm>
+#include <forward_list>
+#include <iterator>
 #include <iostream>
 #include <thread>
 #include <upcxx/upcxx.hpp>
@@ -186,7 +188,7 @@ struct RgetRequest {
 
 template <int MAX_K>
 class KmerCtgDHT {
-  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, vector<CtgLoc>>;
+  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, forward_list<CtgLoc>>;
   using kmer_map_t = dist_object<local_kmer_map_t>;
   kmer_map_t kmer_map;
   vector<global_ptr<char>> global_ctg_seqs;
@@ -217,7 +219,7 @@ class KmerCtgDHT {
         it = kmer_map->insert({kmer_and_ctg_loc.kmer, {ctg_loc}}).first;
       } else {
         if (allow_multi_kmers) {
-          it->second.push_back(ctg_loc);
+          it->second.push_front(ctg_loc);
         } else {
           // there are conflicts so don't allow any kmer mappings. This improves the assembly when scaffolding k is smaller than
           // the final contigging k, e.g. sk=33
@@ -270,17 +272,16 @@ class KmerCtgDHT {
   }
 
   void flush_add_kmers() {
-    size_t max_ctgs = 0;
-    // determine max number of ctgs mapped to by a single kmer
-    for (auto &elem : *kmer_map) {
-      max_ctgs = ::max(max_ctgs, elem.second.size());
-    }
-    barrier();
-    auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
-    if (all_max_ctgs > 1) SLOG_VERBOSE("Max contigs mapped by a single kmer: ", all_max_ctgs, "\n");
     BarrierTimer timer(__FILEFUNC__, false);  // barrier on exit, not entrance
     kmer_store.flush_updates();
     kmer_store.clear();
+    size_t max_ctgs = 0;
+    // determine max number of ctgs mapped to by a single kmer
+    for (auto &elem : *kmer_map) {
+      max_ctgs = ::max(max_ctgs, (size_t)distance(elem.second.begin(), elem.second.end())); // .size());
+    }
+    auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
+    if (all_max_ctgs > 1) SLOG_VERBOSE("Max contigs mapped by a single kmer: ", all_max_ctgs, "\n");
   }
 
   future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
@@ -336,24 +337,31 @@ class KmerCtgDHT {
     ProgressBar progbar(ctgs.size(), "Extracting seeds from contigs");
     // estimate and reserve room in the local map to avoid excessive reallocations
     int64_t est_num_kmers = 0;
+    size_t ctg_seq_lengths = 0, min_len_ctgs = 0;
     for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
       auto ctg = it;
       auto len = ctg->seq.length();
+      ctg_seq_lengths += len;
+      min_len_ctgs++;
       if (len < min_ctg_len) continue;
       est_num_kmers += len - kmer_len + 1;
     }
     est_num_kmers = upcxx::reduce_all(est_num_kmers, upcxx::op_fast_add).wait();
+    auto tot_ctg_lengths = reduce_one(ctg_seq_lengths, op_fast_add, 0).wait();
+    auto tot_num_ctgs = reduce_one(min_len_ctgs, op_fast_add, 0).wait();
     auto my_reserve = 1.2 * est_num_kmers / rank_n() + 2000;  // 120% to keep the map fast
+    SLOG_VERBOSE("Estimated ", est_num_kmers, " contig ", kmer_len, "-kmers for ", tot_num_ctgs, " contigs with total len ", tot_ctg_lengths, "\n");
+    auto my_required_mem = my_reserve * (sizeof(typename local_kmer_map_t::value_type) + sizeof(CtgLoc)); // 1 map key/value entry + 1 CtgLoc within the vector
+    LOG("Reserving ", my_reserve, " for my entries at approx ", get_size_str(my_required_mem * upcxx::local_team().rank_n()), " per node for the local hashtable\n");
+    LOG_MEM("Before reserving entries for ctg kmers");
     kmer_map->reserve(my_reserve);
     global_ctg_seqs.reserve(ctgs.size());
-    size_t ctg_seq_lengths = 0, min_len_ctgs = 0;
+    LOG_MEM("After reserving entries for ctg kmers");
     vector<Kmer<MAX_K>> kmers;
     for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
       auto ctg = it;
       progbar.update();
       if (ctg->seq.length() < min_ctg_len) continue;
-      ctg_seq_lengths += ctg->seq.length();
-      min_len_ctgs++;
       global_ptr<char> seq_gptr = add_ctg_seq(ctg->seq);
       CtgLoc ctg_loc = {.cid = ctg->id, .seq_gptr = seq_gptr, .clen = (int)ctg->seq.length(), .depth = (float)ctg->depth};
       Kmer<MAX_K>::get_kmers(kmer_len, string_view(ctg->seq.data(), ctg->seq.size()), kmers, true);
@@ -370,8 +378,6 @@ class KmerCtgDHT {
     auto fut = progbar.set_done();
     flush_add_kmers();
     auto tot_num_kmers = reduce_one(num_kmers, op_fast_add, 0).wait();
-    auto tot_num_ctgs = reduce_one(min_len_ctgs, op_fast_add, 0).wait();
-    auto tot_ctg_lengths = reduce_one(ctg_seq_lengths, op_fast_add, 0).wait();
     fut.wait();
     auto num_kmers_in_ht = get_num_kmers();
     LOG("Estimated room for ", my_reserve, " my final count ", kmer_map->size(), "\n");
