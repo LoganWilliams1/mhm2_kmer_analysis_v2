@@ -212,7 +212,7 @@ double Options::setup_output_dir() {
       else
         cout << "Failed to set Lustre striping on output directory: " << WEXITSTATUS(status) << endl;
     }
-    
+
     // ensure per_rank dir exists (and additionally has stripe 1, if lfs exists)
     string per_rank = output_dir + "/per_rank";
     status = mkdir(per_rank.c_str(), S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID /*use default mode/umask */);
@@ -371,15 +371,12 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 100000));
   auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.");
   add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.");
-  add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
-      ->multi_option_policy();
   add_flag_def(app, "--restart", restart,
                "Restart in previous directory where a run failed (must specify the previous directory with -o).");
   add_flag_def(app, "--post-asm-align", post_assm_aln, "Align reads to final assembly");
   add_flag_def(app, "--post-asm-abd", post_assm_abundances, "Compute and output abundances for final assembly (used by MetaBAT).");
   add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly (alignment and/or abundances).");
   add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.");
-  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
   app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
       ->check(CLI::IsMember({0, 33, 64}));
   add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.");
@@ -405,9 +402,6 @@ bool Options::load(int argc, char **argv) {
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
       ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
   // performance trade-offs
-  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
-  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (can be set to all).")
-      ->check(CLI::Range(1, 100));
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
       ->check(CLI::Range(0, 5000));
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
@@ -420,9 +414,16 @@ bool Options::load(int argc, char **argv) {
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
       ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}));
+  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
+  // miscellaneous
+  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
   add_flag_def(app, "--use-qf", use_qf,
                "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
-  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
+  add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
+      ->multi_option_policy();
+  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")->check(CLI::Range(1, 100));
+
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError &e) {
