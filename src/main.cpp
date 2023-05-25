@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
       rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
-    Timings::get_pending().wait();  // report all I/O stats here
+    Timings::wait_pending();  // report all I/O stats here
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
