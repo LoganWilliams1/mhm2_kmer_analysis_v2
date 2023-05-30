@@ -404,21 +404,33 @@ class KmerCtgDHT {
     barrier();
   }
 
-  void purge_high_count_seeds(int max_ctgs_per_kmer) {
+  void purge_high_count_seeds(int max_ctgs_per_kmer = KLIGN_MAX_CTGS_PER_KMER) {
     // FIXME: Hack for Issue137 to be fixed robustly later
     size_t num_purged = 0;
     size_t num_ctg_locs_purged = 0;
-    size_t max_ctg_locs_purged = 0;
+    size_t max_ctg_locs = 0;
+    double total_depth = 0.0;
+    double total_purged_depth = 0.0;
+    double max_depth = 0.0;
     vector<Kmer<MAX_K>> to_be_purged;
     for (auto &elem : *kmer_map) {
       auto &[kmer, ctg_locs] = elem;
-      auto sz = std::distance(ctg_locs.begin(), ctg_locs.end());
-      if (sz > max_ctgs_per_kmer) {
-        DBG("Removing kmer with ", sz, " ctg_loc hits: ", kmer.to_string(), "\n");
+      size_t sz = 0;
+      double depth = 0.0;
+      for (auto &ctg_loc : ctg_locs) {
+        sz++;
+        depth += ctg_loc.depth;
+      }
+
+      if (sz > max_ctg_locs) max_ctg_locs = sz;
+      if (depth > max_depth) max_depth = depth;
+      total_depth += depth;
+      if (max_ctgs_per_kmer > 0 && sz > max_ctgs_per_kmer) {
+        DBG("Removing kmer with ", sz, " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
         to_be_purged.push_back(kmer);
         num_purged++;
         num_ctg_locs_purged += sz;
-        if (sz > max_ctg_locs_purged) max_ctg_locs_purged = sz;
+        total_purged_depth += depth;
       }
     }
 
@@ -430,15 +442,20 @@ class KmerCtgDHT {
 
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(num_purged, op_fast_add, 0), pr.reduce_one(num_ctg_locs_purged, op_fast_add, 0),
-                               pr.reduce_one(max_ctg_locs_purged, op_fast_add, 0), pr.msm_reduce_one(kmer_map->size(), 0),
-                               pr.msm_reduce_one(num_purged, 0));
-    auto fut_report = fut_reduce.then([=](auto all_num_purged, auto all_ctg_locs_purged, auto max_ctg_locs_purged,
-                                          auto msm_kmers_remaining, auto msm_kmers_purged) {
-      LOG("Purge high count contig kmer seeds. num_purged=", num_purged, " num_ctg_locs_purged=", num_ctg_locs_purged, " max_ctg_locs_purged=", max_ctg_locs_purged,
-          "\n");
-      SLOG_VERBOSE("All purged ", all_num_purged, " high count contig kmer seeds.  total_ctg_locs_purged=", all_ctg_locs_purged,
-                   " max_ctg_locs=", max_ctg_locs_purged, " seeds_remaining=", msm_kmers_remaining.to_string(),
-                   " seeds_purged=", msm_kmers_purged.to_string(), "\n");
+                               pr.reduce_one(max_ctg_locs, op_fast_max, 0), pr.reduce_one(total_depth, op_fast_add, 0),
+                               pr.reduce_one(total_purged_depth, op_fast_add, 0), pr.msm_reduce_one(kmer_map->size(), 0),
+                               pr.msm_reduce_one(num_purged, 0), pr.msm_reduce_one(max_ctg_locs, 0),
+                               pr.msm_reduce_one(total_purged_depth), pr.msm_reduce_one(max_depth, 0));
+    auto fut_report = fut_reduce.then([=](auto all_num_purged, auto all_ctg_locs_purged, auto global_max_ctg_locs,
+                                          auto all_total_depth, auto all_total_purged_depth, auto msm_kmers_remaining,
+                                          auto msm_kmers_purged, auto msm_max_ctg_locs, auto msm_purged_depth, auto msm_max_depth) {
+      LOG("Purge of high count ctg kmer seeds: num_purged=", num_purged, " num_ctg_locs_purged=", num_ctg_locs_purged,
+          " max_ctg_locs=", max_ctg_locs, " total_depth=", total_depth, " total_purged_depth=", total_purged_depth, "\n");
+      SLOG_VERBOSE("All purged ", all_num_purged, " high count ctg kmer seeds.  total_ctg_locs_purged=", all_ctg_locs_purged,
+                   " max_ctg_locs=", global_max_ctg_locs, " all_total_depth=", all_total_depth,
+                   " all_purged_depth=", all_total_purged_depth, " seeds_remaining=", msm_kmers_remaining.to_string(),
+                   " seeds_purged=", msm_kmers_purged.to_string(), " max_ctg_locs=", msm_max_ctg_locs.to_string(),
+                   " purged_depth=", msm_purged_depth.to_string(), " max_depth=", msm_max_depth.to_string(), "\n");
     });
     Timings::set_pending(fut_report);
   }
@@ -778,7 +795,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   vector<Kmer<MAX_K>> kmers;
   int kmer_len = Kmer<MAX_K>::get_k();
 
-  // Do not exceed 256KB RPC messages in either direction
+  // Do not exceed maximum size for RPC messages in either direction, assuming 1 hit per kmer
   size_t max_rdvz_buffer_size = KLIGN_KMERS_BUF_SIZE / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
 
   // further limit private memory buffering (per rank) to 10% of memory
@@ -956,7 +973,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   barrier();
   kmer_ctg_dht.build(ctgs, min_ctg_len);
-  kmer_ctg_dht.purge_high_count_seeds(KLIGN_MAX_CTGS_PER_KMER);
+  kmer_ctg_dht.purge_high_count_seeds();
 #ifdef DEBUG
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
