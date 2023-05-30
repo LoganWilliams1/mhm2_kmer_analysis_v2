@@ -219,7 +219,7 @@ bool KmerDHT<MAX_K>::kmer_exists(Kmer<MAX_K> kmer_fw) {
 
   return rpc(
              get_kmer_target_rank(kmer_fw, &kmer_rc),
-             [](Kmer<MAX_K> kmer, dist_object<KmerMap<MAX_K>> &local_kmers) -> bool {
+             [](const Kmer<MAX_K> &kmer, dist_object<KmerMap<MAX_K>> &local_kmers) -> bool {
                const auto it = local_kmers->find(kmer);
                if (it == local_kmers->end()) return false;
                return true;

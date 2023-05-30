@@ -223,7 +223,7 @@ shared_ptr<Vertex> CtgGraph::get_vertex(cid_t cid) {
              vertices, cid)
       .then([](Vertex v) -> shared_ptr<Vertex> {
         if (v.cid == -1) return nullptr;
-        return make_shared<Vertex>(v);
+        return make_shared<Vertex>(std::move(v));
       })
       .wait();
 }
@@ -363,13 +363,13 @@ shared_ptr<Edge> CtgGraph::get_edge(cid_t cid1, cid_t cid2) {
   }
   return upcxx::rpc(
              target_rank,
-             [](edge_map_t &edges, CidPair cids) -> Edge {
+             [](edge_map_t &edges, const CidPair &cids) -> Edge {
                const auto it = edges->find(cids);
                if (it == edges->end()) return Edge({.cids = {-1, -1}});
                return it->second;
              },
              edges, cids)
-      .then([](Edge edge) -> shared_ptr<Edge> {
+      .then([](const Edge &edge) -> shared_ptr<Edge> {
         if (edge.cids.cid1 == -1 && edge.cids.cid2 == -1) return nullptr;
         return make_shared<Edge>(edge);
       })
@@ -394,7 +394,7 @@ Edge *CtgGraph::get_next_local_edge() {
 void CtgGraph::add_or_update_edge(Edge &edge) {
   upcxx::rpc(
       get_edge_target_rank(edge.cids),
-      [](edge_map_t &edges, Edge new_edge) {
+      [](edge_map_t &edges, const Edge &new_edge) {
         const auto it = edges->find(new_edge.cids);
         if (it == edges->end()) {
           // not found, always insert
@@ -513,7 +513,7 @@ int64_t CtgGraph::purge_short_aln_edges() {
 void CtgGraph::add_pos_gap_read(const string &read_name) {
   upcxx::rpc(
       get_read_target_rank(read_name),
-      [](reads_map_t &read_seqs, string read_name) {
+      [](reads_map_t &read_seqs, const string &read_name) {
         read_seqs->insert({read_name, ""});
       },
       read_seqs, read_name)
@@ -523,7 +523,7 @@ void CtgGraph::add_pos_gap_read(const string &read_name) {
 bool CtgGraph::update_read_seq(const string &read_name, const string &seq) {
   return upcxx::rpc(
              get_read_target_rank(read_name),
-             [](reads_map_t &read_seqs, string read_name, string seq) {
+             [](reads_map_t &read_seqs, const string &read_name, const string &seq) {
                auto it = read_seqs->find(read_name);
                if (it == read_seqs->end()) return false;
                (*read_seqs)[read_name] = seq;
@@ -536,7 +536,7 @@ bool CtgGraph::update_read_seq(const string &read_name, const string &seq) {
 string CtgGraph::get_read_seq(const string &read_name) {
   return upcxx::rpc(
              get_read_target_rank(read_name),
-             [](reads_map_t &read_seqs, string read_name) -> string {
+             [](reads_map_t &read_seqs, const string &read_name) -> string {
                const auto it = read_seqs->find(read_name);
                if (it == read_seqs->end()) return string("");
                return it->second;

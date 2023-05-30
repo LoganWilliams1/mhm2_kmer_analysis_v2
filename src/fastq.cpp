@@ -642,7 +642,7 @@ future<> FastqReader::continue_open() {
   if (rank_me() > 0 && my_start != 0) {
     rpc_ff(
         rank_me() - 1,
-        [](DPSS &dpss, int64_t end_pos, string fname) {
+        [](DPSS &dpss, int64_t end_pos, const string &fname) {
           DBG("Fulfilling my end from next end_pos=", end_pos, " fname=", fname, "\n");
           dpss->stop_prom.fulfill_result(end_pos);
         },
@@ -725,7 +725,7 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
         // send end to prev rank
         rpc_ff(
             rank - 1,
-            [](DPSS &dpss, int64_t end_pos, string fname) {
+            [](DPSS &dpss, int64_t end_pos, const string &fname) {
               DBG("Fulfill from leader end=", end_pos, " fname=", fname, "\n");
               dpss->stop_prom.fulfill_result(end_pos);
             },
@@ -733,7 +733,7 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
         // send start to rank
         rpc_ff(
             rank,
-            [](DPSS &dpss, int64_t start_pos, string fname) {
+            [](DPSS &dpss, int64_t start_pos, const string &fname) {
               DBG("Fulfill start leader start=", start_pos, " fname=", fname, "\n");
               dpss->start_prom.fulfill_result(start_pos);
             },

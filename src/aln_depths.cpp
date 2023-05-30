@@ -312,7 +312,7 @@ void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer
     auto &ctg = *it;
     if ((int)ctg.seq.length() < min_ctg_len) continue;
     auto fut_rg_avg_vars = ctgs_depths.fut_get_depth(ctg.id);
-    fut_chain = when_all(fut_chain, fut_rg_avg_vars).then([&ctg_ofstream, it = it, &num_read_groups](vector<AvgVar<float>> rg_avg_vars) {
+    fut_chain = when_all(fut_chain, fut_rg_avg_vars).then([&ctg_ofstream, it = it, &num_read_groups](const vector<AvgVar<float>> &rg_avg_vars) {
       auto &ctg = *it;
       if (ctg_ofstream) {
         *ctg_ofstream << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << rg_avg_vars[num_read_groups].avg;

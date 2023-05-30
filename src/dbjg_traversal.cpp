@@ -164,7 +164,7 @@ static bool check_kmers(const string &seq, dist_object<KmerDHT<MAX_K>> &kmer_dht
 }
 
 template <int MAX_K>
-StepInfo<MAX_K> get_next_step(dist_object<KmerDHT<MAX_K>> &kmer_dht, const Kmer<MAX_K> start_kmer, const Dirn dirn,
+StepInfo<MAX_K> get_next_step(dist_object<KmerDHT<MAX_K>> &kmer_dht, const Kmer<MAX_K> &start_kmer, const Dirn dirn,
                               const char start_prev_ext, const char start_next_ext, bool revisit_allowed, bool is_rc,
                               const global_ptr<FragElem> frag_elem_gptr) {
   StepInfo<MAX_K> step_info(start_kmer, start_prev_ext, start_next_ext);
