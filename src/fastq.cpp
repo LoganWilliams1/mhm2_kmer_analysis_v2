@@ -176,22 +176,22 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   if (!in || !in->is_open()) DIE("Fastq ", fname, " is not open to find the next record after offset=", offset, "\n");
   // eof - do not read anything
   if (offset > 0 && offset + 1024 >= file_size) {
-    io_t.stop();
     DBG("offset=", offset, " is less than 1kb from end of file, returning eof file_size=", file_size, "\n");
     return file_size;
   }
 
-  io_t.start();
-
+  read_io_t.start();
   in->seekg(offset);
+  read_io_t.stop();
   if (!in->good() || in->tellg() != offset) DIE("Could not seekg to ", offset, " fname=", get_ifstream_state(), ": ", strerror(errno));
 
   if (offset != 0) {
     // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
+    read_io_t.start();
     std::getline(*in, buf);
+    read_io_t.stop();
   }
   if (buf.empty() && (in->eof() || in->fail())) {
-    io_t.stop();
     DBG("Got eof, fail or empty getline at ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
     return file_size;
   }
@@ -205,7 +205,9 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   tells.reserve(20);
   for (int i = 0; i < 20; i++) {
     tells.push_back(tellg());
+    read_io_t.start();
     std::getline(*in, buf);
+    read_io_t.stop();
     if (in->eof() || in->fail() || buf.empty()) {
       DBG("Got eof, fail or empty getline at ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
       break;
@@ -358,7 +360,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   if (!(in && in->is_open() && in->good())) {
     DIE("get_fptr_for_next_record: file=", get_ifstream_state(), " offset=", offset, " last_tell=", last_tell, ": ", strerror(errno), "\n");
   }
-  io_t.stop();
+  
   if (offset > 0 && last_tell + 1024 >= file_size) {
     DBG("Found record at less than 1kb from file end. last_tell=", last_tell, " returning eof file_size=", file_size, "\n");
     return file_size;
@@ -387,7 +389,8 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     , _first_pair(true)
     , _trim_comment(false)
     , _is_bgzf(false)
-    , io_t("fastq IO for " + fname)
+    , io_t("fastq IO-ops " + fname)
+    , read_io_t("fastq Reading " + fname)
     , dist_prom(world())
     , open_fut(make_future()) {
   assert(!upcxx::in_progress());
@@ -425,8 +428,8 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     // only one rank gets the file size, to prevent many hits on metadata
     io_t.start();
     file_size = upcxx_utils::get_file_size(fname);
-    in = std::make_unique<ifstream>(fname);
     io_t.stop();
+    in = std::make_unique<ifstream>(fname);
     buf.reserve(BUF_SIZE);
     DBG("Found file_size=", file_size, " for ", fname, "\n");
   }
@@ -612,9 +615,10 @@ future<> FastqReader::continue_open() {
     return dist_prom->set(*this).then([t_continue_open]() { t_continue_open.stop(); });
   }
 
-  io_t.start();
+  
   int attempts = 0;
   if (!in) {
+    io_t.start();
     while (attempts < 3) {
       in.reset(new ifstream(fname));
       if (in && in->is_open() && in->good()) break;
@@ -622,14 +626,13 @@ future<> FastqReader::continue_open() {
       upcxx_utils::ThreadPool::sleep_ns(500000000 + upcxx::local_team().rank_me() * 1000000);
     }
     LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
+    io_t.stop();
   }
   if (!(in && in->is_open() && in->good())) {
     DIE("continue_open: file=", get_ifstream_state(), "\n");
   }
   if (attempts > 0) WARN("It took ", attempts, " attempt(s) to open ", fname, "!\n");
   DBG("in.tell=", in->tellg(), "\n");
-
-  io_t.stop();
 
   assert(block_start <= file_size);
 
@@ -639,7 +642,7 @@ future<> FastqReader::continue_open() {
   if (rank_me() > 0 && my_start != 0) {
     rpc_ff(
         rank_me() - 1,
-        [](DPSS &dpss, int64_t end_pos, string fname) {
+        [](DPSS &dpss, int64_t end_pos, const string &fname) {
           DBG("Fulfilling my end from next end_pos=", end_pos, " fname=", fname, "\n");
           dpss->stop_prom.fulfill_result(end_pos);
         },
@@ -675,16 +678,18 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
   SWARN("Opening ", fname, " over all ranks, not by global blocks - IO performance may suffer\n");
   auto sz = INT_CEIL(file_size, rank_n());
   set_block(sz * rank_me(), sz);
-  io_t.start();
+  
   if (!in) {
+    io_t.start();
     in.reset(new ifstream(fname));
+    io_t.stop();
   }
   if (!in) {
     SDIE("Could not open file ", fname, ": ", strerror(errno));
   }
   DBG("in.tell=", in->tellg(), "\n");
-  LOG("Opened ", fname, " in ", io_t.get_elapsed_since_start(), "s.\n");
-  io_t.stop();
+  LOG("Opened ", fname, " in ", io_t.get_elapsed(), "s.\n");
+  
   if (rank_me() == 0) {
     // special for first rank set start as 0
     DBG("Fulfilling setting 0 for rank 0 fname=", fname, "\n");
@@ -720,7 +725,7 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
         // send end to prev rank
         rpc_ff(
             rank - 1,
-            [](DPSS &dpss, int64_t end_pos, string fname) {
+            [](DPSS &dpss, int64_t end_pos, const string &fname) {
               DBG("Fulfill from leader end=", end_pos, " fname=", fname, "\n");
               dpss->stop_prom.fulfill_result(end_pos);
             },
@@ -728,7 +733,7 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
         // send start to rank
         rpc_ff(
             rank,
-            [](DPSS &dpss, int64_t start_pos, string fname) {
+            [](DPSS &dpss, int64_t start_pos, const string &fname) {
               DBG("Fulfill start leader start=", start_pos, " fname=", fname, "\n");
               dpss->start_prom.fulfill_result(start_pos);
             },
@@ -784,17 +789,23 @@ void FastqReader::seek_start() {
       " fname=", fname, "\n");
   io_t.start();
   seekg(start_read);
-  if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
-  SLOG_VERBOSE("Reading FASTQ file ", fname, "\n");
   double fseek_t = io_t.get_elapsed_since_start();
   io_t.stop();
+  if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
+  SLOG_VERBOSE("Reading FASTQ file ", fname, "\n");
   LOG("Reading fastq file ", fname, " at pos ", start_read, "==", tellg(), " to ", end_read, " seek ", fseek_t,
       "s io to open+find+seek ", io_t.get_elapsed(), "s\n");
 }
 
 FastqReader::~FastqReader() {
+  close();
+  DBG("Deconstructed FQR on ", fname, " - ", (void *)this, "\n");
+}
+
+void FastqReader::close() {
+  DBG("Closing FQR on ", fname, " - ", (void*)this, "\n");
   if (!open_fut.ready()) {
-    WARN("Destructor called before opening completed\n");
+    WARN("Close called before opening completed\n");
     open_fut.wait();
   }
 
@@ -816,11 +827,13 @@ FastqReader::~FastqReader() {
     in->close();
     io_t.stop();
   }
-  in.reset();
 
   io_t.done_all_async();  // will print in Timings' order eventually
-  FastqReader::overall_io_t += io_t.get_elapsed();
-  DBG("Deconstructed FQR on ", fname, " - ", (void *)this, "\n");
+  read_io_t.done_all_async();
+
+  FastqReader::overall_io_t += io_t.get_elapsed() + read_io_t.get_elapsed();
+  
+  in.reset();
 }
 
 string FastqReader::get_fname() const { return fname; }
@@ -918,12 +931,14 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   if (pos < 0 || !in->good()) {
     DIE("get_next_fq_record: file=", get_ifstream_state(), "\n");
   }
-  io_t.start();
+  
   size_t bytes_read = 0;
   id = "";
   char id2 = '\0';
   for (int i = 0; i < 4; i++) {
+    read_io_t.start();
     std::getline(*in, buf);
+    read_io_t.stop();
     if (!in->good()) {
       // Issue175 try to re-open once!
       static int reopens = 0;
@@ -947,7 +962,6 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
       quals.assign(buf);
     bytes_read += buf.size() + 1;
   }
-  io_t.stop();
   rtrim(id);
   rtrim(seq);
   rtrim(quals);
@@ -995,11 +1009,12 @@ void FastqReader::reset() {
     if (!in) {
       DIE("Reset called on unopened file\n");
     }
-    io_t.start();
+    
     assert(in && "reset called on active file");
+    io_t.start();
     seekg(start_read);
-    if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
     io_t.stop();
+    if (!in->good()) DIE("Could not fseek on ", fname, " to ", start_read, ": ", strerror(errno));
     read_count = 0;
     first_file = true;
     num_reads = num_pairs = num_bases = 0;

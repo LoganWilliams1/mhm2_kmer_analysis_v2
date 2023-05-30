@@ -829,7 +829,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       // inc by 2 so that we can use a later optimization of treating the even as /1 and the odd as /2
       read_id += 2;
       if (read_id % 1000 == 0) progress();
-    }
+    } // reading for each pair of records
     read_files_t.start();
     fqr.advise(false);  // free kernel memory
     read_files_t.stop();
@@ -845,7 +845,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     num_pairs += num_pairs_in_file;
     ri++;
     FastqReaders::close(reads_fname);
-    discharge();
+    progress();
 #ifdef ONE_FASTQ_AT_A_TIME
     BarrierTimer bt("Waiting for all ranks to finish reading " + get_basename(reads_fname));
     fut_reductions.wait();
@@ -853,6 +853,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);
+  discharge();
 
   // start the collective reductions
   // delay the summary output for when they complete
@@ -930,7 +931,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
   // finish all file writing and report
   auto fut_msm = pr.msm_reduce_one(read_files_t.get_elapsed());
-  fut_summary = when_all(fut_summary, fut_msm).then([](upcxx_utils::MinSumMax<double> msm) {
+  fut_summary = when_all(fut_summary, fut_msm).then([](const upcxx_utils::MinSumMax<double> &msm) {
     SLOG_VERBOSE("Total time reading fastq files: ", msm.to_string(), "\n");
   });
 
