@@ -90,6 +90,8 @@ add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
 add_definitions(-DKLIGN_KMERS_BUF_SIZE=256000)
 # percent of max free memory to use in buffering within klign's per_rank buffers
 add_definitions(-DKLIGN_MAX_MEM_PCT=10)
+# max contigs per kmer for temporary fix to Issue137
+add_definitions(-DKLIGN_MAX_CTGS_PER_KMER=50)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)

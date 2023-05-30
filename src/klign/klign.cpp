@@ -62,7 +62,6 @@
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/progress_bar.hpp"
-#include "upcxx_utils/rrdvz.hpp"
 #include "upcxx_utils/three_tier_aggr_store.hpp"
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
@@ -289,7 +288,7 @@ class KmerCtgDHT {
     size_t max_ctgs = 0;
     // determine max number of ctgs mapped to by a single kmer
     for (auto &elem : *kmer_map) {
-      max_ctgs = ::max(max_ctgs, (size_t)distance(elem.second.begin(), elem.second.end())); // .size());
+      max_ctgs = ::max(max_ctgs, (size_t)distance(elem.second.begin(), elem.second.end()));  // .size());
     }
     auto all_max_ctgs = reduce_one(max_ctgs, op_fast_max, 0).wait();
     if (all_max_ctgs > 1) SLOG_VERBOSE("Max contigs mapped by a single kmer: ", all_max_ctgs, "\n");
@@ -311,11 +310,10 @@ class KmerCtgDHT {
               ctg_locs.push_back({ctg_loc, i});
             }
           }
-          return upcxx_utils::RRendezVous(std::move(ctg_locs), KLIGN_KMERS_BUF_SIZE);
+          return ctg_locs;
         },
         kmers, kmer_map);
-    auto fut_val = fut_rpc.then([](auto rrndvz) { return rrndvz.get(); });
-    return fut_val;
+    return fut_rpc;
   }
 
   void dump_ctg_kmers() {
@@ -363,9 +361,12 @@ class KmerCtgDHT {
     auto tot_ctg_lengths = reduce_one(ctg_seq_lengths, op_fast_add, 0).wait();
     auto tot_num_ctgs = reduce_one(min_len_ctgs, op_fast_add, 0).wait();
     auto my_reserve = 1.2 * est_num_kmers / rank_n() + 2000;  // 120% to keep the map fast
-    SLOG_VERBOSE("Estimated ", est_num_kmers, " contig ", kmer_len, "-kmers for ", tot_num_ctgs, " contigs with total len ", tot_ctg_lengths, "\n");
-    auto my_required_mem = my_reserve * (sizeof(typename local_kmer_map_t::value_type) + sizeof(CtgLoc)); // 1 map key/value entry + 1 CtgLoc within the vector
-    LOG("Reserving ", my_reserve, " for my entries at approx ", get_size_str(my_required_mem * upcxx::local_team().rank_n()), " per node for the local hashtable\n");
+    SLOG_VERBOSE("Estimated ", est_num_kmers, " contig ", kmer_len, "-kmers for ", tot_num_ctgs, " contigs with total len ",
+                 tot_ctg_lengths, "\n");
+    auto my_required_mem = my_reserve * (sizeof(typename local_kmer_map_t::value_type) +
+                                         sizeof(CtgLoc));  // 1 map key/value entry + 1 CtgLoc within the vector
+    LOG("Reserving ", my_reserve, " for my entries at approx ", get_size_str(my_required_mem * upcxx::local_team().rank_n()),
+        " per node for the local hashtable\n");
     LOG_MEM("Before reserving entries for ctg kmers");
     kmer_map->reserve(my_reserve);
     global_ctg_seqs.reserve(ctgs.size());
@@ -400,6 +401,46 @@ class KmerCtgDHT {
     if (num_dropped_seed_to_ctgs)
       SLOG_VERBOSE("For k = ", kmer_len, " dropped ", num_dropped_seed_to_ctgs, " non-unique seed-to-contig mappings (",
                    setprecision(2), fixed, (100.0 * num_dropped_seed_to_ctgs / tot_num_kmers), "%)\n");
+    barrier();
+  }
+
+  void purge_high_count_seeds(int max_ctgs_per_kmer) {
+    // FIXME: Hack for Issue137 to be fixed robustly later
+    size_t num_purged = 0;
+    size_t num_ctg_locs_purged = 0;
+    size_t max_ctg_locs_purged = 0;
+    vector<Kmer<MAX_K>> to_be_purged;
+    for (auto &elem : *kmer_map) {
+      auto &[kmer, ctg_locs] = elem;
+      auto sz = std::distance(ctg_locs.begin(), ctg_locs.end());
+      if (sz > max_ctgs_per_kmer) {
+        DBG("Removing kmer with ", sz, " ctg_loc hits: ", kmer.to_string(), "\n");
+        to_be_purged.push_back(kmer);
+        num_purged++;
+        num_ctg_locs_purged += sz;
+        if (sz > max_ctg_locs_purged) max_ctg_locs_purged = sz;
+      }
+    }
+
+    for (auto &kmer : to_be_purged) {
+      auto it = kmer_map->find(kmer);
+      if (it == kmer_map->end()) DIE("Could not find kmer with too many ctg_locs!");
+      kmer_map->erase(it);
+    }
+
+    auto &pr = Timings::get_promise_reduce();
+    auto fut_reduce = when_all(pr.reduce_one(num_purged, op_fast_add, 0), pr.reduce_one(num_ctg_locs_purged, op_fast_add, 0),
+                               pr.reduce_one(max_ctg_locs_purged, op_fast_add, 0), pr.msm_reduce_one(kmer_map->size(), 0),
+                               pr.msm_reduce_one(num_purged, 0));
+    auto fut_report = fut_reduce.then([=](auto all_num_purged, auto all_ctg_locs_purged, auto max_ctg_locs_purged,
+                                          auto msm_kmers_remaining, auto msm_kmers_purged) {
+      LOG("Purge high count contig kmer seeds. num_purged=", num_purged, " num_ctg_locs_purged=", num_ctg_locs_purged, " max_ctg_locs_purged=", max_ctg_locs_purged,
+          "\n");
+      SLOG_VERBOSE("All purged ", all_num_purged, " high count contig kmer seeds.  total_ctg_locs_purged=", all_ctg_locs_purged,
+                   " max_ctg_locs=", max_ctg_locs_purged, " seeds_remaining=", msm_kmers_remaining.to_string(),
+                   " seeds_purged=", msm_kmers_purged.to_string(), "\n");
+    });
+    Timings::set_pending(fut_report);
   }
 };
 
@@ -915,6 +956,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   barrier();
   kmer_ctg_dht.build(ctgs, min_ctg_len);
+  kmer_ctg_dht.purge_high_count_seeds(KLIGN_MAX_CTGS_PER_KMER);
 #ifdef DEBUG
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
