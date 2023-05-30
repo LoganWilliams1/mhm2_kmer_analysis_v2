@@ -597,16 +597,16 @@ class Aligner {
   }
 
   auto fut_get_num_perfect_alns(bool all = false) {
-    if (!all) return reduce_one(num_perfect_alns, op_fast_add, 0);
-    return reduce_all(num_perfect_alns, op_fast_add);
+    auto &pr = Timings::get_promise_reduce();
+    if (!all) return pr.reduce_one(num_perfect_alns, op_fast_add, 0);
+    return pr.reduce_all(num_perfect_alns, op_fast_add);
   }
-  int64_t get_num_perfect_alns(bool all = false) { return fut_get_num_perfect_alns(all).wait(); }
 
   auto fut_get_num_alns(bool all = false) {
-    if (!all) return reduce_one(num_alns, op_fast_add, 0);
-    return reduce_all(num_alns, op_fast_add);
+    auto &pr = Timings::get_promise_reduce();
+    if (!all) return pr.reduce_one(num_alns, op_fast_add, 0);
+    return pr.reduce_all(num_alns, op_fast_add);
   }
-  int64_t get_num_alns(bool all = false) { return fut_get_num_alns(all).wait(); }
 
   void clear_aln_bufs() {
     kernel_alns.clear();
