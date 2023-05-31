@@ -283,10 +283,12 @@ void Alns::add_aln(Aln &aln) {
       auto new_identity = aln.calc_identity();
       // SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, "
       // ", num_dups, "\n");
+      auto old_aln_len = it->rstop - it->rstart;
       it++;
-      if ((new_identity > old_identity) || (new_identity == old_identity && (aln.rstop - aln.rstart > it->rstop - it->rstart))) {
+      if ((new_identity > old_identity) || (new_identity == old_identity && (aln.rstop - aln.rstart > old_aln_len))) {
         // new one is better - erase the old one
-        it = vector<Aln>::reverse_iterator(alns.erase(it.base()));
+        auto fit = it.base();
+        if (fit != alns.end()) alns.erase(fit);
         // can only happen once because previous add_aln calls will have ensured there is only the best single aln for that cid
         break;
       } else {

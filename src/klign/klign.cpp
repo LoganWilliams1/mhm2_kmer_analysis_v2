@@ -305,6 +305,7 @@ class KmerCtgDHT {
     auto fut_rpc = rpc(
         target_rank,
         [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
+	  BaseTimer t("with get_ctgs_with_kmers rpc"); t.start();
           vector<CtgLocAndKmerIdx> ctg_locs;
           for (int i = 0; i < kmers.size(); i++) {
             auto &kmer = kmers[i];
@@ -316,6 +317,9 @@ class KmerCtgDHT {
               ctg_locs.push_back({ctg_loc, i});
             }
           }
+	  t.stop();
+	  // For Issue137 tracking
+          if (ctg_locs.size() * sizeof(CtgLocAndKmerIdx) > KLIGN_MAX_RPC_MESSAGE_SIZE || rand() % 1000 == 0) LOG("Received ", kmers.size(), " kmers ", get_size_str(kmers.size() * sizeof(Kmer<MAX_K>)), " responding with ", ctg_locs.size(), " ctg_locs ", get_size_str(ctg_locs.size() * sizeof(CtgLocAndKmerIdx)), " in ", t.get_elapsed(), " s\n");
           return ctg_locs;
         },
         kmers, kmer_map);
@@ -803,7 +807,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   int kmer_len = Kmer<MAX_K>::get_k();
 
   // Do not exceed maximum size for RPC messages in either direction, assuming 1 hit per kmer
-  size_t max_rdvz_buffer_size = KLIGN_KMERS_BUF_SIZE / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
+  size_t max_rdvz_buffer_size = KLIGN_MAX_RPC_MESSAGE_SIZE / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
 
   // further limit private memory buffering (per rank) to 10% of memory
   size_t max_mem = KLIGN_MAX_MEM_PCT * upcxx_utils::get_max_free_mem_per_rank() / 100;
@@ -811,7 +815,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       (max_mem - rank_n() * (sizeof(KmersReadsBuffer<MAX_K>))) / (rank_n() * KmersReadsBuffer<MAX_K>::get_size_per());
   max_rdvz_buffer_size = ::min(max_rdvz_buffer_size, max_mem_buffer_size) + 1;
 
-  LOG("max_mem for buffers=", get_size_str(max_mem), " KLIGN_KMERS_BUF_SIZE=", get_size_str(KLIGN_KMERS_BUF_SIZE),
+  LOG("max_mem for buffers=", get_size_str(max_mem), " KLIGN_MAX_RPC_MESSAGE_SIZE=", get_size_str(KLIGN_MAX_RPC_MESSAGE_SIZE),
       " max_mem_buffer_size=", max_mem_buffer_size, " max_rdvz_buffer_size=", max_rdvz_buffer_size, "\n");
 
   // stagger first batches with a reduced count before flush
