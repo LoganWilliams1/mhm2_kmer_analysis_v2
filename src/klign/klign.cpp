@@ -415,6 +415,7 @@ class KmerCtgDHT {
   }
 
   void purge_high_count_seeds(int max_ctgs_per_kmer = KLIGN_MAX_CTGS_PER_KMER) {
+    BarrierTimer timer(__FILEFUNC__);
     // FIXME: Hack for Issue137 to be fixed robustly later
     size_t num_purged = 0;
     size_t num_ctg_locs_purged = 0;
