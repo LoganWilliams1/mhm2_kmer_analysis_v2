@@ -200,6 +200,11 @@ while (<>) {
             $stats{'DistinctKmersWithFP'} = $2;
             $stats{'MinDepthKmers'} = $2 - $1;
         }
+        if (/For (\d+) kmers, average kmer count /) {
+            if ((not defined $stats{'MinDepthKmers'}) || $1 > $stats{'MinDepthKmers'}) { # fix for pre Issue190
+                $stats{'MinDepthKmers'} = $1;
+            }
+        }
         if ((not defined $stats{"DistinctKmersWithFP"}) && (/Found (\d+) .* unique kmers/ || /Number of elements in hash table: (\d+)/)) { # legacy
             $stats{"DistinctKmersWithFP"} = $1;
         }
