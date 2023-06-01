@@ -557,6 +557,7 @@ class Aligner {
   }
 
   void do_rget_irregular(int target, KlignTimers &timers) {
+    assert(!upcxx::in_progress());
     vector<pair<global_ptr<char>, size_t>> src;
     vector<pair<char *, size_t>> dest;
     HASH_TABLE<cid_t, string> ctgs_fetched;
@@ -570,6 +571,7 @@ class Aligner {
         ctg_bytes_fetched += clen;
       }
     }
+    if (src.empty() || dest.empty()) DIE("empty src: ", src.size(), " or dest:", dest.size(), " rget_reqests:", rget_requests.size(), "\n");
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
     rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
@@ -650,6 +652,7 @@ class Aligner {
 
   void compute_alns_for_read(CtgAndReadLocsMap &aligned_ctgs_map, const string &rname, const string &rseq_fw, int read_group_id,
                              KlignTimers &timers) {
+    assert(!upcxx::in_progress());
     int rlen = rseq_fw.length();
     string rseq_rc;
     string tmp_ctg;
