@@ -130,7 +130,7 @@ int64_t ReadsToCtgsDHT::get_num_mappings() { return reduce_one(reads_to_ctgs_map
 vector<CtgInfo> ReadsToCtgsDHT::get_ctgs(string &read_id) {
   return upcxx::rpc(
              get_target_rank(read_id),
-             [](upcxx::dist_object<reads_to_ctgs_map_t> &reads_to_ctgs_map, string read_id) -> vector<CtgInfo> {
+             [](upcxx::dist_object<reads_to_ctgs_map_t> &reads_to_ctgs_map, const string &read_id) -> vector<CtgInfo> {
                const auto it = reads_to_ctgs_map->find(read_id);
                if (it == reads_to_ctgs_map->end()) return {};
                return it->second;
@@ -384,7 +384,7 @@ void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsT
       DBG_VERBOSE("Getting contigs from ", target_rank, " for ", just_ids.size(), " reads\n");
       auto read_ctgs_fut = reads_to_ctgs.get_ctgs(target_rank, just_ids);
       auto fut = read_ctgs_fut.then([sh_rank_read_ids, target_rank, packed_reads, &progbar, &num_read_maps_found,
-                                     &ctgs_to_add](vector<vector<CtgInfo>> read_ctgs) {
+                                     &ctgs_to_add](const vector<vector<CtgInfo>> &read_ctgs) {
         DBG_VERBOSE("Processing gotten contigs from ", target_rank, " for ", read_ctgs.size(), "\n");
         auto &read_ids = (*sh_rank_read_ids)[target_rank];
         assert(read_ctgs.size() == read_ids.size());
@@ -398,7 +398,7 @@ void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsT
           const auto &read_idx = read_ids[i].second;
           DBG_VERBOSE("Loading packed_read idx=", read_idx, "\n");
           assert(i < read_ctgs.size());
-          vector<CtgInfo> &ctgs = read_ctgs[i];
+          const vector<CtgInfo> &ctgs = read_ctgs[i];
           DBG_VERBOSE(" ctgs=", ctgs.size(), "\n");
           if (ctgs.size()) {
             num_read_maps_found++;

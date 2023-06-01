@@ -264,7 +264,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   }
   if (ctgs_file.tellg() < stop_offset)
     DIE("Did not read the entire contigs file from ", start_offset, " to ", stop_offset, " tellg=", ctgs_file.tellg());
-  DBG("Got contigs=", contigs.size(), " tot_len=", tot_len, "\n");
+  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, "\n");
   auto &pr = Timings::get_promise_reduce();
   auto fut_tot_contigs = pr.reduce_one(contigs.size(), op_fast_add, 0);
   auto fut_tot_len = pr.reduce_one(tot_len, op_fast_add, 0);

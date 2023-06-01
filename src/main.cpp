@@ -110,9 +110,9 @@ int main(int argc, char **argv) {
   auto fut_report_init_timings =
       when_all(prom_report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings(),
                msm_starting_free_mem_fut, msm_post_init_free_mem_fut)
-          .then([&total_timer](upcxx_utils::MinSumMax<double> entry_msm, upcxx_utils::ShTimings sh_timings,
-                               upcxx_utils::ShTimings sh_first_barrier_timings, upcxx_utils::MinSumMax<float> starting_mem_msm,
-                               upcxx_utils::MinSumMax<float> post_init_mem_msm) {
+          .then([&total_timer](const upcxx_utils::MinSumMax<double> &entry_msm, upcxx_utils::ShTimings sh_timings,
+                               upcxx_utils::ShTimings sh_first_barrier_timings, const upcxx_utils::MinSumMax<float> &starting_mem_msm,
+                               const upcxx_utils::MinSumMax<float> &post_init_mem_msm) {
             SLOG_VERBOSE("upcxx::init Before=", entry_msm.to_string(), "\n");
             SLOG_VERBOSE("upcxx::init After=", sh_timings->to_string(), "\n");
             SLOG_VERBOSE("upcxx::init FirstBarrier=", sh_first_barrier_timings->to_string(), "\n");
@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
       rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
-    Timings::get_pending().wait();  // report all I/O stats here
+    Timings::wait_pending();  // report all I/O stats here
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();

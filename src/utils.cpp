@@ -379,7 +379,9 @@ void log_local(std::string header, std::string msg) {
   if (upcxx::local_team().rank_me()) {
     rpc(
         upcxx::local_team(), 0,
-        [](upcxx::dist_object<vector<upcxx::promise<string>>> &msgs, string msg, int from) { (*msgs)[from].fulfill_result(msg); },
+        [](upcxx::dist_object<vector<upcxx::promise<string>>> &msgs, const string &msg, int from) {
+          (*msgs)[from].fulfill_result(msg);
+        },
         msgs, msg, upcxx::local_team().rank_me())
         .wait();
   } else {  // local rank 0
@@ -429,13 +431,51 @@ void log_local(std::string header, std::string msg) {
 void log_pins() { log_local("CPU Pinnings", get_proc_pin()); }
 
 void log_env() {
-  string msg;
+  string upcxx_msg;
+  string job_msg;
+  string other_msg;
   for (char **_env = environ; *_env; ++_env) {
     string env(*_env);
     auto pos = env.find("GASNET");
     if (pos == string::npos) pos = env.find("UPCXX");
-    if (pos == string::npos) pos = env.find("CXI");
-    if (pos != string::npos) msg += env + ", ";
+    if (pos == string::npos) pos = env.find("FI_CXI_");
+    if (pos == string::npos) pos = env.find("MHM2");
+    if (pos != string::npos) {
+      upcxx_msg += env + ",";
+      continue;
+    }
+    if (pos == string::npos) pos = env.find("JOB");
+    if (pos == string::npos) pos = env.find("NODE");
+    if (pos == string::npos) pos = env.find("STEP");
+    if (pos != string::npos) {
+      job_msg += env + ", ";
+      continue;
+    }
+
+#ifndef DEBUG
+    // skip cruft unless debugging
+    pos = env.find("PATH");  // skip path
+    if (pos != string::npos) continue;
+    pos = env.find("_DIR");  // skip dir
+    if (pos != string::npos) continue;
+    pos = env.find("CRAY");  // skip cray
+    if (pos != string::npos) continue;
+    pos = env.find("PE_");  // skip cray programming envs
+    if (pos != string::npos) continue;
+    pos = env.find("LANG");  // skip language
+    if (pos != string::npos) continue;
+    pos = env.find("SSH");  // skip ssh
+    if (pos != string::npos) continue;
+    pos = env.find("TERM");  // skip terminal
+    if (pos != string::npos) continue;
+    pos = env.find("TTY");  // skip tty
+    if (pos != string::npos) continue;
+    pos = env.find("COLOR");  // skip color
+    if (pos != string::npos) continue;
+#endif
+    other_msg += env + ",";
   }
-  log_local("GASNET/UPCXX Environment", msg);
+  log_local("GASNET/UPCXX Environment", upcxx_msg);
+  log_local("JOB Environment", job_msg);
+  LOG("OTHER Environment: ", other_msg, "\n");
 }

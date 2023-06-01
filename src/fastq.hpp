@@ -92,7 +92,7 @@ class FastqReader {
   bool _first_pair;      // alternate for pair1 (first_pair) and pair2 (!first_pair)
   bool _trim_comment;
   bool _is_bgzf;
-  IntermittentTimer io_t;
+  IntermittentTimer io_t, read_io_t;
   struct PromStartStop {
     promise<int64_t> start_prom, stop_prom;
     upcxx::future<> set(FastqReader &fqr) {
@@ -148,6 +148,7 @@ class FastqReader {
   upcxx::future<> continue_open_default_per_rank_boundaries();
 
   ~FastqReader();
+  void close();
 
   string get_fname() const;
 
