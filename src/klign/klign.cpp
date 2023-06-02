@@ -333,8 +333,10 @@ class KmerCtgDHT {
     }
     if (!out_buf.str().empty()) dump_file << out_buf.str();
     dump_file.close();
-    progbar.done();
-    SLOG_VERBOSE("Dumped ", this->get_num_kmers(), " kmers\n");
+    auto fut_rep = when_all(progbar.set_done(), this->fut_get_num_kmers()).then([](auto tot_num_kmers) {
+      SLOG_VERBOSE("Dumped ", tot_num_kmers, " kmers\n");
+    });
+    Timings::set_pending(fut_rep);
   }
 
   void build(Contigs &ctgs, unsigned min_ctg_len) {
