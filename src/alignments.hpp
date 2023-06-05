@@ -129,5 +129,6 @@ class Alns {
 
   int calculate_unmerged_rlen();
 
-  future<> sort_alns();
+  future<> sort_alns_in_thread();
+  void sort_alns();
 };

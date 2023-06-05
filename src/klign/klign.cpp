@@ -629,11 +629,10 @@ class Aligner {
     }
   }
 
-  void sort_alns() {
+  void finish_alns() {
     if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
     if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
     active_kernel_fut.wait();
-    alns->sort_alns().wait();
   }
 
   void log_ctg_bytes_fetched() {
@@ -781,7 +780,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
         upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
       }
-      if (((i/seed_space) & 0x7) == 0x7) progress();
+      if (((i / seed_space) & 0x7) == 0x7) progress();
     }
     kmers.clear();
   }
@@ -796,7 +795,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   upcxx_utils::flush_outstanding_futures();
   fetch_fut_chain.wait();
   auto fut_prog_done = progbar.set_done();
-  upcxx::barrier(); // FIXME - Bad for multiple files
+
   upcxx_utils::Timings::set_pending(fut_prog_done);
 
   auto &pr = Timings::get_promise_reduce();
@@ -823,13 +822,14 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 };  // fetch_ctg_maps
 
 template <int MAX_K>
-void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
-                  bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+shared_ptr<Alns> compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, int read_group_id, int rlen_limit,
+                              bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
   timers.compute_alns.start();
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
-  Alns alns_for_sample;
+  auto sh_alns = make_shared<Alns>();
+  Alns &alns_for_sample = *sh_alns;
   Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(),
@@ -847,13 +847,11 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
     }
   }
   aligner.flush_remaining(read_group_id, timers);
+  aligner.finish_alns();
   Timings::set_pending(progbar.set_done());
   timers.compute_alns.stop();
-  upcxx::barrier(); // FIXME - Bad for multiple files
-  read_records.clear();
-  aligner.sort_alns();
-  alns.append(alns_for_sample);
   
+  read_records.clear();
   aligner.log_ctg_bytes_fetched();
 
   auto &pr = Timings::get_promise_reduce();
@@ -873,7 +871,8 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
                  (double)all_num_alns / all_num_reads_aligned, "\n");
   });
   Timings::set_pending(fut_report);
-  
+
+  return sh_alns;
 };  // compute_alns
 
 template <int MAX_K>
@@ -896,15 +895,32 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
   int read_group_id = 0;
+  std::vector<shared_ptr<Alns>> aln_results;
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, use_blastn_scores, all_num_ctgs,
-                        timers);
+    auto sh_alns = compute_alns<MAX_K>(packed_reads, read_records, read_group_id, rlen_limit, report_cigar, use_blastn_scores,
+                                       all_num_ctgs, timers);
+    if (sh_alns->size()) aln_results.push_back(sh_alns);
     read_group_id++;
   }
+  // barrier & discharge before loosing attention for sort & append
   barrier();
+  discharge();
+  BaseTimer sort_t("klign: sort alns");
+  sort_t.start();
+  auto num_alns = 0;
+  for (auto sh_alns : aln_results) {
+    sh_alns->sort_alns();
+    num_alns += sh_alns->size();
+  }
+  alns.reserve(alns.size() + num_alns);
+  for (auto sh_alns : aln_results) {
+    alns.append(*sh_alns);
+  }
+  sort_t.stop();
   timers.done_all();
+  sort_t.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();
   return aln_kernel_elapsed;
