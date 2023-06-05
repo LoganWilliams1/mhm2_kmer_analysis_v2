@@ -313,7 +313,13 @@ void Alns::add_aln(Aln &aln) {
 }
 
 void Alns::append(Alns &more_alns) {
-  alns.insert(alns.end(), more_alns.alns.begin(), more_alns.alns.end());
+  assert(!upcxx::in_progress());
+  upcxx::discharge(); // memory allocation can be blocking
+  alns.reserve(alns.size() + more_alns.alns.size());
+  upcxx::discharge(); // can take some time to build
+  for(auto &a : more_alns.alns) {
+    alns.emplace_back(std::move(a));
+  }
   num_dups += more_alns.num_dups;
   num_bad += more_alns.num_bad;
   more_alns.clear();

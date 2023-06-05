@@ -46,6 +46,7 @@
 #include <unistd.h>
 #include <string_view>
 #include <unordered_set>
+#include <deque>
 
 #include <algorithm>
 #include <forward_list>
@@ -296,6 +297,7 @@ class KmerCtgDHT {
         target_rank,
         [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
           vector<CtgLocAndKmerIdx> ctg_locs;
+          ctg_locs.reserve(kmers.size());
           for (int i = 0; i < kmers.size(); i++) {
             auto &kmer = kmers[i];
             assert(kmer.is_least());
@@ -487,9 +489,11 @@ class Aligner {
   }
 
   void do_rget_irregular(int target, KlignTimers &timers) {
-    vector<pair<global_ptr<char>, size_t>> src;
-    vector<pair<char *, size_t>> dest;
+    deque<pair<global_ptr<char>, size_t>> src;
+    deque<pair<char *, size_t>> dest;
     HASH_TABLE<cid_t, string> ctgs_fetched;
+    auto sz = rget_requests[target].size();
+    ctgs_fetched.reserve(sz);
     for (auto &req : rget_requests[target]) {
       auto clen = req.ctg_loc.clen;
       auto it = ctgs_fetched.find(req.ctg_loc.cid);
@@ -498,6 +502,7 @@ class Aligner {
         src.push_back({req.ctg_loc.seq_gptr, clen});
         dest.push_back({const_cast<char *>(it->second.data()), clen});
         ctg_bytes_fetched += clen;
+        progress();
       }
     }
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
@@ -512,6 +517,7 @@ class Aligner {
       string &ctg_seq = it->second;
       align_read(req.rname, cid, req.read_seq, ctg_seq, req.rstart, req.cstart, req.orient, req.overlap_len, req.read_group_id,
                  timers);
+      progress();
     }
     rget_requests[target].clear();
   }
@@ -583,14 +589,14 @@ class Aligner {
     int rlen = rseq_fw.length();
     string rseq_rc;
     string tmp_ctg;
+    string rseq;
     for (auto &ctg_and_read_locs : aligned_ctgs_map) {
-      progress();
       for (auto &ctg_and_read_loc : ctg_and_read_locs.second) {
+        progress();
         int pos_in_read = ctg_and_read_loc.pos_in_read;
         bool read_is_rc = ctg_and_read_loc.read_is_rc;
         auto &ctg_loc = ctg_and_read_loc.ctg_loc;
         char orient = '+';
-        string rseq;
         if (ctg_loc.is_rc != read_is_rc) {
           // it's revcomp in either contig or read, but not in both or neither
           orient = '-';
@@ -710,6 +716,7 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
             }
           })
           .then([sh_krb]() {});
+  progress();
   return fut_rpc_returned;
 };  // fetch_ctg_maps_for_target
 
@@ -732,8 +739,8 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   vector<Kmer<MAX_K>> kmers;
   int kmer_len = Kmer<MAX_K>::get_k();
 
-  // Do not exceed 128KB RPC messages in either direction
-  size_t max_rdzv_message_size = 128 * 1024;
+  // Do not exceed 256KB RPC messages in either direction
+  size_t max_rdzv_message_size = 256 * 1024;
   size_t max_rdvz_buffer_size = max_rdzv_message_size / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
   size_t max_kmer_buffer_size = ::min((size_t)KLIGN_KMERS_BUF_SIZE / rank_n(), max_rdvz_buffer_size);
 
@@ -750,6 +757,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
     read_records[ri] = ReadRecord({ri, (int)read_seq.length()});
     Kmer<MAX_K>::get_kmers(kmer_len, string_view(read_seq.data(), read_seq.size()), kmers, true);
     if (!kmers.size()) continue;
+    progress();
 
     for (int i = 0; i < kmers.size(); i += seed_space) {
       const Kmer<MAX_K> &kmer_fw = kmers[i];
@@ -773,6 +781,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
         upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
       }
+      if (((i/seed_space) & 0x7) == 0x7) progress();
     }
     kmers.clear();
   }
@@ -786,7 +795,10 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   }
   upcxx_utils::flush_outstanding_futures();
   fetch_fut_chain.wait();
-  upcxx_utils::Timings::set_pending(progbar.set_done());
+  auto fut_prog_done = progbar.set_done();
+  upcxx::barrier(); // FIXME - Bad for multiple files
+  upcxx_utils::Timings::set_pending(fut_prog_done);
+
   auto &pr = Timings::get_promise_reduce();
   auto fut_reduce = when_all(pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_kmers, op_fast_add, 0),
                              pr.reduce_one(bytes_sent, op_fast_add, 0), pr.reduce_one(bytes_received, op_fast_add, 0),
@@ -838,6 +850,10 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   Timings::set_pending(progbar.set_done());
   read_records.clear();
   aligner.sort_alns();
+  timers.compute_alns.stop();
+  upcxx::barrier(); // FIXME - Bad for multiple files
+  alns.append(alns_for_sample);
+  
   aligner.log_ctg_bytes_fetched();
 
   auto &pr = Timings::get_promise_reduce();
@@ -857,8 +873,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
                  (double)all_num_alns / all_num_reads_aligned, "\n");
   });
   Timings::set_pending(fut_report);
-  alns.append(alns_for_sample);
-  timers.compute_alns.stop();
+  
 };  // compute_alns
 
 template <int MAX_K>

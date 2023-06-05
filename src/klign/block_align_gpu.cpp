@@ -87,6 +87,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     }
 
     auto aln_results = gpu_driver->get_aln_results();
+    aln_block_data->alns->reserve(aln_block_data->alns->size() + aln_block_data->kernel_alns.size());
 
     for (int i = 0; i < aln_block_data->kernel_alns.size(); i++) {
       Aln &aln = aln_block_data->kernel_alns[i];
@@ -113,7 +114,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     DBG_VERBOSE("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
   });
-
+  progress();
   return fut;
 }
 
@@ -177,5 +178,6 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     } else {
       active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
     }
+    progress();
   }
 }
