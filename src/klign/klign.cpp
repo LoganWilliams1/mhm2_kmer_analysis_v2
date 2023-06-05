@@ -83,10 +83,10 @@ struct KlignTimers {
       , aln_kernel("klign: aln kernel") {}
 
   void done_all() {
-    fetch_ctg_maps.done_all();
-    compute_alns.done_all();
-    rget_ctg_seqs.done_all();
-    aln_kernel.done_all();
+    fetch_ctg_maps.done_all_async();
+    compute_alns.done_all_async();
+    rget_ctg_seqs.done_all_async();
+    aln_kernel.done_all_async();
   }
 
   void clear() {
@@ -489,6 +489,8 @@ class Aligner {
   }
 
   void do_rget_irregular(int target, KlignTimers &timers) {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
     deque<pair<global_ptr<char>, size_t>> src;
     deque<pair<char *, size_t>> dest;
     HASH_TABLE<cid_t, string> ctgs_fetched;
@@ -568,6 +570,8 @@ class Aligner {
   }
 
   void flush_remaining(int read_group_id, KlignTimers &timers) {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
     BaseTimer t(__FILEFUNC__);
     t.start();
     for (auto target : upcxx_utils::foreach_rank_by_node()) {
@@ -586,6 +590,8 @@ class Aligner {
 
   void compute_alns_for_read(CtgAndReadLocsMap &aligned_ctgs_map, const string &rname, const string &rseq_fw, int read_group_id,
                              KlignTimers &timers) {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
     int rlen = rseq_fw.length();
     string rseq_rc;
     string tmp_ctg;
@@ -630,12 +636,16 @@ class Aligner {
   }
 
   void finish_alns() {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
     if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
     if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
     active_kernel_fut.wait();
   }
 
   void log_ctg_bytes_fetched() {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(rget_calls, op_fast_add, 0), pr.reduce_one(ctg_bytes_fetched, op_fast_add, 0),
                                pr.reduce_one(ctg_bytes_fetched, op_fast_max, 0), pr.reduce_one(local_ctg_fetches, op_fast_add, 0),
@@ -662,6 +672,8 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
                                                  KmersReadsBuffer<MAX_K> &kmers_reads_buffer, int64_t &num_alns,
                                                  int64_t &num_excess_alns_reads, int64_t &bytes_sent, int64_t &bytes_received,
                                                  int64_t &max_bytes_sent, int64_t &max_bytes_received, int64_t &num_rpcs) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
   assert(kmers_reads_buffer.size());
   int64_t sent_msg_size = (sizeof(Kmer<MAX_K>) * kmers_reads_buffer.kmers.size());
   bytes_sent += sent_msg_size;
@@ -722,6 +734,8 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
 template <int MAX_K>
 void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records, int seed_space,
                     KlignTimers &timers) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
   timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
@@ -777,8 +791,8 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         auto fetch_fut =
             fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
                                       bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+        upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
-        upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
       }
       if (((i / seed_space) & 0x7) == 0x7) progress();
     }
@@ -788,16 +802,17 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
     if (kmers_reads_buffers[target].size()) {
       auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
                                                  bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+      upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
       fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
-      upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
     }
   }
   upcxx_utils::flush_outstanding_futures();
   fetch_fut_chain.wait();
   auto fut_prog_done = progbar.set_done();
-
+  timers.fetch_ctg_maps.stop();
   upcxx_utils::Timings::set_pending(fut_prog_done);
 
+  // defer reporting
   auto &pr = Timings::get_promise_reduce();
   auto fut_reduce = when_all(pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_kmers, op_fast_add, 0),
                              pr.reduce_one(bytes_sent, op_fast_add, 0), pr.reduce_one(bytes_received, op_fast_add, 0),
@@ -817,13 +832,14 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
     }
   });
-  timers.fetch_ctg_maps.stop();
   Timings::set_pending(fut_report);
 };  // fetch_ctg_maps
 
 template <int MAX_K>
 shared_ptr<Alns> compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, int read_group_id, int rlen_limit,
                               bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
   timers.compute_alns.start();
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
@@ -850,10 +866,10 @@ shared_ptr<Alns> compute_alns(PackedReads *packed_reads, vector<ReadRecord> &rea
   aligner.finish_alns();
   Timings::set_pending(progbar.set_done());
   timers.compute_alns.stop();
-  
   read_records.clear();
+  
+  // defer reporting
   aligner.log_ctg_bytes_fetched();
-
   auto &pr = Timings::get_promise_reduce();
   auto fut_reduce = when_all(
       pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_reads_aligned, op_fast_add, 0), aligner.fut_get_num_alns(),
@@ -906,6 +922,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   }
   // barrier & discharge before loosing attention for sort & append
   barrier();
+  Timings::wait_pending();
   discharge();
   BaseTimer sort_t("klign: sort alns");
   sort_t.start();
@@ -920,7 +937,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   }
   sort_t.stop();
   timers.done_all();
-  sort_t.done_all();
+  sort_t.done_all_async();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();
   return aln_kernel_elapsed;

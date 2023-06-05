@@ -57,6 +57,8 @@ static adept_sw::GPUDriver *gpu_driver;
 
 static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, bool report_cigar,
                                        IntermittentTimer &aln_kernel_timer) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
   future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &aln_kernel_timer] {
     DBG_VERBOSE("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
 
@@ -111,6 +113,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     }
   });
   fut = fut.then([alns = alns, aln_block_data]() {
+    assert(upcxx::master_persona().active_with_caller());
     DBG_VERBOSE("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
   });
