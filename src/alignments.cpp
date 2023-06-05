@@ -440,5 +440,6 @@ future<> Alns::sort_alns() {
   });
   return fut.then([](AsyncTimer timer) {
     // TODO record timer and initate reports after waiting...
+    LOG("sort_alns took ", timer.get_elapsed(), " s in the thread pool\n");
   });
 }
