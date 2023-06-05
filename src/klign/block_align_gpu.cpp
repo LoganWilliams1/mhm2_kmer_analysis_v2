@@ -114,7 +114,6 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     DBG_VERBOSE("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
   });
-  progress();
   return fut;
 }
 
@@ -139,6 +138,7 @@ void cleanup_aligner() {
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
                         IntermittentTimer &aln_kernel_timer) {
+  assert(!upcxx::in_progress());
   BaseTimer steal_t("CPU work steal");
   steal_t.start();
   auto num = kernel_alns.size();

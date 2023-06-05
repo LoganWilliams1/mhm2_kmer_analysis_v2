@@ -313,10 +313,7 @@ void Alns::add_aln(Aln &aln) {
 }
 
 void Alns::append(Alns &more_alns) {
-  assert(!upcxx::in_progress());
-  upcxx::discharge(); // memory allocation can be blocking
   alns.reserve(alns.size() + more_alns.alns.size());
-  upcxx::discharge(); // can take some time to build
   for(auto &a : more_alns.alns) {
     alns.emplace_back(std::move(a));
   }
