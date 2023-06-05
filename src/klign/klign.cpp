@@ -848,10 +848,10 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   }
   aligner.flush_remaining(read_group_id, timers);
   Timings::set_pending(progbar.set_done());
-  read_records.clear();
-  aligner.sort_alns();
   timers.compute_alns.stop();
   upcxx::barrier(); // FIXME - Bad for multiple files
+  read_records.clear();
+  aligner.sort_alns();
   alns.append(alns_for_sample);
   
   aligner.log_ctg_bytes_fetched();
