@@ -73,6 +73,10 @@ using namespace upcxx_utils;
 
 using cid_t = int64_t;
 
+#ifndef MAX_IRREGULAR_RGET
+#define MAX_IRREGULAR_RGET 0 // set to 8192 to avoid large rgets within rget_irregular
+#endif
+
 struct KlignTimers {
   upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel;
 
@@ -496,20 +500,29 @@ class Aligner {
     HASH_TABLE<cid_t, string> ctgs_fetched;
     auto sz = rget_requests[target].size();
     ctgs_fetched.reserve(sz);
+    upcxx::future<> fut_chain = make_future();
     for (auto &req : rget_requests[target]) {
       auto clen = req.ctg_loc.clen;
       auto it = ctgs_fetched.find(req.ctg_loc.cid);
       if (it == ctgs_fetched.end()) {
         it = ctgs_fetched.insert({req.ctg_loc.cid, string(clen, ' ')}).first;
-        src.push_back({req.ctg_loc.seq_gptr, clen});
-        dest.push_back({const_cast<char *>(it->second.data()), clen});
+        if (MAX_IRREGULAR_RGET > 0 && clen >= MAX_IRREGULAR_RGET) {
+          // issue a normal rget
+          auto fut = rget(req.ctg_loc.seq_gptr, const_cast<char *>(it->second.data()), clen);
+          fut_chain = when_all(fut, fut_chain);
+        } else {
+          src.push_back({req.ctg_loc.seq_gptr, clen});
+          dest.push_back({const_cast<char *>(it->second.data()), clen});
+        }
         ctg_bytes_fetched += clen;
         progress();
       }
     }
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
-    rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
+    if (src.size()) 
+      rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
+    fut_chain.wait();
     timers.rget_ctg_seqs.stop();
     rget_calls++;
     for (auto &req : rget_requests[target]) {
@@ -915,6 +928,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
+    barrier(); // FIXME - bad for multifile
     auto sh_alns = compute_alns<MAX_K>(packed_reads, read_records, read_group_id, rlen_limit, report_cigar, use_blastn_scores,
                                        all_num_ctgs, timers);
     if (sh_alns->size()) aln_results.push_back(sh_alns);
