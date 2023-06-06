@@ -80,7 +80,7 @@ struct Aln {
 };
 
 class Alns {
-  using alns_t = deque<Aln>;
+  using alns_t = std::deque<Aln>;
   alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
