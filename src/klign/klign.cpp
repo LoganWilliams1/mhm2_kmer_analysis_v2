@@ -77,36 +77,12 @@ using cid_t = int64_t;
 #define MAX_IRREGULAR_RGET 0 // set to 8192 to avoid large rgets within rget_irregular
 #endif
 
-struct KlignTimers {
-  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel;
-
-  KlignTimers()
-      : fetch_ctg_maps("klign: fetch ctg maps")
-      , compute_alns("klign: compute alns")
-      , rget_ctg_seqs("klign: rget ctg seqs")
-      , aln_kernel("klign: aln kernel") {}
-
-  void done_all() {
-    fetch_ctg_maps.done_all_async();
-    compute_alns.done_all_async();
-    rget_ctg_seqs.done_all_async();
-    aln_kernel.done_all_async();
-  }
-
-  void clear() {
-    fetch_ctg_maps.clear();
-    compute_alns.clear();
-    rget_ctg_seqs.clear();
-    aln_kernel.clear();
-  }
-};  // struct KlignTimers
-
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
                   int rlen_limit, bool compute_cigar);
 void cleanup_aligner();
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
-                        IntermittentTimer &aln_kernel_timer);
+                        KlignTimers &klign_timers);
 
 struct CtgLoc {
   cid_t cid;
@@ -480,7 +456,7 @@ class Aligner {
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {
         kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen,
-                           max_rlen, timers.aln_kernel);
+                           max_rlen, timers);
         clear_aln_bufs();
       }
     }
@@ -593,7 +569,7 @@ class Aligner {
     auto num = kernel_alns.size();
     if (num) {
       kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen, max_rlen,
-                         timers.aln_kernel);
+                         timers);
       clear_aln_bufs();
     }
     bool is_ready = active_kernel_fut.ready();

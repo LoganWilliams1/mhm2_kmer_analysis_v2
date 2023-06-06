@@ -53,6 +53,8 @@
 #include "driver.hpp"
 #include "kernel.hpp"
 
+using timepoint_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
+
 struct gpu_alignments {
   short* ref_start_gpu;
   short* ref_end_gpu;
@@ -282,7 +284,7 @@ struct adept_sw::DriverState {
 
 adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score,
                                short gap_opening_score, short gap_extending_score, int max_rlen, bool compute_cigar, double& init_time) {
-  using timepoint_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
+  
   timepoint_t t = std::chrono::high_resolution_clock::now();
 
   //calculate if the batch will fit into global memory
@@ -398,9 +400,10 @@ void adept_sw::GPUDriver::kernel_block_rev() {
 }
 
 void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, std::vector<std::string>& contigs,
-                                              unsigned maxReadSize, unsigned maxContigSize) {
+                                              unsigned maxReadSize, unsigned maxContigSize, double &launch_time, double &mem_time) {
   gpu_utils::set_gpu_device(driver_state->rank_me);
   unsigned totalAlignments = contigs.size();  // assuming that read and contig vectors are same length
+  std::chrono::duration<double> elapsed;
 
   short* alAend = alignments.ref_end;
   short* alBend = alignments.query_end;
@@ -457,10 +460,14 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
     offsetSumB += sequencesB[i].size();
   }
 
+  auto t = std::chrono::high_resolution_clock::now();
   asynch_mem_copies_htd(driver_state->gpu_data, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,
                         driver_state->half_length_B, totalLengthA, totalLengthB, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda, driver_state->max_rlen);
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  mem_time += elapsed.count();
+
   unsigned minSize = (maxReadSize < maxContigSize) ? maxReadSize : maxContigSize;
   unsigned totShmem = 3 * (minSize + 1) * sizeof(short);
   unsigned alignmentPad = 4 + (4 - totShmem % 4);
@@ -469,6 +476,7 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   if (ShmemBytes > 48000)
     ERROR_CHECK(FuncSetAttribute((const void*)gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
+  t = std::chrono::high_resolution_clock::now();
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
                   driver_state->gpu_data->offset_query_gpu, driver_state->gpu_data->ref_start_gpu,
@@ -488,8 +496,11 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   // does not work without the below stream synchs on AMDGPUs
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  launch_time += elapsed.count();
 
   // copyin back end index so that we can find new min
+  t = std::chrono::high_resolution_clock::now();
   asynch_mem_copies_dth_mid(driver_state->gpu_data, alAend, alBend, sequences_per_stream, sequences_stream_leftover,
                             driver_state->streams_cuda);
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
@@ -497,10 +508,12 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
 
   ERROR_CHECK(EventRecord(driver_state->event_fwd_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_fwd_1, driver_state->streams_cuda[1]));
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  mem_time += elapsed.count();
 }
 
 void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, std::vector<std::string>& contigs,
-                                               unsigned maxReadSize, unsigned maxContigSize) {
+                                               unsigned maxReadSize, unsigned maxContigSize, double &launch_time, double &mem_time) {
   unsigned totalAlignments = contigs.size();  // assuming that read and contig vectors are same length
 
   short* alAbeg = alignments.ref_begin;
@@ -522,6 +535,7 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
   if (ShmemBytes > 48000)
     ERROR_CHECK(FuncSetAttribute((const void*)gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
+  auto t = std::chrono::high_resolution_clock::now();
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
                   driver_state->gpu_data->offset_query_gpu, driver_state->gpu_data->ref_start_gpu,
@@ -541,8 +555,11 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
   // does not work without the below stream synchs on AMDGPUs
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  launch_time += elapsed.count();
 
   // copyin back end index so that we can find new min
+  t = std::chrono::high_resolution_clock::now();
   asynch_mem_copies_dth(driver_state->gpu_data, alAbeg, alBbeg, top_scores_cpu, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda);
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
@@ -550,11 +567,13 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
 
   ERROR_CHECK(EventRecord(driver_state->event_rev_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_rev_1, driver_state->streams_cuda[1]));
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  mem_time += elapsed.count();
 }
 
 
 void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, std::vector<std::string>& contigs,
-                                              unsigned maxReadSize, unsigned maxContigSize) {
+                                              unsigned maxReadSize, unsigned maxContigSize, double &launch_time, double &mem_time) {
   gpu_utils::set_gpu_device(driver_state->rank_me);
  
   unsigned totalAlignments = contigs.size();  // assuming that read and contig vectors are same length
@@ -631,11 +650,14 @@ void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, 
     offsetSumA += sequencesA[i].size();
     offsetSumB += sequencesB[i].size();
   }
-
+  
+  auto t = std::chrono::high_resolution_clock::now();
   asynch_mem_copies_htd_t(driver_state->gpu_data, driver_state->gpu_data_traceback, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,
                         driver_state->half_length_B, totalLengthA, totalLengthB, sequences_per_stream, sequences_stream_leftover,
                         driver_state->streams_cuda, driver_state->max_rlen);
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  mem_time += elapsed.count();
   unsigned minSize = (maxReadSize < maxContigSize) ? maxReadSize : maxContigSize;
   unsigned maxSize = (maxReadSize > maxContigSize) ? maxReadSize : maxContigSize;
   unsigned totShmem = 6 * (minSize + 1) * sizeof(short) + 6 * minSize + (minSize + 1) + maxSize;
@@ -645,6 +667,7 @@ void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, 
   if (ShmemBytes > 48000)
     ERROR_CHECK(FuncSetAttribute((const void *)gpu_bsw::sequence_dna_kernel_traceback, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
+  t = std::chrono::high_resolution_clock::now();
   LaunchKernelGGL(gpu_bsw::sequence_dna_kernel_traceback, sequences_per_stream, minSize, ShmemBytes, driver_state->streams_cuda[0],
       driver_state->strA_d, driver_state->strB_d,
       driver_state->gpu_data->offset_ref_gpu,
@@ -678,7 +701,10 @@ void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, 
   // does not work without the below stream synchs on AMDGPUs
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[0]));
   ERROR_CHECK(StreamSynchronize(driver_state->streams_cuda[1]));
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  launch_time += elapsed.count();
 
+  t = std::chrono::high_resolution_clock::now();
   asynch_mem_copies_dth_t(driver_state->gpu_data, driver_state->gpu_data_traceback, alAbeg, alBbeg, alAend, alBend, top_scores_cpu, cigar_cpu, maxCIGAR,
                           sequences_per_stream, sequences_stream_leftover, driver_state->streams_cuda);
 
@@ -687,5 +713,6 @@ void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, 
 
   ERROR_CHECK(EventRecord(driver_state->event_fwd_0, driver_state->streams_cuda[0]));
   ERROR_CHECK(EventRecord(driver_state->event_fwd_1, driver_state->streams_cuda[1]));
-
+  elapsed = std::chrono::high_resolution_clock::now() - t;
+  mem_time += elapsed.count();
 }

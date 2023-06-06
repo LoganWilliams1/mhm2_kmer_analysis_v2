@@ -56,14 +56,18 @@ using namespace upcxx_utils;
 static adept_sw::GPUDriver *gpu_driver;
 
 static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, bool report_cigar,
-                                       IntermittentTimer &aln_kernel_timer) {
+                                       KlignTimers &klign_timers) {
   assert(!upcxx::in_progress());
   assert(upcxx::master_persona().active_with_caller());
-  future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &aln_kernel_timer] {
+
+  future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &klign_timers] {
     DBG_VERBOSE("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
 
     unsigned maxContigSize = aln_block_data->max_clen ;
     unsigned maxReadSize = aln_block_data->max_rlen ;
+    auto &aln_kernel_timer = klign_timers.aln_kernel_timer
+    auto &block_timer = klign_timers.aln_kernel_block;
+    double launch_time = 0, mem_time = 0;
     unsigned maxCIGAR = (maxContigSize > maxReadSize ) ? 3* maxContigSize : 3* maxReadSize; //3* size to eliminate overflow FIXME: Truncate CIGARs that are over maxCIGAR
     //printf("GPU align block: maxContigSize passed in = %d, maxReadSize passed in = %d\n", maxContigSize, maxReadSize);
     if (report_cigar){
@@ -71,21 +75,33 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
       aln_kernel_timer.start();
 
       gpu_driver->run_kernel_traceback(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
-                                      aln_block_data->max_clen);
+                                      aln_block_data->max_clen, &launch_time, &mem_time);
+      block_timer.start();
       gpu_driver->kernel_block_fwd();
+      block_timer.stop();
+      
       aln_kernel_timer.stop();
+      klign_timers.aln_kernel_launch += launch_time;
+      klign_timers.aln_kernel_mem += mem_time; 
     } else {
 
       aln_kernel_timer.start();
 
       // align query_seqs, ref_seqs, max_query_size, max_ref_size
       gpu_driver->run_kernel_forwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
-                                    aln_block_data->max_clen);
+                                    aln_block_data->max_clen, &launch_time, &mem_time);
+      block_timer.start();
       gpu_driver->kernel_block_fwd();
+      block_timer.stop();
       gpu_driver->run_kernel_backwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
-                                     aln_block_data->max_clen);
+                                     aln_block_data->max_clen, &launch_time, &mem_time);
+      block_timer.start();
       gpu_driver->kernel_block_rev();
+      block_timer.stop();
+
       aln_kernel_timer.stop();
+      klign_timers.aln_kernel_launch += launch_time;
+      klign_timers.aln_kernel_mem += mem_time; 
     }
 
     auto aln_results = gpu_driver->get_aln_results();
@@ -140,7 +156,7 @@ void cleanup_aligner() {
 
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
-                        IntermittentTimer &aln_kernel_timer) {
+                        KlignTimers &klign_timers) {
   assert(!upcxx::in_progress());
   BaseTimer steal_t("CPU work steal");
   steal_t.start();
@@ -177,9 +193,9 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     assert(kernel_alns.empty());
     // for now, the GPU alignment doesn't support cigars
     if (gpu_utils::gpus_present()) {
-      active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, aln_kernel_timer);
+      active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, klign_timers);
     } else {
-      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
+      active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, klign_timers.aln_kernel_timer);
     }
     progress();
   }

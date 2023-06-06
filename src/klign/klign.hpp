@@ -46,6 +46,42 @@
 #include "contigs.hpp"
 #include "packed_reads.hpp"
 
+#include "upcxx_utils/timers.hpp"
+
+struct KlignTimers {
+  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel, aln_kernel_mem, aln_kernel_block,
+      aln_kernel_launch;
+
+  KlignTimers()
+      : fetch_ctg_maps("klign: fetch ctg maps")
+      , compute_alns("klign: compute alns")
+      , rget_ctg_seqs("klign: rget ctg seqs")
+      , aln_kernel("klign: aln kernel")
+      , aln_kernel_mem("klign: aln kernel mem")
+      , aln_kernel_block("klign: aln kernel block")
+      , aln_kernel_launch("klign: aln kernel launch") {}
+
+  void done_all() {
+    fetch_ctg_maps.done_all_async();
+    compute_alns.done_all_async();
+    rget_ctg_seqs.done_all_async();
+    aln_kernel.done_all_async();
+    aln_kernel_mem.done_all_async();
+    aln_kernel_block.done_all_async();
+    aln_kernel_launch.done_all_async();
+  }
+
+  void clear() {
+    fetch_ctg_maps.clear();
+    compute_alns.clear();
+    rget_ctg_seqs.clear();
+    aln_kernel.clear();
+    aln_kernel_mem.clear();
+    aln_kernel_block.clear();
+    aln_kernel_launch.clear();
+  }
+};  // struct KlignTimers
+
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
                        Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
