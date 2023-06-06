@@ -263,7 +263,7 @@ Alns::Alns()
 
 void Alns::clear() {
   alns.clear();
-  vector<Aln>().swap(alns);
+  alns_t().swap(alns);
 }
 
 void Alns::add_aln(Aln &aln) {
@@ -286,7 +286,7 @@ void Alns::add_aln(Aln &aln) {
       it++;
       if ((new_identity > old_identity) || (new_identity == old_identity && (aln.rstop - aln.rstart > it->rstop - it->rstart))) {
         // new one is better - erase the old one
-        it = vector<Aln>::reverse_iterator(alns.erase(it.base()));
+        it = alns_t::reverse_iterator(alns.erase(it.base()));
         // can only happen once because previous add_aln calls will have ensured there is only the best single aln for that cid
         break;
       } else {
@@ -313,7 +313,7 @@ void Alns::add_aln(Aln &aln) {
 }
 
 void Alns::append(Alns &more_alns) {
-  alns.reserve(alns.size() + more_alns.alns.size());
+  reserve(alns.size() + more_alns.alns.size());
   for (auto &a : more_alns.alns) {
     alns.emplace_back(std::move(a));
   }
@@ -328,7 +328,9 @@ Aln &Alns::get_aln(int64_t i) { return alns[i]; }
 
 size_t Alns::size() const { return alns.size(); }
 
-void Alns::reserve(size_t capacity) { alns.reserve(capacity); }
+void Alns::reserve(size_t capacity) { 
+  //alns.reserve(capacity); 
+}
 
 void Alns::reset() { alns.clear(); }
 

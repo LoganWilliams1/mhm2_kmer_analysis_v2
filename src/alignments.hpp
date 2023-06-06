@@ -42,6 +42,7 @@
  form.
 */
 
+#include <deque>
 #include <upcxx/upcxx.hpp>
 
 #include "contigs.hpp"
@@ -79,7 +80,8 @@ struct Aln {
 };
 
 class Alns {
-  vector<Aln> alns;
+  using alns_t = deque<Aln>;
+  alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
 
