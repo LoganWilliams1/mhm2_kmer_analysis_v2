@@ -535,6 +535,7 @@ void adept_sw::GPUDriver::run_kernel_backwards(std::vector<std::string>& reads, 
   if (ShmemBytes > 48000)
     ERROR_CHECK(FuncSetAttribute((const void*)gpu_bsw::dna_kernel, FuncAttributeMaxDynamicSharedMemorySize, ShmemBytes));
 
+  std::chrono::duration<double> elapsed;
   auto t = std::chrono::high_resolution_clock::now();
   LaunchKernelGGL(gpu_bsw::dna_kernel, sequences_per_stream, newMin, ShmemBytes, driver_state->streams_cuda[0],
                   driver_state->strA_d, driver_state->strB_d, driver_state->gpu_data->offset_ref_gpu,
@@ -651,6 +652,7 @@ void adept_sw::GPUDriver::run_kernel_traceback(std::vector<std::string>& reads, 
     offsetSumB += sequencesB[i].size();
   }
   
+  std::chrono::duration<double> elapsed;
   auto t = std::chrono::high_resolution_clock::now();
   asynch_mem_copies_htd_t(driver_state->gpu_data, driver_state->gpu_data_traceback, driver_state->offsetA_h, driver_state->offsetB_h, driver_state->strA,
                         driver_state->strA_d, driver_state->strB, driver_state->strB_d, driver_state->half_length_A,

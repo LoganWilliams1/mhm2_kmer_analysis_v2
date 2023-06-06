@@ -62,9 +62,10 @@ void test_aligns_gpu(vector<Alignment> &alns, vector<string> query, vector<strin
     if (max_q_len < query[i].size()) max_q_len = query[i].size();
     if (max_ref_len < ref[i].size()) max_ref_len = ref[i].size();
   }
-  gpu_driver.run_kernel_forwards(query, ref, max_q_len, max_ref_len);
+  double t1,t2;
+  gpu_driver.run_kernel_forwards(query, ref, max_q_len, max_ref_len,t1,t2);
   gpu_driver.kernel_block_fwd();
-  gpu_driver.run_kernel_backwards(query, ref, max_q_len, max_ref_len);
+  gpu_driver.run_kernel_backwards(query, ref, max_q_len, max_ref_len,t1,t2);
   gpu_driver.kernel_block_rev();
 
   auto aln_results = gpu_driver.get_aln_results();
