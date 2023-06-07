@@ -918,8 +918,8 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
     read_group_id++;
   }
   // barrier & discharge before loosing attention for sort & append
-  LOG("Entering barrier after all reads have been aligned and before gpu alignment\n");
-  barrier();
+  LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
+  { BarrierTimer bt("before sorting"); };
   Timings::wait_pending();
   discharge();
   BaseTimer gpu_t("klign: sync gpus");

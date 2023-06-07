@@ -55,11 +55,13 @@ using namespace upcxx_utils;
 
 static adept_sw::GPUDriver *gpu_driver;
 
-static upcxx::future<> _gpu_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, bool report_cigar,
+static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, bool report_cigar,
                                        KlignTimers &klign_timers) {
   assert(upcxx::master_persona().active_with_caller());
 
-  //future<> fut = upcxx_utils::execute_in_thread_pool([aln_block_data, report_cigar, &klign_timers] {
+  future<> fut = AlignBlockData::serial_fut().then([aln_block_data, report_cigar, &klign_timers] () {
+  //future<> fut = upcxx_utils::execute_serially_in_thread_pool([aln_block_data, report_cigar, &klign_timers]() {
+  
     LOG("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
 
     unsigned maxContigSize = aln_block_data->max_clen ;
@@ -126,26 +128,14 @@ static upcxx::future<> _gpu_align_block(shared_ptr<AlignBlockData> aln_block_dat
       }
       aln_block_data->alns->add_aln(aln);
     }
-  //});
-  //fut = fut.then([alns = alns, aln_block_data]() {
+  });
+  fut = fut.then([alns = alns, aln_block_data]() {
     assert(upcxx::master_persona().active_with_caller());
     LOG("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
-  //});
-  //return fut;
-  return make_future();
-}
-
-static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data, Alns *alns, bool report_cigar,
-                                       KlignTimers &klign_timers) {
-  assert(upcxx::master_persona().active_with_caller());
-  auto &fut = AlignBlockData::serial_fut();
-  LOG("queueing ", aln_block_data->kernel_alns.size(), " kernel alignments. ", (void*) aln_block_data.get(), " fut=", fut.ready(), "\n");
-  fut = fut.then([aln_block_data, alns, report_cigar, &klign_timers]() {
-    LOG("Scheduling _gpu_align_block on ", (void*) aln_block_data.get(), "\n");
-    return _gpu_align_block(aln_block_data, alns, report_cigar, klign_timers);
   });
-  return make_future(); // kernel is queued, do not block
+  AlignBlockData::serial_fut() = fut;
+  return fut;
 }
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
