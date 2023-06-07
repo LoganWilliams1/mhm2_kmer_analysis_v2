@@ -561,6 +561,7 @@ class Aligner {
   void flush_remaining(int read_group_id, KlignTimers &timers) {
     assert(!upcxx::in_progress());
     assert(upcxx::master_persona().active_with_caller());
+    DBG(__FILEFUNC__);
     BaseTimer t(__FILEFUNC__);
     t.start();
     for (auto target : upcxx_utils::foreach_rank_by_node()) {
@@ -627,6 +628,7 @@ class Aligner {
   void finish_alns() {
     assert(!upcxx::in_progress());
     assert(upcxx::master_persona().active_with_caller());
+    DBG(__FILEFUNC__);
     if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
     if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
     active_kernel_fut.wait();
@@ -635,6 +637,7 @@ class Aligner {
   void log_ctg_bytes_fetched() {
     assert(!upcxx::in_progress());
     assert(upcxx::master_persona().active_with_caller());
+    DBG(__FILEFUNC__);
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(rget_calls, op_fast_add, 0), pr.reduce_one(ctg_bytes_fetched, op_fast_add, 0),
                                pr.reduce_one(ctg_bytes_fetched, op_fast_max, 0), pr.reduce_one(local_ctg_fetches, op_fast_add, 0),
@@ -725,6 +728,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
                     KlignTimers &timers) {
   assert(!upcxx::in_progress());
   assert(upcxx::master_persona().active_with_caller());
+  DBG(__FILEFUNC__);
   timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
@@ -900,20 +904,30 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
   int read_group_id = 0;
+  upcxx::promise prom_gpu(1);
+  auto &serial_fut = AlignBlockData::serial_fut();
+  serial_fut = when_all(serial_fut, prom_gpu.get_future());
+  prom_gpu.fulfill_anonymous(1);
   std::vector<shared_ptr<Alns>> aln_results;
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
-    barrier(); // FIXME - bad for multifile
     auto sh_alns = compute_alns<MAX_K>(packed_reads, read_records, read_group_id, rlen_limit, report_cigar, use_blastn_scores,
                                        all_num_ctgs, timers);
     if (sh_alns->size()) aln_results.push_back(sh_alns);
     read_group_id++;
   }
   // barrier & discharge before loosing attention for sort & append
+  LOG("Entering barrier after all reads have been aligned and before gpu alignment\n");
   barrier();
   Timings::wait_pending();
   discharge();
+  BaseTimer gpu_t("klign: sync gpus");
+  LOG("Starting GPU alignments\n");
+  gpu_t.start();
+  //prom_gpu.fulfill_anonymous(1);
+  AlignBlockData::serial_fut().wait();
+  gpu_t.stop();
   BaseTimer sort_t("klign: sort alns");
   sort_t.start();
   auto num_alns = 0;
@@ -927,6 +941,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   }
   sort_t.stop();
   timers.done_all();
+  gpu_t.done_all_async();
   sort_t.done_all_async();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();

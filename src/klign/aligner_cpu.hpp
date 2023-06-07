@@ -70,6 +70,8 @@ struct AlignBlockData {
 
   AlignBlockData(vector<Aln> &_kernel_alns, vector<string> &_ctg_seqs, vector<string> &_read_seqs, int64_t max_clen,
                  int64_t max_rlen, int read_group_id);
+
+  static upcxx::future<> &serial_fut() { static upcxx::future<> _ = upcxx::make_future(); return _; }
 };
 
 int get_cigar_length(const string &cigar);
