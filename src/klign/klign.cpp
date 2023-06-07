@@ -907,7 +907,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   upcxx::promise prom_gpu(1);
   auto &serial_fut = AlignBlockData::serial_fut();
   serial_fut = when_all(serial_fut, prom_gpu.get_future());
-  prom_gpu.fulfill_anonymous(1);
+  //prom_gpu.fulfill_anonymous(1);
   std::vector<shared_ptr<Alns>> aln_results;
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
@@ -925,7 +925,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   BaseTimer gpu_t("klign: sync gpus");
   LOG("Starting GPU alignments\n");
   gpu_t.start();
-  //prom_gpu.fulfill_anonymous(1);
+  prom_gpu.fulfill_anonymous(1);
   AlignBlockData::serial_fut().wait();
   gpu_t.stop();
   BaseTimer sort_t("klign: sort alns");
