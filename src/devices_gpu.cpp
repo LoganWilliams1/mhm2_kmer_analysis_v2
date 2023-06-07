@@ -44,7 +44,6 @@
 
 #include "upcxx_utils/thread_pool.hpp"
 #include "gpu-utils/gpu_utils.hpp"
-#include "gpu-utils/gpu_compatibility.hpp"
 #include "devices_gpu.hpp"
 #include "utils.hpp"
 
@@ -108,11 +107,6 @@ void init_devices() {
                        auto uuids = get_gpu_uuids();
                        ss << " with " << uuids.size() << " uuids:\t";
                        for (auto &uuid : uuids) ss << uuid << "\t";
-                       // malloc and first touch a byte
-                       char *dptr;
-                       Malloc((void**)&dptr, sizeof(char));
-                       Memset(dptr, 0, sizeof(char));
-                       Free(dptr);
                      }
                      ss << "\n";
                      DBG(ss.str());
