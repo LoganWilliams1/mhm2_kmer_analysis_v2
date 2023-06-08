@@ -54,8 +54,10 @@ using std::vector;
 using tnf_t = std::array<double, nTNF>;
 #endif
 
+using cid_t = int64_t;
+
 struct Contig {
-  int64_t id;
+  cid_t id;
   string seq;
   double depth;
 #ifdef TNF_PATH_RESOLUTION
