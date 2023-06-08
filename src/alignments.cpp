@@ -330,9 +330,7 @@ Aln &Alns::get_aln(int64_t i) { return alns[i]; }
 
 size_t Alns::size() const { return alns.size(); }
 
-void Alns::reserve(size_t capacity) { 
-  //alns.reserve(capacity); 
-}
+void Alns::reserve(size_t capacity) { alns.reserve(capacity); }
 
 void Alns::reset() { alns.clear(); }
 

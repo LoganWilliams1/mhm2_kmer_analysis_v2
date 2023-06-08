@@ -74,7 +74,7 @@ using namespace upcxx_utils;
 using cid_t = int64_t;
 
 #ifndef MAX_IRREGULAR_RGET
-#define MAX_IRREGULAR_RGET 0 // set to 8192 to avoid large rgets within rget_irregular
+#define MAX_IRREGULAR_RGET 8192  // set to 0 to include large rgets within rget_irregular
 #endif
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
@@ -420,6 +420,8 @@ class Aligner {
 
   int64_t ctg_bytes_fetched = 0;
   int64_t rget_calls = 0;
+  int64_t large_rget_calls = 0;
+  int64_t large_rget_bytes = 0;
   int64_t local_ctg_fetches = 0;
   int64_t remote_ctg_fetches = 0;
 
@@ -486,18 +488,19 @@ class Aligner {
           // issue a normal rget
           auto fut = rget(req.ctg_loc.seq_gptr, const_cast<char *>(it->second.data()), clen);
           fut_chain = when_all(fut, fut_chain);
+          large_rget_calls++;
+          large_rget_bytes += clen;
         } else {
           src.push_back({req.ctg_loc.seq_gptr, clen});
           dest.push_back({const_cast<char *>(it->second.data()), clen});
+          ctg_bytes_fetched += clen;
         }
-        ctg_bytes_fetched += clen;
         progress();
       }
     }
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
-    if (src.size()) 
-      rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
+    if (src.size()) rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
     fut_chain.wait();
     timers.rget_ctg_seqs.stop();
     rget_calls++;
@@ -526,6 +529,8 @@ class Aligner {
       , alns(&alns)
       , rget_requests(rank_n())
       , rget_calls(0)
+      , large_rget_calls(0)
+      , large_rget_bytes(0)
       , local_ctg_fetches(0)
       , remote_ctg_fetches(0) {
     init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
@@ -641,19 +646,22 @@ class Aligner {
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(rget_calls, op_fast_add, 0), pr.reduce_one(ctg_bytes_fetched, op_fast_add, 0),
                                pr.reduce_one(ctg_bytes_fetched, op_fast_max, 0), pr.reduce_one(local_ctg_fetches, op_fast_add, 0),
-                               pr.reduce_one(remote_ctg_fetches, op_fast_add, 0));
+                               pr.reduce_one(remote_ctg_fetches, op_fast_add, 0), pr.reduce_one(large_rget_calls, op_fast_add, 0),
+                               pr.reduce_one(large_rget_bytes, op_fast_add, 0));
 
-    auto fut_report = fut_reduce.then([](auto all_rget_calls, auto all_ctg_bytes_fetched, auto max_ctg_bytes_fetched,
-                                         auto all_local_ctg_fetches, auto all_remote_ctg_fetches) {
-      if (all_ctg_bytes_fetched > 0)
-        SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
-                     (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
-                     get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
+    auto fut_report =
+        fut_reduce.then([](auto all_rget_calls, auto all_ctg_bytes_fetched, auto max_ctg_bytes_fetched, auto all_local_ctg_fetches,
+                           auto all_remote_ctg_fetches, auto all_large_rget_calls, auto all_large_rget_bytes) {
+          if (all_ctg_bytes_fetched > 0)
+            SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
+                         (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
+                         get_size_str(all_ctg_bytes_fetched / all_rget_calls), ", large_rgets ", all_large_rget_calls, " avg ",
+                         get_size_str(all_large_rget_calls > 0 ? all_large_rget_bytes / all_large_rget_calls : 0), "\n");
 
-      if (all_local_ctg_fetches > 0)
-        SLOG_VERBOSE("Local contig fetches ", perc_str(all_local_ctg_fetches, all_local_ctg_fetches + all_remote_ctg_fetches),
-                     "\n");
-    });
+          if (all_local_ctg_fetches > 0)
+            SLOG_VERBOSE("Local contig fetches ", perc_str(all_local_ctg_fetches, all_local_ctg_fetches + all_remote_ctg_fetches),
+                         "\n");
+        });
     Timings::set_pending(fut_report);
     ctg_bytes_fetched = 0;
   }
@@ -763,7 +771,6 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
     read_records[ri] = ReadRecord({ri, (int)read_seq.length()});
     Kmer<MAX_K>::get_kmers(kmer_len, string_view(read_seq.data(), read_seq.size()), kmers, true);
     if (!kmers.size()) continue;
-    progress();
 
     for (int i = 0; i < kmers.size(); i += seed_space) {
       const Kmer<MAX_K> &kmer_fw = kmers[i];
@@ -787,7 +794,6 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
       }
-      if (((i / seed_space) & 0x7) == 0x7) progress();
     }
     kmers.clear();
   }
@@ -831,6 +837,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 template <int MAX_K>
 shared_ptr<Alns> compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, int read_group_id, int rlen_limit,
                               bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+  BarrierTimer bt(__FILEFUNC__);
   assert(!upcxx::in_progress());
   assert(upcxx::master_persona().active_with_caller());
   timers.compute_alns.start();
@@ -860,7 +867,7 @@ shared_ptr<Alns> compute_alns(PackedReads *packed_reads, vector<ReadRecord> &rea
   Timings::set_pending(progbar.set_done());
   timers.compute_alns.stop();
   read_records.clear();
-  
+
   // defer reporting
   aligner.log_ctg_bytes_fetched();
   auto &pr = Timings::get_promise_reduce();
@@ -905,9 +912,6 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
 #endif
   int read_group_id = 0;
   upcxx::promise prom_gpu(1);
-  auto &serial_fut = AlignBlockData::serial_fut();
-  serial_fut = when_all(serial_fut, prom_gpu.get_future());
-  //prom_gpu.fulfill_anonymous(1);
   std::vector<shared_ptr<Alns>> aln_results;
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
@@ -919,15 +923,9 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   }
   // barrier & discharge before loosing attention for sort & append
   LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
-  { BarrierTimer bt("before sorting"); };
+  { BarrierTimer bt("before sorting alignments"); };
   Timings::wait_pending();
   discharge();
-  BaseTimer gpu_t("klign: sync gpus");
-  LOG("Starting GPU alignments\n");
-  gpu_t.start();
-  prom_gpu.fulfill_anonymous(1);
-  AlignBlockData::serial_fut().wait();
-  gpu_t.stop();
   BaseTimer sort_t("klign: sort alns");
   sort_t.start();
   auto num_alns = 0;
@@ -941,7 +939,6 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   }
   sort_t.stop();
   timers.done_all();
-  gpu_t.done_all_async();
   sort_t.done_all_async();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();

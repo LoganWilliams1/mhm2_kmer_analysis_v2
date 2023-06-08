@@ -42,7 +42,6 @@
  form.
 */
 
-#include <deque>
 #include <upcxx/upcxx.hpp>
 
 #include "contigs.hpp"
@@ -80,7 +79,7 @@ struct Aln {
 };
 
 class Alns {
-  using alns_t = std::deque<Aln>;
+  using alns_t = std::vector<Aln>;
   alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
@@ -131,6 +130,5 @@ class Alns {
 
   int calculate_unmerged_rlen();
 
-  future<> sort_alns_in_thread();
   void sort_alns();
 };

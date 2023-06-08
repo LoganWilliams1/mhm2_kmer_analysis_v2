@@ -59,10 +59,9 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
                                        KlignTimers &klign_timers) {
   assert(upcxx::master_persona().active_with_caller());
 
-  future<> fut = AlignBlockData::serial_fut().then([aln_block_data, report_cigar, &klign_timers] () {
-  //future<> fut = upcxx_utils::execute_serially_in_thread_pool([aln_block_data, report_cigar, &klign_timers]() {
+  future<> fut = upcxx_utils::execute_serially_in_thread_pool([aln_block_data, report_cigar, &klign_timers]() {
   
-    LOG("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
+    DBG("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
 
     unsigned maxContigSize = aln_block_data->max_clen ;
     unsigned maxReadSize = aln_block_data->max_rlen ;
@@ -134,7 +133,6 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
     LOG("appending and returning ", aln_block_data->alns->size(), "\n");
     alns->append(*(aln_block_data->alns));
   });
-  AlignBlockData::serial_fut() = fut;
   return fut;
 }
 
