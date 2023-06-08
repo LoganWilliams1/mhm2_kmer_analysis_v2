@@ -384,6 +384,7 @@ upcxx::future<> PackedReads::load_reads_nb() {
     progbar.update(tot_bytes_read);
     add_read(id, seq, quals);
   }
+  DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
   FastqReaders::close(fname);
   auto fut = progbar.set_done();

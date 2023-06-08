@@ -58,6 +58,8 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
+using upcxx::future;
+
 void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_ins_size) {
   auto loop_start_t = std::chrono::high_resolution_clock::now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");
@@ -72,6 +74,15 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
                                                    options->min_ctg_print_len, true);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   LOG_MEM("Starting Post Assembly Built Kmer Seeds");
+
+  shared_ptr<dist_ofstream> sh_sam_of;
+  future<> fut_sam = make_future();
+  if (options->post_assm_aln) {
+    SLOG_VERBOSE("Writing SAM headers\n");
+    sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
+    fut_sam = Alns::_write_sam_header(*sh_sam_of, options->reads_fnames, ctgs, options->min_ctg_print_len);
+  }
+
   KlignTimers timers;
   unsigned rlen_limit = 0;
   int read_group_id = 0;
@@ -82,18 +93,19 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     PackedReadsList packed_reads_list;
     packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
     auto &packed_reads = packed_reads_list[0];
-    BaseTimer bt("Loading post-assembly reads for " + get_basename(reads_fname));
+    auto short_name = get_basename(packed_reads->get_fname());
+
     stage_timers.cache_reads->start();
-    auto fut = packed_reads->load_reads_nb();
-    fut.wait();
+    packed_reads->load_reads();
     auto max_read_len = packed_reads->get_max_read_len();
-    rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
+    rlen_limit = max(rlen_limit, max_read_len);
+    DBG("max_read_len=", max_read_len, " rlen_limit=", rlen_limit, "\n");
     stage_timers.cache_reads->stop();
     max_read_len = reduce_all(max_read_len, op_fast_max).wait();
-    LOG_MEM("Read fastq " + get_basename(packed_reads->get_fname()));
+    LOG_MEM("Read " + short_name);
 
     stage_timers.alignments->start();
-    
+
     bool report_cigar = true;
     int kmer_len = POST_ASM_ALN_K;
 
@@ -103,12 +115,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
     compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs, timers);
-    /*
-    read_group_id++;
-    double kernel_elapsed =
-        find_alignments<MAX_K>(POST_ASM_ALN_K, single_packed_reads, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns,
-                               KLIGN_SEED_SPACE, max_read_len, report_cigar, true, options->min_ctg_print_len);
-    */
+
     stage_timers.alignments->stop();
     LOG_MEM("Aligned Post Assembly Reads " + get_basename(packed_reads->get_fname()));
 
@@ -119,19 +126,19 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
 
     if (options->post_assm_aln) {
 #ifdef PAF_OUTPUT_FORMAT
-      alns.dump_single_file("final_assembly.paf");
-      SLOG("\n", KBLUE, "PAF alignments can be found at ", options->output_dir, "/final_assembly.paf", KNORM, "\n");
+      string aln_name("final_assembly-" + short_name + ".paf");
+      alns.dump_single_file(aln_name);
+      SLOG("\n", KBLUE, "PAF alignments can be found at ", options->output_dir, "/", aln_name, KNORM, "\n");
 #elif BLAST6_OUTPUT_FORMAT
-      alns.dump_single_file("final_assembly.b6");
-      SLOG("\n", KBLUE, "Blast alignments can be found at ", options->output_dir, "/final_assembly.b6", KNORM, "\n");
+      string aln_name("final_assembly-" + short_name + ".b6");
+      alns.dump_single_file(aln_name);
+      SLOG("\n", KBLUE, "Blast alignments can be found at ", options->output_dir, "/", aln_name, KNORM, "\n");
 #endif
       LOG_MEM("After Post Assembly Alignments Saved");
-      // FIXME Dump header then 1 file at a time with proper read groups
-      //
-      // alns.dump_sam_file("final_assembly.sam", options->reads_fnames, ctgs, options->min_ctg_print_len);
-      //
-      SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options->output_dir,
-           "/final_assembly.sam", KNORM, "\n");
+      // Dump 1 file at a time with proper read groups
+      auto fut_flush =alns._write_sam_alignments(*sh_sam_of, options->min_ctg_print_len);
+      fut_sam = when_all(fut_sam, fut_flush);
+
       LOG_MEM("After Post Assembly SAM Saved");
     }
 
@@ -150,6 +157,12 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
 
   Timings::wait_pending();
 
+  if (options->post_assm_aln) {
+    fut_sam.wait();
+    sh_sam_of->close();
+    SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options->output_dir,
+         "/final_assembly.sam", KNORM, "\n");
+  }
   if (options->post_assm_abundances) {
     SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options->output_dir, "/final_assembly_depths.txt", KNORM, "\n");
   }

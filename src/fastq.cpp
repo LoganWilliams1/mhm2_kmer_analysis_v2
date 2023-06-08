@@ -675,7 +675,7 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
   assert(upcxx::master_persona().active_with_caller());
   assert(know_file_size.get_future().ready());
   assert(block_size == -1);
-  SWARN("Opening ", fname, " over all ranks, not by global blocks - IO performance may suffer\n");
+  LOG("Opening ", fname, " over all ranks, not by global blocks - IO performance may suffer\n");
   auto sz = INT_CEIL(file_size, rank_n());
   set_block(sz * rank_me(), sz);
   

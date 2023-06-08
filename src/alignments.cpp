@@ -350,13 +350,7 @@ void Alns::dump_single_file(const string fname) const {
   upcxx::barrier();
 }
 
-void Alns::dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_ctg_len) const {
-  BarrierTimer timer(__FILEFUNC__);
-
-  string out_str = "";
-
-  dist_ofstream of(fname);
-  future<> all_done = make_future();
+upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs, int min_ctg_len) {
 
   // First all ranks dump Sequence tags - @SQ	SN:Contig0	LN:887
   for (const auto &ctg : ctgs) {
@@ -365,7 +359,7 @@ void Alns::dump_sam_file(const string fname, const vector<string> &read_group_na
     of << "@SQ\tSN:Contig" << std::to_string(ctg.id) << "\tLN:" << std::to_string(ctg.seq.length()) << "\n";
   }
   // all @SQ headers aggregated to the top of the file
-  all_done = of.flush_collective();
+  auto all_done = of.flush_collective();
 
   // rank 0 continues with header
   if (!upcxx::rank_me()) {
@@ -377,12 +371,29 @@ void Alns::dump_sam_file(const string fname, const vector<string> &read_group_na
     // add program information
     of << "@PG\tID:MHM2\tPN:MHM2\tVN:" << string(MHM2_VERSION) << "\n";
   }
+  return all_done;
+}
+
+upcxx::future<> Alns::_write_sam_alignments(dist_ofstream &of, int min_ctg_len) const {
 
   // next alignments.  rank0 will be first with the remaining header fields
   dump_all(of, true, min_ctg_len);
+  return of.flush_collective();
 
-  all_done = when_all(all_done, of.close_async());
-  all_done.wait();
+}
+
+void Alns::dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_ctg_len) const {
+  BarrierTimer timer(__FILEFUNC__);
+
+  string out_str = "";
+
+  dist_ofstream of(fname);
+
+  auto fut = _write_sam_header(of, read_group_names, ctgs, min_ctg_len);
+
+  auto fut2 = _write_sam_alignments(of, min_ctg_len);
+
+  when_all(fut, fut2, of.close_async()).wait();
   of.close_and_report_timings().wait();
 }
 
@@ -397,7 +408,7 @@ int Alns::calculate_unmerged_rlen() {
   }
   auto all_sum_rlens = upcxx::reduce_all(sum_rlens, op_fast_add).wait();
   auto all_nalns = upcxx::reduce_all(alns.size(), op_fast_add).wait();
-  auto avg_rlen = all_sum_rlens / all_nalns;
+  auto avg_rlen = all_nalns > 0 ? all_sum_rlens / all_nalns : 0;
   int most_common_rlen = avg_rlen;
   int64_t max_count = 0;
   for (auto &rlen : rlens) {
