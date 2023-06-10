@@ -80,7 +80,7 @@ class Contigs {
   void add_contig(const Contig &contig);
   void add_contig(Contig &&contig);
 
-  size_t size();
+  size_t size() const;
 
   auto begin() { return contigs.begin(); }
 
@@ -90,11 +90,11 @@ class Contigs {
 
   auto end() const { return contigs.end(); }
 
-  void print_stats(unsigned min_ctg_len);
+  void print_stats(unsigned min_ctg_len) const;
 
   void dump_contigs(const string &fname, unsigned min_ctg_len);
 
   void load_contigs(const string &ctgs_fname);
 
-  size_t get_num_ctg_kmers(int kmer_len);
+  size_t get_num_ctg_kmers(int kmer_len) const;
 };

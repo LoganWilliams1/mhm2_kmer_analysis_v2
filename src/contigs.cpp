@@ -89,9 +89,9 @@ void Contigs::add_contig(const Contig &contig) { contigs.push_back(contig); }
 
 void Contigs::add_contig(Contig &&contig) { contigs.emplace_back(std::move(contig)); }
 
-size_t Contigs::size() { return contigs.size(); }
+size_t Contigs::size() const { return contigs.size(); }
 
-void Contigs::print_stats(unsigned min_ctg_len) {
+void Contigs::print_stats(unsigned min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
   int64_t tot_len = 0, max_len = 0;
   double tot_depth = 0;
@@ -280,7 +280,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   // implicit exit barrrier from BarrierTimer
 }
 
-size_t Contigs::get_num_ctg_kmers(int kmer_len) {
+size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
   size_t num_ctg_kmers = 0;
   for (auto &ctg : contigs) {
     if (ctg.seq.length() > kmer_len) num_ctg_kmers += (ctg.seq.length() - kmer_len + 1);

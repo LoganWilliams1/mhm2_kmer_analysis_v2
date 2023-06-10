@@ -73,14 +73,24 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options->max_rpcs_in_flight, ctgs,
                                                    options->min_ctg_print_len, true);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
-  LOG_MEM("Starting Post Assembly Built Kmer Seeds");
+  LOG_MEM("After Post Assembly Built Kmer Seeds");
+
+  auto min_ctg_len = options->min_ctg_print_len;
+  auto num_read_groups = options->reads_fnames.size();
+  future<> fut_aln_depths = make_future();
+  shared_ptr<CtgsDepths> sh_ctgs_depths;
+  if (options->post_assm_abundances) {
+    SLOG_VERBOSE("Preparing Ctgs Depths for post assembly abundance\n");
+    sh_ctgs_depths = build_ctgs_depths(ctgs, min_ctg_len, num_read_groups);
+    LOG_MEM("After Post Assembly Ctgs Depths");
+  }
 
   shared_ptr<dist_ofstream> sh_sam_of;
   future<> fut_sam = make_future();
   if (options->post_assm_aln) {
     SLOG_VERBOSE("Writing SAM headers\n");
     sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
-    fut_sam = Alns::_write_sam_header(*sh_sam_of, options->reads_fnames, ctgs, options->min_ctg_print_len);
+    fut_sam = Alns::_write_sam_header(*sh_sam_of, options->reads_fnames, ctgs, min_ctg_len);
   }
 
   KlignTimers timers;
@@ -92,7 +102,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     FastqReaders::open_all_file_blocking(one_file_list);
     PackedReadsList packed_reads_list;
     packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
-    auto &packed_reads = packed_reads_list[0];
+    auto packed_reads = packed_reads_list[0];
     auto short_name = get_basename(packed_reads->get_fname());
 
     stage_timers.cache_reads->start();
@@ -109,13 +119,10 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     bool report_cigar = true;
     int kmer_len = POST_ASM_ALN_K;
 
-    PackedReadsList single_packed_reads;
-    single_packed_reads.push_back(packed_reads);
     Alns alns;
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
     compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs, timers);
-
     stage_timers.alignments->stop();
     LOG_MEM("Aligned Post Assembly Reads " + get_basename(packed_reads->get_fname()));
 
@@ -136,16 +143,17 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
 #endif
       LOG_MEM("After Post Assembly Alignments Saved");
       // Dump 1 file at a time with proper read groups
-      auto fut_flush =alns._write_sam_alignments(*sh_sam_of, options->min_ctg_print_len);
+      auto fut_flush = alns._write_sam_alignments(*sh_sam_of, options->min_ctg_print_len);
       fut_sam = when_all(fut_sam, fut_flush);
 
       LOG_MEM("After Post Assembly SAM Saved");
     }
-
     if (options->post_assm_abundances) {
       SLOG("\n");
       stage_timers.compute_ctg_depths->start();
-      // FIXME compute depths 1 column at a time
+      // compute depths 1 column at a time
+      compute_aln_depths_post_asm(*sh_ctgs_depths, alns, false, read_group_id);
+      // compute depths 1 column at a time
       // compute_aln_depths("final_assembly_depths.txt", ctgs, alns, kmer_len, options->min_ctg_print_len, options->reads_fnames,
       // false);
       stage_timers.compute_ctg_depths->stop();
@@ -163,7 +171,12 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options->output_dir,
          "/final_assembly.sam", KNORM, "\n");
   }
+
   if (options->post_assm_abundances) {
+    string fname("final_assembly_depths.txt");
+    SLOG_VERBOSE("Writing ", fname, "\n");
+    fut_aln_depths.wait();
+    write_aln_depths(*sh_ctgs_depths, fname, options->reads_fnames);
     SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options->output_dir, "/final_assembly_depths.txt", KNORM, "\n");
   }
 

@@ -315,6 +315,7 @@ void Alns::add_aln(Aln &aln) {
 }
 
 void Alns::append(Alns &more_alns) {
+  DBG("Appending ", more_alns.size(), " alignments to ", alns.size(), "\n");
   alns.insert(alns.end(), more_alns.alns.begin(), more_alns.alns.end());
   num_dups += more_alns.num_dups;
   num_bad += more_alns.num_bad;
@@ -350,8 +351,8 @@ void Alns::dump_single_file(const string fname) const {
   upcxx::barrier();
 }
 
-upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs, int min_ctg_len) {
-
+upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
+                                        int min_ctg_len) {
   // First all ranks dump Sequence tags - @SQ	SN:Contig0	LN:887
   for (const auto &ctg : ctgs) {
     if (ctg.seq.length() < min_ctg_len) continue;
@@ -375,11 +376,9 @@ upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> 
 }
 
 upcxx::future<> Alns::_write_sam_alignments(dist_ofstream &of, int min_ctg_len) const {
-
   // next alignments.  rank0 will be first with the remaining header fields
   dump_all(of, true, min_ctg_len);
   return of.flush_collective();
-
 }
 
 void Alns::dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_ctg_len) const {
@@ -397,12 +396,14 @@ void Alns::dump_sam_file(const string fname, const vector<string> &read_group_na
   of.close_and_report_timings().wait();
 }
 
-int Alns::calculate_unmerged_rlen() {
+int Alns::calculate_unmerged_rlen() const {
   BarrierTimer timer(__FILEFUNC__);
   // get the unmerged read length - most common read length
+  DBG("calculate_unmerged_rlen alns.size=", alns.size(), "\n");
   HASH_TABLE<int, int64_t> rlens;
   int64_t sum_rlens = 0;
   for (auto &aln : alns) {
+    //DBG("aln.rlen=", aln.rlen, " ", aln.to_paf_string(), "\n");
     rlens[aln.rlen]++;
     sum_rlens += aln.rlen;
   }
@@ -418,7 +419,7 @@ int Alns::calculate_unmerged_rlen() {
     }
   }
   SLOG_VERBOSE("Computed unmerged read length as ", most_common_rlen, " with a count of ", max_count, " and average of ", avg_rlen,
-               "\n");
+               " over ", all_nalns, " alignments\n");
   return most_common_rlen;
 }
 

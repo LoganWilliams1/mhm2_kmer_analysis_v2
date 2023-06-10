@@ -79,8 +79,6 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
                         IntermittentTimer &aln_kernel_timer);
 
-
-
 template <int MAX_K>
 struct KmersReadsBuffer {
   vector<Kmer<MAX_K>> kmers;
@@ -716,6 +714,8 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
 template <int MAX_K>
 void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records, int seed_space,
                     KlignTimers &timers) {
+  BarrierTimer timer(__FILEFUNC__);
+  DBG("fetch_ctg_maps on ", packed_reads->get_fname(), "\n");
   timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
@@ -833,6 +833,9 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 template <int MAX_K>
 void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
                   bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+  BarrierTimer timer(__FILEFUNC__);
+  auto short_name = get_basename(packed_reads->get_fname());
+  DBG("compute_alns on ", short_name, "\n");
   timers.compute_alns.start();
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
@@ -840,8 +843,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   Alns alns_for_sample;
   Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
-  ProgressBar progbar(packed_reads->get_local_num_reads(),
-                      string("Computing alignments on ") + get_basename(packed_reads->get_fname()));
+  ProgressBar progbar(packed_reads->get_local_num_reads(), string("Computing alignments on ") + short_name);
   for (auto &read_record : read_records) {
     progress();
     progbar.update();
@@ -866,9 +868,9 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
       aligner.fut_get_num_perfect_alns(), pr.reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0),
       pr.reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0), pr.reduce_one(alns_for_sample.size(), op_fast_add, 0));
 
-  auto fut_report = fut_reduce.then([](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns, auto all_num_perfect,
-                                       auto all_num_dups, auto all_num_bad, auto all_num_good) {
-    SLOG_VERBOSE("Found ", all_num_alns, " alignments:\n");
+  auto fut_report = fut_reduce.then([short_name](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns,
+                                                 auto all_num_perfect, auto all_num_dups, auto all_num_bad, auto all_num_good) {
+    SLOG_VERBOSE("Found ", all_num_alns, " alignments in ", short_name, "\n");
     SLOG_VERBOSE("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
     SLOG_VERBOSE("  good ", perc_str(all_num_good, all_num_alns), "\n");
     SLOG_VERBOSE("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
