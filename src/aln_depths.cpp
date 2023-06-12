@@ -76,6 +76,18 @@ struct AvgVar {
       , var(0) {}
 };  // template struct AvgVar
 
+struct CtgLen {
+  cid_t cid;
+  int clen;
+  int owning_rank;
+};
+
+struct CtgStats {
+  cid_t cid;
+  vector<AvgVar<float>> rg_stats;
+  UPCXX_SERIALIZED_FIELDS(cid, rg_stats);
+};
+
 struct CtgBaseDepths {
   using base_count_t = uint16_t;
   using read_group_base_count_t = vector<base_count_t *>;  // lazy allocate when read group applies alignments data
@@ -85,13 +97,39 @@ struct CtgBaseDepths {
   read_group_base_count_t read_group_base_counts;
   vector<AvgVar<float>> rg_stats;  // num_read_groups
 
+  // default empty for serialization
+  CtgBaseDepths()
+      : cid{}
+      , clen{}
+      , owning_rank{}
+      , read_group_base_counts{}
+      , rg_stats{} {}
+  // for owning rank's placeholder entry in dist_object
+  CtgBaseDepths(cid_t cid)
+      : cid{cid}
+      , clen{}
+      , owning_rank(rank_me())
+      , read_group_base_counts{}
+      , rg_stats{} {}
+  // for target ranks's calculations
   CtgBaseDepths(cid_t cid, int num_read_groups, int clen, int owning_rank)
       : cid(cid)
       , clen(clen)
       , owning_rank(owning_rank)
       , read_group_base_counts(num_read_groups, nullptr)
       , rg_stats(num_read_groups) {}
-  ~CtgBaseDepths() {}
+  // for update function
+  CtgBaseDepths(const CtgStats &ctg_stats)
+      : cid(ctg_stats.cid)
+      , clen{}
+      , owning_rank{}
+      , read_group_base_counts{}
+      , rg_stats(ctg_stats.rg_stats) {}
+  ~CtgBaseDepths() { clear_rg_bases(); }
+  void clear_rg_bases() {
+    for (auto rgbc_ptr : read_group_base_counts) assert(rgbc_ptr == nullptr && "All allocations are freed");
+    if (!read_group_base_counts.empty()) read_group_base_count_t().swap(read_group_base_counts);
+  }
   base_count_t *get_base_counts(int read_group_id) {
     assert(read_group_id >= 0 && read_group_id < read_group_base_counts.size());
     auto &rgbc_ptr = read_group_base_counts[read_group_id];
@@ -138,8 +176,12 @@ struct CtgBaseDepths {
     }
   }  // add_alignment_depth
 
-  void calc_stats(int read_group, int edge_base_len) {
-    auto rgbc_ptr = read_group_base_counts[read_group];
+  void calc_stats(int read_group_id, int edge_base_len) {
+    DBG("Calc stats on cid=", cid, " rg=", read_group_id, " edge_base_len=", edge_base_len, "\n");
+    assert(read_group_id >= 0);
+    assert(!read_group_base_counts.empty());
+    assert(read_group_id < read_group_base_counts.size());
+    auto rgbc_ptr = read_group_base_counts[read_group_id];
 
     AvgVar<double> stats{};  // use double while calculating.
     size_t adjusted_clen = clen - 2 * edge_base_len;
@@ -156,20 +198,14 @@ struct CtgBaseDepths {
       }
       stats.var /= adjusted_clen;
     }
-    rg_stats[read_group].avg = stats.avg;
-    rg_stats[read_group].var = stats.var;
-    DBG("Calc on cid=", cid, " read_group=", read_group, " rgbc_ptr=", rgbc_ptr, " avg=", stats.avg, " var=", stats.var,
+    rg_stats[read_group_id].avg = stats.avg;
+    rg_stats[read_group_id].var = stats.var;
+    DBG("Calc on cid=", cid, " read_group_id=", read_group_id, " rgbc_ptr=", rgbc_ptr, " avg=", stats.avg, " var=", stats.var,
         " adjusted_len=", adjusted_clen, " clen=", clen, "\n");
-    free_base_counts(read_group);
+    free_base_counts(read_group_id);
   }  // calc_stats
 
 };  // struct CtgBaseDepths
-
-struct CtgLen {
-  cid_t cid;
-  int clen;
-  int owning_rank;
-};
 
 class CtgsDepths {
  private:
@@ -188,12 +224,14 @@ class CtgsDepths {
   };
   ThreeTierAggrStore<CtgAlnDepth> ctg_aln_depth_store;
   ThreeTierAggrStore<CtgLen> add_ctg_store;
+  ThreeTierAggrStore<CtgStats> return_stats_store;
 
-  size_t get_target_rank(cid_t cid) { return std::hash<cid_t>{}(cid) % upcxx::rank_n(); }
+  static size_t get_target_rank(cid_t cid) { return std::hash<cid_t>{}(cid) % upcxx::rank_n(); }
 
   void _add_ctg(const CtgLen &ctg_len) {
     CtgBaseDepths newctg(ctg_len.cid, num_read_groups, ctg_len.clen, ctg_len.owning_rank);
     ctgs_depths->insert({ctg_len.cid, std::move(newctg)});
+    DBG("Added cid=", ctg_len.cid, " for calcs\n");
   }
 
   void _update_ctg_aln_depth(cid_t cid, int read_group_id, int aln_start, int aln_stop, int aln_merge_start, int aln_merge_stop) {
@@ -201,6 +239,17 @@ class CtgsDepths {
     if (it == ctgs_depths->end()) DIE("could not fetch vertex ", cid, "\n");
     CtgBaseDepths &cbd = it->second;
     cbd.add_alignment_depth(read_group_id, aln_start, aln_stop, aln_merge_start, aln_merge_stop);
+  }
+
+  void _return_stats(const CtgStats &ctg_stats) {
+    auto cid = ctg_stats.cid;
+    const auto it = ctgs_depths->find(cid);
+    if (it == ctgs_depths->end()) DIE("Expected that returned contig depths already is already in place ", cid, "\n");
+    auto &cbd = it->second;
+    assert(cbd.rg_stats.empty());
+    assert(cbd.owning_rank == rank_me());
+    assert(cbd.read_group_base_counts.empty());
+    cbd.rg_stats = ctg_stats.rg_stats;
   }
 
  public:
@@ -215,8 +264,10 @@ class CtgsDepths {
       , add_ctg_store()
       , all_done_rg_prom_barriers(num_read_groups)
       , fut_done{} {
-    int64_t mem_to_use = 0.1 * get_free_mem() / local_team().rank_n();
+    ctgs_depths->reserve(ctgs.size() * 2 + 2000);  // entries for self + distributed calcs
+    int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
     max_store_bytes = std::max(mem_to_use, (int64_t)sizeof(CtgAlnDepth) * 100);
+
     add_ctg_store.set_size("Add Ctgs", max_store_bytes);
     add_ctg_store.set_update_func([&self = *this](const CtgLen &ctg_len) { self._add_ctg(ctg_len); });
 
@@ -224,6 +275,9 @@ class CtgsDepths {
       self._update_ctg_aln_depth(cad.cid, cad.read_group_id, cad.aln_start, cad.aln_stop, cad.aln_merge_start, cad.aln_merge_stop);
     });
 
+    return_stats_store.set_update_func([&self = *this](const CtgStats &ctg_stats) { self._return_stats(ctg_stats); });
+
+    // PromiseBarriers for when all ranks have completed a read group
     fut_done = make_future();
     int read_group_id = 0;
     for (auto &rg_prom : all_done_rg_prom_barriers) {
@@ -231,6 +285,9 @@ class CtgsDepths {
         DBG("Calculating stats on read_group=", read_group_id, "\n");
         for (auto &ctgs_depth : *self.ctgs_depths) {
           auto &[cid, ctg_base_depths] = ctgs_depth;
+          if (ctg_base_depths.owning_rank == rank_me() && get_target_rank(cid) != rank_me() &&
+              ctg_base_depths.read_group_base_counts.empty())
+            continue;  // ignore placeholders here
           ctg_base_depths.calc_stats(read_group_id, self.edge_base_len);
         }
         DBG("Done calculating stats on read_group=", read_group_id, "\n");
@@ -239,7 +296,7 @@ class CtgsDepths {
       read_group_id++;
     }
   }
-  ~CtgsDepths() { finish_all(); }
+  ~CtgsDepths() { assert(finished_read_groups == num_read_groups); }
 
   void finish_read_group(int read_group_id) {
     assert(read_group_id >= 0 && read_group_id < num_read_groups && finished_read_groups < num_read_groups);
@@ -251,14 +308,32 @@ class CtgsDepths {
   }
 
   void finish_all() {
+    BarrierTimer timer(__FILEFUNC__);
     DBG("Finishing all\n");
     ctg_aln_depth_store.clear();
+    return_stats_store.set_size("Return stats",
+                                max_store_bytes * sizeof(CtgStats) / (sizeof(CtgStats) + num_read_groups * 2 * sizeof(float)));
     fut_done.wait();
     if (num_read_groups != finished_read_groups)
       DIE("finish_all cannot be called before all read groups have called finish_read_group");
     Timings::set_pending(fut_done);
-    Timings::wait_pending();
-    barrier();
+
+    SLOG_VERBOSE("Sending read group stats back to original rank\n");
+    for (auto &key_val : *ctgs_depths) {
+      auto &[cid, cbds] = key_val;
+      auto tgt = get_target_rank(cid);
+      if (tgt != rank_me()) continue;  // placeholder for one of my loaded contigs to be updated
+      tgt = cbds.owning_rank;
+      if (tgt == rank_me()) {
+        // bypass.  All good
+      } else {
+        CtgStats cs{.cid = cid, .rg_stats = std::move(cbds.rg_stats)};
+        return_stats_store.update(tgt, cs);
+      }
+      cbds.clear_rg_bases();  // free some memory
+    }
+    return_stats_store.flush_updates();
+    return_stats_store.clear();
   }
 
   void flush_contigs() {
@@ -267,6 +342,7 @@ class CtgsDepths {
     add_ctg_store.clear();
     ctg_aln_depth_store.set_size("Ctg Aln Depths", max_store_bytes);
   }
+
   void flush_ctg_alns() {
     DBG("Flush ctg alns\n");
     ctg_aln_depth_store.flush_updates();
@@ -276,7 +352,17 @@ class CtgsDepths {
 
   void add_new_ctg(cid_t cid, int clen) {
     CtgLen ctg_len{.cid = cid, .clen = clen, .owning_rank = rank_me()};
-    add_ctg_store.update(get_target_rank(cid), ctg_len);
+    auto tgt = get_target_rank(cid);
+    if (tgt != rank_me()) {
+      add_ctg_store.update(tgt, ctg_len);
+      // also store locally for return
+      CtgBaseDepths cbd(cid);
+      ctgs_depths->insert({cid, cbd});
+      DBG("Added cid=", cid, " placeholder\n");
+    } else {
+      _add_ctg(ctg_len);
+      DBG("Added cid=", cid, " bypass for calcs\n");
+    }
   }
 
   void update_ctg_aln_depth(cid_t cid, int read_group_id, int aln_start, int aln_stop, int aln_merge_start, int aln_merge_stop) {
@@ -302,6 +388,11 @@ class CtgsDepths {
 
   // return a vector of pairs of avg,var for total and each read_group
   future<vector<AvgVar<float>>> fut_get_depth(cid_t cid) {
+    auto it = ctgs_depths->find(cid);
+    if (it != ctgs_depths->end()) {
+      return make_future(it->second.rg_stats);
+    }
+    LOG("Falling back to rpc for cid=", cid, "\n");
     auto target_rank = get_target_rank(cid);
     // DBG_VERBOSE("Sending rpc to ", target_rank, " for cid=", cid, "\n");
     return upcxx::rpc(
