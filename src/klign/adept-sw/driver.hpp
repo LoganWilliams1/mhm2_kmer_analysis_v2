@@ -77,11 +77,11 @@ class GPUDriver {
   ~GPUDriver();
 
   void run_kernel_forwards(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
-                           unsigned maxContigSize);
+                           unsigned maxContigSize, double &launch_time, double &mem_time);
   void run_kernel_backwards(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
-                            unsigned maxContigSize);
+                            unsigned maxContigSize, double &launch_time, double &mem_time);
   void run_kernel_traceback(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
-                            unsigned maxContigSize);
+                            unsigned maxContigSize, double &launch_time, double &mem_time);
   void kernel_block_fwd();
   void kernel_block_rev();
 

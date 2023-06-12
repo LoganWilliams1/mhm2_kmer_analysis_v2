@@ -57,20 +57,31 @@
 using std::shared_ptr;
 using upcxx::global_ptr;
 
+#include "upcxx_utils/timers.hpp"
+
 struct KlignTimers {
-  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel;
+  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel, aln_kernel_mem, aln_kernel_block,
+      aln_kernel_launch, sort_t;
 
   KlignTimers()
       : fetch_ctg_maps("klign: fetch ctg maps")
       , compute_alns("klign: compute alns")
       , rget_ctg_seqs("klign: rget ctg seqs")
-      , aln_kernel("klign: aln kernel") {}
+      , aln_kernel("klign: aln kernel")
+      , aln_kernel_mem("klign: aln kernel mem")
+      , aln_kernel_block("klign: aln kernel block")
+      , aln_kernel_launch("klign: aln kernel launch")
+      , sort_t("klign: sort alns") {}
 
   void done_all() {
-    fetch_ctg_maps.done_all();
-    compute_alns.done_all();
-    rget_ctg_seqs.done_all();
-    aln_kernel.done_all();
+    fetch_ctg_maps.done_all_async();
+    compute_alns.done_all_async();
+    rget_ctg_seqs.done_all_async();
+    aln_kernel.done_all_async();
+    aln_kernel_mem.done_all_async();
+    aln_kernel_block.done_all_async();
+    aln_kernel_launch.done_all_async();
+    sort_t.done_all_async();
   }
 
   void clear() {
@@ -78,6 +89,10 @@ struct KlignTimers {
     compute_alns.clear();
     rget_ctg_seqs.clear();
     aln_kernel.clear();
+    aln_kernel_mem.clear();
+    aln_kernel_block.clear();
+    aln_kernel_launch.clear();
+    sort_t.clear();
   }
 };  // struct KlignTimers
 
@@ -137,6 +152,8 @@ struct ReadRecordPtr {
 
 template <int MAX_K>
 class KmerCtgDHT;
+
+
 
 
 template <int MAX_K>

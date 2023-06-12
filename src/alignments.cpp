@@ -263,7 +263,7 @@ Alns::Alns()
 
 void Alns::clear() {
   alns.clear();
-  vector<Aln>().swap(alns);
+  alns_t().swap(alns);
 }
 
 void Alns::add_aln(Aln &aln) {
@@ -316,7 +316,10 @@ void Alns::add_aln(Aln &aln) {
 
 void Alns::append(Alns &more_alns) {
   DBG("Appending ", more_alns.size(), " alignments to ", alns.size(), "\n");
-  alns.insert(alns.end(), more_alns.alns.begin(), more_alns.alns.end());
+  reserve(alns.size() + more_alns.alns.size());
+  for (auto &a : more_alns.alns) {
+    alns.emplace_back(std::move(a));
+  }
   num_dups += more_alns.num_dups;
   num_bad += more_alns.num_bad;
   more_alns.clear();
@@ -423,33 +426,27 @@ int Alns::calculate_unmerged_rlen() const {
   return most_common_rlen;
 }
 
-future<> Alns::sort_alns() {
-  AsyncTimer timer(__FILEFUNC__);
-  // execute this in a separate thread so master can continue to communicate freely
-  auto fut = execute_in_thread_pool([&alns = this->alns, timer]() {
-    timer.start();
-    // sort the alns by name and then for the read from best score to worst - this is needed in later stages
-    std::sort(alns.begin(), alns.end(), [](const Aln &elem1, const Aln &elem2) {
-      if (elem1.read_id == elem2.read_id) {
-        // sort by score, then contig len then last by cid to get a deterministic ordering
-        if (elem1.score1 == elem2.score1) {
-          if (elem1.clen == elem2.clen) return elem1.cid > elem2.cid;
-          return elem1.clen > elem2.clen;
-        }
-        return elem1.score1 > elem2.score1;
+void Alns::sort_alns() {
+  BaseTimer timer(__FILEFUNC__);
+  timer.start();
+  // sort the alns by name and then for the read from best score to worst - this is needed in later stages
+  std::sort(begin(), end(), [](const Aln &elem1, const Aln &elem2) {
+    if (elem1.read_id == elem2.read_id) {
+      // sort by score, then contig len then last by cid to get a deterministic ordering
+      if (elem1.score1 == elem2.score1) {
+        if (elem1.clen == elem2.clen) return elem1.cid > elem2.cid;
+        return elem1.clen > elem2.clen;
       }
-      if (elem1.read_id.length() == elem2.read_id.length()) {
-        auto rlen = elem1.read_id.length();
-        auto cmp = elem1.read_id.compare(0, rlen - 2, elem2.read_id, 0, rlen - 2);
-        if (cmp == 0) return (elem1.read_id[rlen - 1] == '1');
-        return cmp > 0;
-      }
-      return elem1.read_id > elem2.read_id;
-    });
-    timer.stop();
-    return timer;
+      return elem1.score1 > elem2.score1;
+    }
+    if (elem1.read_id.length() == elem2.read_id.length()) {
+      auto rlen = elem1.read_id.length();
+      auto cmp = elem1.read_id.compare(0, rlen - 2, elem2.read_id, 0, rlen - 2);
+      if (cmp == 0) return (elem1.read_id[rlen - 1] == '1');
+      return cmp > 0;
+    }
+    return elem1.read_id > elem2.read_id;
   });
-  return fut.then([](AsyncTimer timer) {
-    // TODO record timer and initate reports after waiting...
-  });
+  timer.stop();
+  LOG("sort_alns took ", timer.get_elapsed(), " s\n");
 }

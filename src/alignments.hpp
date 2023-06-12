@@ -80,7 +80,8 @@ struct Aln {
 };  // class Aln
 
 class Alns {
-  vector<Aln> alns;
+  using alns_t = std::vector<Aln>;
+  alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
 
@@ -101,6 +102,8 @@ class Alns {
 
   size_t size() const;
 
+  bool empty() const { return alns.empty(); }
+
   void reserve(size_t capacity);
 
   void reset();
@@ -109,6 +112,8 @@ class Alns {
 
   int64_t get_num_bad();
 
+  inline auto begin() { return alns.begin(); }
+  inline auto end() { return alns.end(); };
   inline auto begin() const { return alns.begin(); }
   inline auto end() const { return alns.end(); };
 
@@ -134,5 +139,5 @@ class Alns {
 
   int calculate_unmerged_rlen() const;
 
-  upcxx::future<> sort_alns();
+  void sort_alns();
 };  // class Alns

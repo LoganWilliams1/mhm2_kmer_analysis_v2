@@ -459,7 +459,7 @@ class CtgsDepths {
     int64_t num_bad_alns = 0;
     SLOG_VERBOSE("Computing aln depths for ctgs\n");
     ProgressBar progbar(alns.size(), "Processing alignments");
-    for (const auto &aln : alns) {
+    for (auto &aln : alns) {
       progbar.update();
       assert(read_group_id == -1 || aln.read_group_id == read_group_id);
       // aln.check_quality();
