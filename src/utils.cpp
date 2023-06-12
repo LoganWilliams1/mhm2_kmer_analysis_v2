@@ -444,12 +444,9 @@ void log_env() {
       upcxx_msg += env + ",";
       continue;
     }
-    if (pos == string::npos) pos = env.find("SLURM_");
-    if (pos == string::npos) pos = env.find("LSB_");
-    if (pos == string::npos) pos = env.find("PBS_");
-    if (pos == string::npos) pos = env.find("COBALT_");
-    if (pos == string::npos) pos = env.find("LOAD_");
     if (pos == string::npos) pos = env.find("JOB");
+    if (pos == string::npos) pos = env.find("NODE");
+    if (pos == string::npos) pos = env.find("STEP");
     if (pos != string::npos) {
       job_msg += env + ", ";
       continue;
