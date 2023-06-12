@@ -73,10 +73,6 @@ using namespace upcxx_utils;
 
 using cid_t = int64_t;
 
-#ifndef MAX_IRREGULAR_RGET
-#define MAX_IRREGULAR_RGET 8192  // set to 0 to include large rgets within rget_irregular
-#endif
-
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
                   int rlen_limit, bool compute_cigar);
 void cleanup_aligner();

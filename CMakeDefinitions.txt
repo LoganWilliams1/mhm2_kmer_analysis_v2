@@ -88,6 +88,8 @@ add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
 # how many kmers are buffered before doing a kmer-ctg-map fetch
 add_definitions(-DKLIGN_KMERS_BUF_SIZE=1000000)
+# bypass rget_irregular and directly call rget on large contigs over this size
+add_definitions(-DMAX_IRREGULAR_RGET=8292)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
