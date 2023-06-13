@@ -517,8 +517,7 @@ class Aligner {
         progress();
       }
     }
-    if (src.empty() || dest.empty())
-      DIE("empty src: ", src.size(), " or dest:", dest.size(), " rget_reqests:", rget_requests.size(), "\n");
+    assert(src.size() == dest.size());
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
     if (src.size()) rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
