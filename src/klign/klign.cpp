@@ -245,10 +245,12 @@ class KmerCtgDHT {
           }
           t.stop();
           // For Issue137 tracking
+          static int num_calls = 0;
           if (ctg_locs.size() * sizeof(CtgLocAndKmerIdx) > KLIGN_MAX_RPC_MESSAGE_SIZE || rand() % 1000 == 0)
             LOG("Received ", kmers.size(), " kmers ", get_size_str(kmers.size() * sizeof(Kmer<MAX_K>)), " responding with ",
                 ctg_locs.size(), " ctg_locs ", get_size_str(ctg_locs.size() * sizeof(CtgLocAndKmerIdx)), " in ", t.get_elapsed(),
-                " s\n");
+                " s num_calls=", num_calls, "\n");
+          num_calls++;
           return ctg_locs;
         },
         kmers, kmer_map);
