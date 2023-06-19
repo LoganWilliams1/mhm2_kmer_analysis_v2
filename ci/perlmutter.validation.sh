@@ -56,7 +56,6 @@ do
   inst=${INSTALL_PREFIX}-${arch}
   DBG=$inst-Debug/bin/mhm2.py
   REL=$inst-Release/bin/mhm2.py
-  RWD=$inst-RelWithDebug/bin/mhm2.py
   RWDI=$inst-RelWithDebInfo/bin/mhm2.py
   OPTS="-r ${ARCTIC}/arctic_sample_0.fq -v --checkpoint=yes"
   echo "Submitting job on ${nodes} $arch nodes"

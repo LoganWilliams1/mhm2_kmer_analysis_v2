@@ -55,13 +55,12 @@ do
   inst=${INSTALL_PREFIX}-${arch}
   DBG=$inst-Debug/bin/mhm2.py
   REL=$inst-Release/bin/mhm2.py
-  RWD=$inst-RelWithDebug/bin/mhm2.py
   RWDI=$inst-RelWithDebInfo/bin/mhm2.py
   OPTS="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
   echo "Submitting job on ${nodes} $arch nodes"
   old=${SLURM_MEM_PER_CPU}
   unset SLURM_MEM_PER_CPU
-  job=$(sbatch --parsable ${slurm_opts} --nodes=$nodes --time=8:00 --wrap="set -x ; source $inst-Release/env.sh; module list; env|grep SLURM; env|grep UPC; env|grep FI; set -x ; ${REL} $OPTS -o ${RUN_PREFIX}/$arch-rel && echo Good")
+  job=$(sbatch --parsable ${slurm_opts} --nodes=$nodes --time=8:00 --wrap="set -x ; source $REL/env.sh; module list; env|grep SLURM; env|grep UPC; env|grep FI; set -x ; ${REL} $OPTS -o ${RUN_PREFIX}/$arch-rel && echo Good")
   export SLURM_MEM_PER_CPU=${old}
   echo "${arch} JOB ${job}"
   slurm_jobs="$slurm_jobs $job"
@@ -95,7 +94,7 @@ do
     d=${RUN_PREFIX}/$r
     if [ ! -f $d/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta in $d" ; fi
   done
-  cmds="$cmds ${inst}-Release/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${arch}-rel --expected-quals ${inst}-Release/share/good-arcticsynth.txt --refs ${ARCTIC}/arcticsynth-refs.fa &"
+  cmds="$cmds ${REL}/bin/check_asm_quality.py --asm-dir ${RUN_PREFIX}/${arch}-rel --expected-quals ${REL}/share/good-arcticsynth.txt --refs ${ARCTIC}/arcticsynth-refs.fa &"
   waits="$waits && wait -n"
 done
 
