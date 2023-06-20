@@ -243,15 +243,15 @@ Bacteria:validation:
     - set -x
     - cd ${CI_SCRATCH}
     - test_file=validation_test-$dt
-    - rm -f ${test_file}*
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-        ./ci/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && \
-        echo Success > ${test_file} || echo Failed > ${test_file}
+        date >> ${test_file}.log
+        ./ci/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}*
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed successfully on bacteria"
@@ -280,28 +280,28 @@ Bacteria:accuracy:
     - set -x
     - cd ${CI_SCRATCH}
     - test_file=ci_asm_qual_full_test-$dt
-    - rm -f ${test_file}*
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-        ./ci/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && \
-        echo Success > ${test_file} || echo Failed > ${test_file}
+        date >> ${test_file}.log
+        ./ci/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}*
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
     - test_file=ci_asm_qual_full_test_2node-$dt
-    - rm -f ${test_file}*
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && \
-        echo Success > ${test_file} || echo Failed > ${test_file}
+        date >> ${test_file}.log
+        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}*
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
@@ -363,15 +363,15 @@ Fungi:validation:
     - set -x
     - cd ${CI_SCRATCH}
     - test_file=validation_test-$dt
-    - rm -f ${test_file}*
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-        ./ci/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && \
-        echo Success > ${test_file} || echo Failed > ${test_file}
+        date >> ${test_file}.log
+        ./ci/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}*
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed successfully on fungi"
@@ -401,27 +401,27 @@ Fungi:accuracy:
     - cd ${CI_SCRATCH}
     - echo "Single node CI run on CPU only scheduled via the batch system"
     - test_file=ci_asm_qual_full_test-$dt
-    - rm -f ${test_file}*
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-       ./ci/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && \
-       echo Success > ${test_file} || echo Failed > ${test_file}
+        date >> ${test_file}.log
+       ./ci/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}*
+    - cat ${test_file}
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Extra full CI run on both fungi and bacteria CPU only scheduled via the batch system"
     - test_file=ci_asm_qual_full_test_2node-$dt
-    - rm -f ${test_file}*
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-       ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1  && \
-       echo Success > ${test_file} || echo Failed > ${test_file}
+        date >> ${test_file}.log
+       ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}*
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
