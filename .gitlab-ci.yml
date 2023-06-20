@@ -287,7 +287,7 @@ Bacteria:accuracy:
         date >> ${test_file}.log
         ./ci/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
-    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
@@ -300,7 +300,7 @@ Bacteria:accuracy:
         date >> ${test_file}.log
         ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
-    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
@@ -407,7 +407,7 @@ Fungi:accuracy:
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
        ./ci/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
-    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file}
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
@@ -420,7 +420,7 @@ Fungi:accuracy:
         date >> ${test_file}.log
        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
-    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
