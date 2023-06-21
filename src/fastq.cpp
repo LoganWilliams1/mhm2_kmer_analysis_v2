@@ -232,9 +232,9 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
           LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname,
               "\n");
           if (offset == 0) WARN(this->fname, " is paired but read names are indistinguisable.  example: ", possible_header, "\n");
-        } else {
+        } else if (!_is_paired) {
           DIE("Invalid unpaired fastq file that contains identical sequential read names: ", last_header, " in ", this->fname,
-              "\n");
+              " _is_paired=", _is_paired, " _fix_paired_name=", _fix_paired_name, " i=", i, " offset=", offset, "\n");
         }
       }
       rtrim(header);

@@ -316,7 +316,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
   // complete pending reductions
   pr.fulfill().wait();
-  auto max_num_mapped_reads =fut_max_num_mapped_reads.wait();
+  auto max_num_mapped_reads = fut_max_num_mapped_reads.wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
   LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
@@ -479,16 +479,16 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   uint64_t num_bases_received = packed_reads_list[0]->get_local_bases();
   auto fut_msm_bases_received = pr.msm_reduce_one(num_bases_received);
 
-  auto fut =
-      when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
-          .then([msm_num_reads, all_num_reads](const MinSumMax<uint64_t> &shuffled_msm_num_reads, const MinSumMax<uint64_t> &shuffled_msm_num_bases) {
-            SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
-            SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
-            SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");
-            auto all_num_new_reads = shuffled_msm_num_reads.sum;
-            if (all_num_new_reads != all_num_reads)
-              SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
-          });
+  auto fut = when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
+                 .then([msm_num_reads, all_num_reads](const MinSumMax<uint64_t> &shuffled_msm_num_reads,
+                                                      const MinSumMax<uint64_t> &shuffled_msm_num_bases) {
+                   SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
+                   SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
+                   SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");
+                   auto all_num_new_reads = shuffled_msm_num_reads.sum;
+                   if (all_num_new_reads != all_num_reads)
+                     SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
+                 });
   // finish pending reductions
   pr.fulfill().wait();
   Timings::wait_pending();
