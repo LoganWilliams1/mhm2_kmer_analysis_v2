@@ -241,6 +241,7 @@ Bacteria:validation:
     - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
     - env
     - set -x
+    - cp -p ./ci/ubuntu.validation.sh ${CI_SCRATCH}
     - cd ${CI_SCRATCH}
     - test_file=validation_test-$dt
     - rm -f ${test_file}
@@ -248,7 +249,7 @@ Bacteria:validation:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ./ci/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -278,6 +279,7 @@ Bacteria:accuracy:
     - echo "Logging to ${CI_SCRATCH}/accuracy-$dt.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
     - env
     - set -x
+    - cp -p ./ci/ubuntu.accuracy.sh ${CI_SCRATCH}
     - cd ${CI_SCRATCH}
     - test_file=ci_asm_qual_full_test-$dt
     - rm -f ${test_file}
@@ -285,7 +287,7 @@ Bacteria:accuracy:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ./ci/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -361,6 +363,7 @@ Fungi:validation:
     - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
     - env
     - set -x
+    - cp -p ./ci/ubuntu.validation.sh ${CI_SCRATCH}
     - cd ${CI_SCRATCH}
     - test_file=validation_test-$dt
     - rm -f ${test_file}
@@ -368,7 +371,7 @@ Fungi:validation:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ./ci/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -398,6 +401,7 @@ Fungi:accuracy:
     - echo "Logging to ${CI_SCRATCH}/accuracy-$dt.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
     - env
     - set -x
+    - cp -p ./ci/ubuntu.accuracy.sh ${CI_SCRATCH}
     - cd ${CI_SCRATCH}
     - echo "Single node CI run on CPU only scheduled via the batch system"
     - test_file=ci_asm_qual_full_test-$dt
@@ -406,7 +410,7 @@ Fungi:accuracy:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-       ./ci/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+       ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem: ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file}
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
