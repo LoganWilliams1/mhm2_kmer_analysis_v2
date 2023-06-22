@@ -89,9 +89,9 @@ void Contigs::add_contig(const Contig &contig) { contigs.push_back(contig); }
 
 void Contigs::add_contig(Contig &&contig) { contigs.emplace_back(std::move(contig)); }
 
-size_t Contigs::size() { return contigs.size(); }
+size_t Contigs::size() const { return contigs.size(); }
 
-void Contigs::print_stats(unsigned min_ctg_len) {
+void Contigs::print_stats(unsigned min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
   int64_t tot_len = 0, max_len = 0;
   double tot_depth = 0;
@@ -172,10 +172,11 @@ void Contigs::print_stats(unsigned min_ctg_len) {
 void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
   dist_ofstream of(fname);
+  of << std::setprecision(3);
   for (auto it = contigs.begin(); it != contigs.end(); ++it) {
     auto ctg = it;
     if (ctg->seq.length() < min_ctg_len) continue;
-    of << ">Contig" << to_string(ctg->id) << " " << to_string(ctg->depth) << "\n";
+    of << ">Contig" << to_string(ctg->id) << " " << ctg->depth << "\n";
     string rc_uutig = revcomp(ctg->seq);
     string seq = (rc_uutig < ctg->seq ? rc_uutig : ctg->seq);
     // for (int64_t i = 0; i < ctg->seq.length(); i += 50) fasta += ctg->seq.substr(i, 50) + "\n";
@@ -231,7 +232,10 @@ void Contigs::load_contigs(const string &ctgs_fname) {
     // notify previous rank of its stop offset
     rpc_ff(
         rank_me() - 1,
-        [](dist_object<promise<size_t>> &dist_stop_prom, size_t stop_offset) { dist_stop_prom->fulfill_result(stop_offset); LOG("received stop_offset=", stop_offset, "\n"); },
+        [](dist_object<promise<size_t>> &dist_stop_prom, size_t stop_offset) {
+          dist_stop_prom->fulfill_result(stop_offset);
+          LOG("received stop_offset=", stop_offset, "\n");
+        },
         dist_stop_prom, start_offset);
     LOG("Sent my start_offset to ", rank_me() - 1, " ", start_offset, "\n");
   }
@@ -276,7 +280,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   // implicit exit barrrier from BarrierTimer
 }
 
-size_t Contigs::get_num_ctg_kmers(int kmer_len) {
+size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
   size_t num_ctg_kmers = 0;
   for (auto &ctg : contigs) {
     if (ctg.seq.length() > kmer_len) num_ctg_kmers += (ctg.seq.length() - kmer_len + 1);

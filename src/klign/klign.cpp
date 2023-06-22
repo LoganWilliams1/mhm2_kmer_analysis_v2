@@ -46,116 +46,42 @@
 #include <unistd.h>
 #include <string_view>
 #include <unordered_set>
+#include <deque>
 
 #include <algorithm>
 #include <forward_list>
 #include <iterator>
 #include <iostream>
+#include <random>
 #include <thread>
 #include <upcxx/upcxx.hpp>
 
 #include "klign.hpp"
 #include "kmer.hpp"
+#include "contigs.hpp"
 #include "ssw.hpp"
-#include "upcxx_utils/limit_outstanding.hpp"
-#include "upcxx_utils/log.hpp"
-#include "upcxx_utils/progress_bar.hpp"
-#include "upcxx_utils/three_tier_aggr_store.hpp"
-#include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
 #include "zstr.hpp"
 #include "aligner_cpu.hpp"
 
+#include "upcxx_utils/limit_outstanding.hpp"
+#include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/progress_bar.hpp"
+#include "upcxx_utils/thread_pool.hpp"
+#include "upcxx_utils/three_tier_aggr_store.hpp"
+#include "upcxx_utils/timers.hpp"
+
 using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
-
-using cid_t = int64_t;
-
-struct KlignTimers {
-  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel;
-
-  KlignTimers()
-      : fetch_ctg_maps("klign: fetch ctg maps")
-      , compute_alns("klign: compute alns")
-      , rget_ctg_seqs("klign: rget ctg seqs")
-      , aln_kernel("klign: aln kernel") {}
-
-  void done_all() {
-    fetch_ctg_maps.done_all();
-    compute_alns.done_all();
-    rget_ctg_seqs.done_all();
-    aln_kernel.done_all();
-  }
-
-  void clear() {
-    fetch_ctg_maps.clear();
-    compute_alns.clear();
-    rget_ctg_seqs.clear();
-    aln_kernel.clear();
-  }
-};  // struct KlignTimers
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
                   int rlen_limit, bool compute_cigar);
 void cleanup_aligner();
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
-                        IntermittentTimer &aln_kernel_timer);
-
-struct CtgLoc {
-  cid_t cid;
-  global_ptr<char> seq_gptr;
-  int clen;
-  float depth;
-  int pos;
-  bool is_rc;
-};
-
-struct CtgAndReadLoc {
-  CtgLoc ctg_loc;
-  int32_t cstart;
-  int32_t pos_in_read : 31;
-  int32_t read_is_rc : 1;
-};
-
-template <int MAX_K>
-struct KmerAndCtgLoc {
-  Kmer<MAX_K> kmer;
-  CtgLoc ctg_loc;
-  UPCXX_SERIALIZED_FIELDS(kmer, ctg_loc);
-};
-
-struct CtgLocAndKmerIdx {
-  CtgLoc ctg_loc;
-  int kmer_i;
-};
-
-using CtgAndReadLocsMap = HASH_TABLE<cid_t, vector<CtgAndReadLoc>>;
-
-struct ReadRecord {
-  int64_t index : 40;
-  int64_t rlen : 24;
-
-  CtgAndReadLocsMap aligned_ctgs_map;
-
-  ReadRecord()
-      : index(-1)
-      , rlen(0) {}
-
-  ReadRecord(int index, int rlen)
-      : index(index)
-      , rlen(rlen)
-      , aligned_ctgs_map{} {}
-
-  bool is_valid() const { return index >= 0 && rlen > 0; }
-};  // struct ReadRecord
-
-struct ReadRecordPtr {
-  ReadRecord *read_record;
-  int read_offset;
-  bool is_rc;
-};  // struct ReadRecordPtr
+                        KlignTimers &klign_timers);
 
 template <int MAX_K>
 struct KmersReadsBuffer {
@@ -167,11 +93,19 @@ struct KmersReadsBuffer {
     read_records.push_back({read_record, read_offset, read_is_rc});
   }
 
-  size_t size() { return kmers.size(); }
+  size_t size() const { return kmers.size(); }
+
+  static size_t get_size_per() { return sizeof(Kmer<MAX_K>) + sizeof(ReadRecordPtr); }
 
   void clear() {
     kmers.clear();
     read_records.clear();
+  }
+
+  bool empty() const { return kmers.empty(); }
+  void reserve(size_t sz) {
+    kmers.reserve(sz);
+    read_records.reserve(sz);
   }
 };  // struct KmersReadsBuffer
 
@@ -290,12 +224,15 @@ class KmerCtgDHT {
     Timings::set_pending(fut_report);
   }
 
-  future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, vector<Kmer<MAX_K>> &kmers) {
+  future<vector<CtgLocAndKmerIdx>> get_ctgs_with_kmers(int target_rank, const vector<Kmer<MAX_K>> &kmers) {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
-    return rpc(
+    auto fut_rpc = rpc(
         target_rank,
         [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
+          BaseTimer t("with get_ctgs_with_kmers rpc");
+          t.start();
           vector<CtgLocAndKmerIdx> ctg_locs;
+          ctg_locs.reserve(kmers.size());
           for (int i = 0; i < kmers.size(); i++) {
             auto &kmer = kmers[i];
             assert(kmer.is_least());
@@ -306,9 +243,18 @@ class KmerCtgDHT {
               ctg_locs.push_back({ctg_loc, i});
             }
           }
+          t.stop();
+          // For Issue137 tracking
+          static int num_calls = 0;
+          if (ctg_locs.size() * sizeof(CtgLocAndKmerIdx) > KLIGN_MAX_RPC_MESSAGE_SIZE || rand() % 1000 == 0)
+            LOG("Received ", kmers.size(), " kmers ", get_size_str(kmers.size() * sizeof(Kmer<MAX_K>)), " responding with ",
+                ctg_locs.size(), " ctg_locs ", get_size_str(ctg_locs.size() * sizeof(CtgLocAndKmerIdx)), " in ", t.get_elapsed(),
+                " s num_calls=", num_calls, "\n");
+          num_calls++;
           return ctg_locs;
         },
         kmers, kmer_map);
+    return fut_rpc;
   }
 
   void dump_ctg_kmers() {
@@ -333,8 +279,10 @@ class KmerCtgDHT {
     }
     if (!out_buf.str().empty()) dump_file << out_buf.str();
     dump_file.close();
-    progbar.done();
-    SLOG_VERBOSE("Dumped ", this->get_num_kmers(), " kmers\n");
+    auto fut_rep = when_all(progbar.set_done(), this->fut_get_num_kmers()).then([](auto tot_num_kmers) {
+      SLOG_VERBOSE("Dumped ", tot_num_kmers, " kmers\n");
+    });
+    Timings::set_pending(fut_rep);
   }
 
   void build(Contigs &ctgs, unsigned min_ctg_len) {
@@ -402,6 +350,63 @@ class KmerCtgDHT {
     });
     Timings::set_pending(fut_report);
   }
+
+  void purge_high_count_seeds(int max_ctgs_per_kmer = KLIGN_MAX_CTGS_PER_KMER) {
+    BarrierTimer timer(__FILEFUNC__);
+    // FIXME: Hack for Issue137 to be fixed robustly later
+    size_t num_purged = 0;
+    size_t num_ctg_locs_purged = 0;
+    size_t max_ctg_locs = 0;
+    double total_depth = 0.0;
+    double total_purged_depth = 0.0;
+    double max_depth = 0.0;
+    vector<Kmer<MAX_K>> to_be_purged;
+    for (auto &elem : *kmer_map) {
+      auto &[kmer, ctg_locs] = elem;
+      size_t sz = 0;
+      double depth = 0.0;
+      for (auto &ctg_loc : ctg_locs) {
+        sz++;
+        depth += ctg_loc.depth;
+      }
+
+      if (sz > max_ctg_locs) max_ctg_locs = sz;
+      if (depth > max_depth) max_depth = depth;
+      total_depth += depth;
+      if (max_ctgs_per_kmer > 0 && sz > max_ctgs_per_kmer) {
+        DBG("Removing kmer with ", sz, " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
+        to_be_purged.push_back(kmer);
+        num_purged++;
+        num_ctg_locs_purged += sz;
+        total_purged_depth += depth;
+      }
+    }
+
+    for (auto &kmer : to_be_purged) {
+      auto it = kmer_map->find(kmer);
+      if (it == kmer_map->end()) DIE("Could not find kmer with too many ctg_locs!");
+      kmer_map->erase(it);
+    }
+
+    auto &pr = Timings::get_promise_reduce();
+    auto fut_reduce = when_all(pr.reduce_one(num_purged, op_fast_add, 0), pr.reduce_one(num_ctg_locs_purged, op_fast_add, 0),
+                               pr.reduce_one(max_ctg_locs, op_fast_max, 0), pr.reduce_one(total_depth, op_fast_add, 0),
+                               pr.reduce_one(total_purged_depth, op_fast_add, 0), pr.msm_reduce_one(kmer_map->size(), 0),
+                               pr.msm_reduce_one(num_purged, 0), pr.msm_reduce_one(max_ctg_locs, 0),
+                               pr.msm_reduce_one(total_purged_depth), pr.msm_reduce_one(max_depth, 0));
+    auto fut_report = fut_reduce.then([=](auto all_num_purged, auto all_ctg_locs_purged, auto global_max_ctg_locs,
+                                          auto all_total_depth, auto all_total_purged_depth, auto msm_kmers_remaining,
+                                          auto msm_kmers_purged, auto msm_max_ctg_locs, auto msm_purged_depth, auto msm_max_depth) {
+      LOG("Purge of high count ctg kmer seeds: num_purged=", num_purged, " num_ctg_locs_purged=", num_ctg_locs_purged,
+          " max_ctg_locs=", max_ctg_locs, " total_depth=", total_depth, " total_purged_depth=", total_purged_depth, "\n");
+      SLOG_VERBOSE("All purged ", all_num_purged, " high count ctg kmer seeds.  total_ctg_locs_purged=", all_ctg_locs_purged,
+                   " max_ctg_locs=", global_max_ctg_locs, " all_total_depth=", all_total_depth,
+                   " all_purged_depth=", all_total_purged_depth, " seeds_remaining=", msm_kmers_remaining.to_string(),
+                   " seeds_purged=", msm_kmers_purged.to_string(), " max_ctg_locs=", msm_max_ctg_locs.to_string(),
+                   " purged_depth=", msm_purged_depth.to_string(), " max_depth=", msm_max_depth.to_string(), "\n");
+    });
+    Timings::set_pending(fut_report);
+  }
 };  // class KmerCtgDHT
 
 static tuple<int, int, int> get_start_positions(int kmer_len, const CtgLoc &ctg_loc, int pos_in_read, int rlen) {
@@ -436,6 +441,8 @@ class Aligner {
 
   int64_t ctg_bytes_fetched = 0;
   int64_t rget_calls = 0;
+  int64_t large_rget_calls = 0;
+  int64_t large_rget_bytes = 0;
   int64_t local_ctg_fetches = 0;
   int64_t remote_ctg_fetches = 0;
 
@@ -472,7 +479,7 @@ class Aligner {
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {
         kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen,
-                           max_rlen, timers.aln_kernel);
+                           max_rlen, timers);
         clear_aln_bufs();
       }
     }
@@ -485,22 +492,38 @@ class Aligner {
   }
 
   void do_rget_irregular(int target, KlignTimers &timers) {
-    vector<pair<global_ptr<char>, size_t>> src;
-    vector<pair<char *, size_t>> dest;
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
+    deque<pair<global_ptr<char>, size_t>> src;
+    deque<pair<char *, size_t>> dest;
     HASH_TABLE<cid_t, string> ctgs_fetched;
+    auto sz = rget_requests[target].size();
+    ctgs_fetched.reserve(sz);
+    upcxx::future<> fut_chain = make_future();
     for (auto &req : rget_requests[target]) {
       auto clen = req.ctg_loc.clen;
       auto it = ctgs_fetched.find(req.ctg_loc.cid);
       if (it == ctgs_fetched.end()) {
         it = ctgs_fetched.insert({req.ctg_loc.cid, string(clen, ' ')}).first;
-        src.push_back({req.ctg_loc.seq_gptr, clen});
-        dest.push_back({const_cast<char *>(it->second.data()), clen});
-        ctg_bytes_fetched += clen;
+        if (MAX_IRREGULAR_RGET > 0 && clen >= MAX_IRREGULAR_RGET) {
+          // issue a normal rget
+          auto fut = rget(req.ctg_loc.seq_gptr, const_cast<char *>(it->second.data()), clen);
+          fut_chain = when_all(fut, fut_chain);
+          large_rget_calls++;
+          large_rget_bytes += clen;
+        } else {
+          src.push_back({req.ctg_loc.seq_gptr, clen});
+          dest.push_back({const_cast<char *>(it->second.data()), clen});
+          ctg_bytes_fetched += clen;
+        }
+        progress();
       }
     }
+    assert(src.size() == dest.size());
     // SLOG_VERBOSE("Using rget_irregular to fetch ", perc_str(ctgs_fetched.size(), rget_requests[target].size()), " contigs\n");
     timers.rget_ctg_seqs.start();
-    rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
+    if (src.size()) rget_irregular(src.begin(), src.end(), dest.begin(), dest.end()).wait();
+    fut_chain.wait();
     timers.rget_ctg_seqs.stop();
     rget_calls++;
     for (auto &req : rget_requests[target]) {
@@ -510,6 +533,7 @@ class Aligner {
       string &ctg_seq = it->second;
       align_read(req.rname, cid, req.read_seq, ctg_seq, req.rstart, req.cstart, req.orient, req.overlap_len, req.read_group_id,
                  timers);
+      progress();
     }
     rget_requests[target].clear();
   }
@@ -527,6 +551,8 @@ class Aligner {
       , alns(&alns)
       , rget_requests(rank_n())
       , rget_calls(0)
+      , large_rget_calls(0)
+      , large_rget_bytes(0)
       , local_ctg_fetches(0)
       , remote_ctg_fetches(0) {
     init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
@@ -560,6 +586,9 @@ class Aligner {
   }
 
   void flush_remaining(int read_group_id, KlignTimers &timers) {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
+    DBG(__FILEFUNC__);
     BaseTimer t(__FILEFUNC__);
     t.start();
     for (auto target : upcxx_utils::foreach_rank_by_node()) {
@@ -568,7 +597,7 @@ class Aligner {
     auto num = kernel_alns.size();
     if (num) {
       kernel_align_block(cpu_aligner, kernel_alns, ctg_seqs, read_seqs, alns, active_kernel_fut, read_group_id, max_clen, max_rlen,
-                         timers.aln_kernel);
+                         timers);
       clear_aln_bufs();
     }
     bool is_ready = active_kernel_fut.ready();
@@ -578,17 +607,19 @@ class Aligner {
 
   void compute_alns_for_read(CtgAndReadLocsMap &aligned_ctgs_map, const string &rname, const string &rseq_fw, int read_group_id,
                              KlignTimers &timers) {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
     int rlen = rseq_fw.length();
     string rseq_rc;
     string tmp_ctg;
+    string rseq;
     for (auto &ctg_and_read_locs : aligned_ctgs_map) {
-      progress();
       for (auto &ctg_and_read_loc : ctg_and_read_locs.second) {
+        progress();
         int pos_in_read = ctg_and_read_loc.pos_in_read;
         bool read_is_rc = ctg_and_read_loc.read_is_rc;
         auto &ctg_loc = ctg_and_read_loc.ctg_loc;
         char orient = '+';
-        string rseq;
         if (ctg_loc.is_rc != read_is_rc) {
           // it's revcomp in either contig or read, but not in both or neither
           orient = '-';
@@ -621,30 +652,38 @@ class Aligner {
     }
   }
 
-  void sort_alns() {
+  void finish_alns() {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
+    DBG(__FILEFUNC__);
     if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
     if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
-    active_kernel_fut.wait();
-    alns->sort_alns().wait();
+    wait_wrapper(active_kernel_fut);
   }
 
   void log_ctg_bytes_fetched() {
+    assert(!upcxx::in_progress());
+    assert(upcxx::master_persona().active_with_caller());
+    DBG(__FILEFUNC__);
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(rget_calls, op_fast_add, 0), pr.reduce_one(ctg_bytes_fetched, op_fast_add, 0),
                                pr.reduce_one(ctg_bytes_fetched, op_fast_max, 0), pr.reduce_one(local_ctg_fetches, op_fast_add, 0),
-                               pr.reduce_one(remote_ctg_fetches, op_fast_add, 0));
+                               pr.reduce_one(remote_ctg_fetches, op_fast_add, 0), pr.reduce_one(large_rget_calls, op_fast_add, 0),
+                               pr.reduce_one(large_rget_bytes, op_fast_add, 0));
 
-    auto fut_report = fut_reduce.then([](auto all_rget_calls, auto all_ctg_bytes_fetched, auto max_ctg_bytes_fetched,
-                                         auto all_local_ctg_fetches, auto all_remote_ctg_fetches) {
-      if (all_ctg_bytes_fetched > 0)
-        SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
-                     (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
-                     get_size_str(all_ctg_bytes_fetched / all_rget_calls), "\n");
+    auto fut_report =
+        fut_reduce.then([](auto all_rget_calls, auto all_ctg_bytes_fetched, auto max_ctg_bytes_fetched, auto all_local_ctg_fetches,
+                           auto all_remote_ctg_fetches, auto all_large_rget_calls, auto all_large_rget_bytes) {
+          if (all_ctg_bytes_fetched > 0)
+            SLOG_VERBOSE("Contig bytes fetched ", get_size_str(all_ctg_bytes_fetched), " balance ",
+                         (double)all_ctg_bytes_fetched / (rank_n() * max_ctg_bytes_fetched), " average rget size ",
+                         get_size_str(all_ctg_bytes_fetched / all_rget_calls), ", large_rgets ", all_large_rget_calls, " avg ",
+                         get_size_str(all_large_rget_calls > 0 ? all_large_rget_bytes / all_large_rget_calls : 0), "\n");
 
-      if (all_local_ctg_fetches > 0)
-        SLOG_VERBOSE("Local contig fetches ", perc_str(all_local_ctg_fetches, all_local_ctg_fetches + all_remote_ctg_fetches),
-                     "\n");
-    });
+          if (all_local_ctg_fetches > 0)
+            SLOG_VERBOSE("Local contig fetches ", perc_str(all_local_ctg_fetches, all_local_ctg_fetches + all_remote_ctg_fetches),
+                         "\n");
+        });
     Timings::set_pending(fut_report);
     ctg_bytes_fetched = 0;
   }
@@ -655,6 +694,8 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
                                                  KmersReadsBuffer<MAX_K> &kmers_reads_buffer, int64_t &num_alns,
                                                  int64_t &num_excess_alns_reads, int64_t &bytes_sent, int64_t &bytes_received,
                                                  int64_t &max_bytes_sent, int64_t &max_bytes_received, int64_t &num_rpcs) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
   assert(kmers_reads_buffer.size());
   int64_t sent_msg_size = (sizeof(Kmer<MAX_K>) * kmers_reads_buffer.kmers.size());
   bytes_sent += sent_msg_size;
@@ -708,12 +749,16 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
             }
           })
           .then([sh_krb]() {});
+  progress();
   return fut_rpc_returned;
 };  // fetch_ctg_maps_for_target
 
 template <int MAX_K>
 void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, vector<ReadRecord> &read_records, int seed_space,
                     KlignTimers &timers) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
+  DBG("fetch_ctg_maps on ", packed_reads->get_fname(), "\n");
   timers.fetch_ctg_maps.start();
   int64_t bytes_sent = 0;
   int64_t bytes_received = 0;
@@ -725,19 +770,32 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   int64_t num_kmers = 0;
   int64_t num_rpcs = 0;
 
+  auto num_local_reads = packed_reads->get_local_num_reads();
+  ProgressBar progbar(num_local_reads,
+                      string("Fetching ctg maps for alignments - ") + upcxx_utils::get_basename(packed_reads->get_fname()));
+
   upcxx::future<> fetch_fut_chain = make_future();
-  vector<KmersReadsBuffer<MAX_K>> kmers_reads_buffers(rank_n());
+  vector<KmersReadsBuffer<MAX_K>> kmers_reads_buffers(num_local_reads > 0 ? rank_n() : 0);
   vector<Kmer<MAX_K>> kmers;
   int kmer_len = Kmer<MAX_K>::get_k();
 
-  // Do not exceed 128KB RPC messages in either direction
-  size_t max_rdzv_message_size = 128 * 1024;
-  size_t max_rdvz_buffer_size = max_rdzv_message_size / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
-  size_t max_kmer_buffer_size = ::min((size_t)KLIGN_KMERS_BUF_SIZE / rank_n(), max_rdvz_buffer_size);
+  // Do not exceed maximum size for RPC messages in either direction, assuming 1 hit per kmer
+  size_t max_rdvz_buffer_size = KLIGN_MAX_RPC_MESSAGE_SIZE / ::max(sizeof(Kmer<MAX_K>), sizeof(CtgLocAndKmerIdx));
 
-  ProgressBar progbar(packed_reads->get_local_num_reads(),
-                      string("Fetching ctg maps for alignments on ") + get_basename(packed_reads->get_fname()));
-  for (int ri = 0; ri < packed_reads->get_local_num_reads(); ri++) {
+  // further limit private memory buffering (per rank) to 10% of memory
+  size_t max_mem = KLIGN_MAX_MEM_PCT * upcxx_utils::get_max_free_mem_per_rank() / 100;
+  size_t max_mem_buffer_size =
+      (max_mem - rank_n() * (sizeof(KmersReadsBuffer<MAX_K>))) / (rank_n() * KmersReadsBuffer<MAX_K>::get_size_per());
+  max_rdvz_buffer_size = ::min(max_rdvz_buffer_size, max_mem_buffer_size) + 1;
+
+  LOG("max_mem for buffers=", get_size_str(max_mem), " KLIGN_MAX_RPC_MESSAGE_SIZE=", get_size_str(KLIGN_MAX_RPC_MESSAGE_SIZE),
+      " max_mem_buffer_size=", max_mem_buffer_size, " max_rdvz_buffer_size=", max_rdvz_buffer_size, "\n");
+
+  // stagger first batches with a reduced count before flush
+  size_t max_kmer_buffer_size = max_rdvz_buffer_size / 3 + rand() % (2 * max_rdvz_buffer_size / 3) + 1;
+  int stagger_count = 0;
+
+  for (int ri = 0; ri < num_local_reads; ri++) {
     progress();
     progbar.update();
     string read_seq;
@@ -763,28 +821,39 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       }
       assert(kmer_lc->is_least());
       auto target = kmer_ctg_dht.get_target_rank(*kmer_lc);
-      kmers_reads_buffers[target].add(*kmer_lc, &read_records[ri], i, is_rc);
-      if (kmers_reads_buffers[target].size() >= max_kmer_buffer_size) {
-        auto fetch_fut =
-            fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
-                                      bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+      auto &tgt_kr_buf = kmers_reads_buffers[target];
+      if (tgt_kr_buf.empty()) tgt_kr_buf.reserve(max_rdvz_buffer_size);  // lazy but avoid excessive resizes
+      tgt_kr_buf.add(*kmer_lc, &read_records[ri], i, is_rc);
+      if (tgt_kr_buf.size() >= max_kmer_buffer_size) {
+        auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
+                                                   bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+        upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
-        upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
+        if (++stagger_count > 2 * rank_n() / 3)
+          max_kmer_buffer_size = max_rdvz_buffer_size;  // stagger achieved on first 2/3 of ranks, reset to max size
+        assert(tgt_kr_buf.empty());
       }
     }
     kmers.clear();
   }
+
+  // flush any buffers
   for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
-    if (kmers_reads_buffers[target].size()) {
-      auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, kmers_reads_buffers[target], num_alns, num_excess_alns_reads,
-                                                 bytes_sent, bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+    auto &tgt_kr_buf = kmers_reads_buffers[target];
+    if (tgt_kr_buf.size()) {
+      auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
+                                                 bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+      upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
       fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
-      upcxx_utils::limit_outstanding_futures(fetch_fut_chain).wait();
     }
   }
   upcxx_utils::flush_outstanding_futures();
   fetch_fut_chain.wait();
-  upcxx_utils::Timings::set_pending(progbar.set_done());
+  auto fut_prog_done = progbar.set_done();
+  timers.fetch_ctg_maps.stop();
+  upcxx_utils::Timings::set_pending(fut_prog_done);
+
+  // defer reporting
   auto &pr = Timings::get_promise_reduce();
   auto fut_reduce = when_all(pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_kmers, op_fast_add, 0),
                              pr.reduce_one(bytes_sent, op_fast_add, 0), pr.reduce_one(bytes_received, op_fast_add, 0),
@@ -804,22 +873,25 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
         SLOG_VERBOSE("Dropped ", all_excess_alns_reads, " alignments in excess of ", KLIGN_MAX_ALNS_PER_READ, " per read\n");
     }
   });
-  timers.fetch_ctg_maps.stop();
   Timings::set_pending(fut_report);
 };  // fetch_ctg_maps
 
 template <int MAX_K>
 void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
                   bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+  assert(!upcxx::in_progress());
+  assert(upcxx::master_persona().active_with_caller());
+  auto short_name = get_basename(packed_reads->get_fname());
+  DBG("compute_alns on ", short_name, "\n");
   timers.compute_alns.start();
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
-  Alns alns_for_sample;
+  auto sh_alns = make_shared<Alns>();
+  Alns &alns_for_sample = *sh_alns;
   Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
-  ProgressBar progbar(packed_reads->get_local_num_reads(),
-                      string("Computing alignments on ") + get_basename(packed_reads->get_fname()));
+  ProgressBar progbar(packed_reads->get_local_num_reads(), string("Computing alignments on ") + short_name);
   for (auto &read_record : read_records) {
     progress();
     progbar.update();
@@ -833,20 +905,22 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
     }
   }
   aligner.flush_remaining(read_group_id, timers);
+  aligner.finish_alns();
   Timings::set_pending(progbar.set_done());
+  timers.compute_alns.stop();
   read_records.clear();
-  aligner.sort_alns();
-  aligner.log_ctg_bytes_fetched();
 
+  // defer reporting
+  aligner.log_ctg_bytes_fetched();
   auto &pr = Timings::get_promise_reduce();
   auto fut_reduce = when_all(
       pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_reads_aligned, op_fast_add, 0), aligner.fut_get_num_alns(),
       aligner.fut_get_num_perfect_alns(), pr.reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0),
       pr.reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0), pr.reduce_one(alns_for_sample.size(), op_fast_add, 0));
 
-  auto fut_report = fut_reduce.then([](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns, auto all_num_perfect,
-                                       auto all_num_dups, auto all_num_bad, auto all_num_good) {
-    SLOG_VERBOSE("Found ", all_num_alns, " alignments:\n");
+  auto fut_report = fut_reduce.then([short_name](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns,
+                                                 auto all_num_perfect, auto all_num_dups, auto all_num_bad, auto all_num_good) {
+    SLOG_VERBOSE("Found ", all_num_alns, " alignments in ", short_name, "\n");
     SLOG_VERBOSE("  perfect ", perc_str(all_num_perfect, all_num_alns), "\n");
     SLOG_VERBOSE("  good ", perc_str(all_num_good, all_num_alns), "\n");
     SLOG_VERBOSE("  bad ", perc_str(all_num_bad, all_num_alns), "\n");
@@ -855,30 +929,62 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
                  (double)all_num_alns / all_num_reads_aligned, "\n");
   });
   Timings::set_pending(fut_report);
-  alns.append(alns_for_sample);
-  timers.compute_alns.stop();
+
+  // barrier before possibly loosing attention for sort & append
+  LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
+  BarrierTimer sort_bt("Sorting Alignments for " + short_name);
+  if (!sh_alns->empty()) {
+    LOG("Sorting ", sh_alns->size(), " alignments in a new thread after discharge\n");
+    // wrap expensive sort in thread and keep some attention while waiting
+    auto sort_lambda = [&sort_t = timers.sort_t, &alns_for_sample, sh_alns]() {
+      sort_t.start();
+      assert(&alns_for_sample == sh_alns.get());
+      alns_for_sample.sort_alns();
+      sort_t.stop();
+      LOG("Completed sorting ", alns_for_sample.size(), " alignments\n");
+    };
+    future<> fut_sort = upcxx_utils::ThreadPool::get_single_pool().enqueue_serially(sort_lambda);
+    fut_sort = fut_sort.then([sh_alns, &alns]() {
+      assert(upcxx::master_persona().active_with_caller());
+      alns.append(*sh_alns);
+    });
+    Timings::set_pending(fut_sort);
+  }
+
 };  // compute_alns
+
+template <int MAX_K>
+shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_store_size, int max_rpcs_in_flight, Contigs &ctgs,
+                                                 int min_ctg_len, bool allow_multi_kmers) {
+  BarrierTimer timer(__FILEFUNC__);
+  Kmer<MAX_K>::set_k(kmer_len);
+  uint64_t num_ctg_kmers = 0;
+  for (auto &ctg : ctgs)
+    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+  auto sh_kmer_ctg_dht = make_shared<KmerCtgDHT<MAX_K>>(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
+  auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
+  kmer_ctg_dht.build(ctgs, min_ctg_len);
+  kmer_ctg_dht.purge_high_count_seeds();
+  return sh_kmer_ctg_dht;
+}
 
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
                        Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
                        int min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
-  Kmer<MAX_K>::set_k(kmer_len);
-  KlignTimers timers;
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
+
+  auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(kmer_len, max_store_size, max_rpcs_in_flight, ctgs, min_ctg_len, report_cigar);
+  auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
+  KlignTimers timers;
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
-  uint64_t num_ctg_kmers = 0;
-  for (auto &ctg : ctgs)
-    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
-  bool allow_multi_kmers = report_cigar;
-  KmerCtgDHT<MAX_K> kmer_ctg_dht(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
-  barrier();
-  kmer_ctg_dht.build(ctgs, min_ctg_len);
+
 #ifdef DEBUG
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
   int read_group_id = 0;
+  upcxx::promise prom_gpu(1);
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
@@ -886,7 +992,6 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
                         timers);
     read_group_id++;
   }
-  barrier();
   timers.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   timers.clear();

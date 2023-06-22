@@ -48,6 +48,8 @@
 #include "klign.hpp"
 #include "kmer_dht.hpp"
 #include "stage_timers.hpp"
+#include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 
 using namespace upcxx;
 using namespace upcxx_utils;

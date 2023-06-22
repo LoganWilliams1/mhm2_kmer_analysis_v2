@@ -240,16 +240,17 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
     , fname(fname)
     , str_ids(str_ids) {}
 
-PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads)
+PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads, const string &fname)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , packed_reads{}
     , index(0)
     , qual_offset(qual_offset)
-    , fname("")
+    , fname(fname)
     , str_ids(false) {
   max_read_len = 0;
   // assert(!packed_reads.size());
-  LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage\n");
+  LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage fname=", fname,
+      "\n");
   uint64_t num_bases = 0;
   for (auto &packed_read : new_packed_reads) num_bases += packed_read.get_read_len();
   reserve(new_packed_reads.size(), num_bases);
@@ -383,6 +384,7 @@ upcxx::future<> PackedReads::load_reads_nb() {
     progbar.update(tot_bytes_read);
     add_read(id, seq, quals);
   }
+  DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
   FastqReaders::close(fname);
   auto fut = progbar.set_done();
@@ -406,8 +408,9 @@ upcxx::future<> PackedReads::load_reads_nb() {
 
 void PackedReads::load_reads() {
   BarrierTimer timer(__FILEFUNC__);
-  load_reads_nb().wait();
-  upcxx::barrier();
+  auto fut = load_reads_nb();
+  Timings::wait_pending();
+  fut.wait();
 }
 
 void PackedReads::report_size() {
@@ -433,7 +436,14 @@ void PackedReads::report_size() {
 }
 
 int64_t PackedReads::get_local_bases() const { return bases; }
-int64_t PackedReads::get_bases() { return upcxx::reduce_one(bases, upcxx::op_fast_add, 0).wait(); }
+upcxx::future<uint64_t> PackedReads::fut_get_bases() const {
+  return upcxx_utils::Timings::get_promise_reduce().reduce_one(bases, upcxx::op_fast_add, 0);
+}
+uint64_t PackedReads::get_bases() const {
+  auto fut = fut_get_bases();
+  Timings::wait_pending();
+  return fut.wait();
+}
 
 PackedRead &PackedReads::operator[](int index) {
   if (index >= packed_reads.size()) DIE("Array index out of bound ", index, " >= ", packed_reads.size());

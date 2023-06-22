@@ -47,6 +47,8 @@
 #include "histogrammer.hpp"
 #include "klign.hpp"
 #include "stage_timers.hpp"
+#include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 
 using namespace upcxx;
 using namespace upcxx_utils;
@@ -106,7 +108,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     for (auto pr : packed_reads_list) {
       read_group_names.push_back(pr->get_fname());
     }
-    compute_aln_depths("", ctgs, alns, max_kmer_len, 0, read_group_names, true);
+    compute_aln_depths_scaffolding(ctgs, alns, max_kmer_len, 0, true);
     end_gasnet_stats();
     LOG_MEM("Compute alignments");
     // always recalculate the insert size because we may need it for resumes of failed runs

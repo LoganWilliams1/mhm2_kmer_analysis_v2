@@ -156,8 +156,12 @@ void done_init_devices() {
       }
       barrier(local_team());
       num_gpus_on_node = broadcast(num_gpus_on_node, 0, local_team()).wait();
+      auto msm_local = upcxx_utils::min_sum_max_reduce_one(gpu_startup_duration, 0, upcxx::local_team()).wait();
+      auto msm_global = upcxx_utils::min_sum_max_reduce_one(gpu_startup_duration, 0).wait();
       // gpu_avail_mem = broadcast(gpu_avail_mem, 0, local_team()).wait();
       SLOG_GPU("Available number of GPUs on this node ", num_gpus_on_node, ". Detected in ", gpu_startup_duration, " s\n");
+      if (!local_team().rank_me()) LOG("Initialized on node in ", msm_local.to_string(), "\n");
+      if (!rank_me()) LOG("Initialized globally in ", msm_global.to_string(), "\n");
       // SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
       //         " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()), " per rank). Detected in ",
       //         gpu_startup_duration, " s\n");

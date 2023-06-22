@@ -468,7 +468,7 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   // now copy the new packed reads to the old
   for (auto packed_reads : packed_reads_list) delete packed_reads;
   packed_reads_list.clear();
-  packed_reads_list.push_back(new PackedReads(qual_offset, *new_packed_reads));
+  packed_reads_list.push_back(new PackedReads(qual_offset, *new_packed_reads, "combined-shuffled-reads"));
   packed_reads_list[0]->set_max_read_len();
   assert(packed_reads_list.size() == 1);
   uint64_t num_reads_received = packed_reads_list[0]->get_local_num_reads();

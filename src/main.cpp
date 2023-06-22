@@ -41,6 +41,7 @@
 */
 
 #include <sys/resource.h>
+#include <random>
 
 #include "contigging.hpp"
 #include "klign.hpp"
@@ -90,6 +91,7 @@ int main(int argc, char **argv) {
   init_timer.stop();
   auto init_timings_fut = init_timer.reduce_timings();
   upcxx::promise<> prom_report_init_timings(1);
+  srand(rank_me() + 10);
 
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
