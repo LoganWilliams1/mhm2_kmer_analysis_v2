@@ -122,7 +122,8 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
     Alns alns;
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs, timers);
+    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs,
+                        options->klign_rget_buf_size, timers);
     stage_timers.alignments->stop();
     LOG_MEM("Aligned Post Assembly Reads " + short_name);
 
