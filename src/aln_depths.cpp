@@ -205,7 +205,7 @@ struct CtgBaseDepths {
     free_base_counts(read_group_id);
   }  // calc_stats
 
-};  // struct CtgBaseDepths
+};   // struct CtgBaseDepths
 
 class CtgsDepths {
  private:
@@ -561,7 +561,7 @@ class CtgsDepths {
 
   }  // write_aln_depths
 
-};  // class CtgsDepths
+};   // class CtgsDepths
 
 // wrapper method for scaffolding to just calculate depths
 // so squash all read_groups into the total

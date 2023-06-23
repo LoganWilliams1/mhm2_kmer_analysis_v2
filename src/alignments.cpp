@@ -406,7 +406,7 @@ int Alns::calculate_unmerged_rlen() const {
   HASH_TABLE<int, int64_t> rlens;
   int64_t sum_rlens = 0;
   for (auto &aln : alns) {
-    //DBG("aln.rlen=", aln.rlen, " ", aln.to_paf_string(), "\n");
+    // DBG("aln.rlen=", aln.rlen, " ", aln.to_paf_string(), "\n");
     rlens[aln.rlen]++;
     sum_rlens += aln.rlen;
   }

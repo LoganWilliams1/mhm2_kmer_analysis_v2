@@ -139,10 +139,10 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
   uint64_t tot_extensions = data_in.size();
   uint32_t max_read_count = max_r_count > max_l_count ? max_r_count : max_l_count;
   int max_walk_len = walk_len_limit;
-  uint64_t ht_tot_size = accumulate(sizes_vecs.ht_sizes.begin(), sizes_vecs.ht_sizes.end(), (uint64_t) 0);
-  uint64_t total_r_reads = accumulate(sizes_vecs.r_reads_count.begin(), sizes_vecs.r_reads_count.end(), (uint64_t) 0);
-  uint64_t total_l_reads = accumulate(sizes_vecs.l_reads_count.begin(), sizes_vecs.l_reads_count.end(), (uint64_t) 0);
-  uint64_t total_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin(), sizes_vecs.ctg_sizes.end(), (uint64_t) 0);
+  uint64_t ht_tot_size = accumulate(sizes_vecs.ht_sizes.begin(), sizes_vecs.ht_sizes.end(), (uint64_t)0);
+  uint64_t total_r_reads = accumulate(sizes_vecs.r_reads_count.begin(), sizes_vecs.r_reads_count.end(), (uint64_t)0);
+  uint64_t total_l_reads = accumulate(sizes_vecs.l_reads_count.begin(), sizes_vecs.l_reads_count.end(), (uint64_t)0);
+  uint64_t total_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin(), sizes_vecs.ctg_sizes.end(), (uint64_t)0);
 
   size_t gpu_mem_req = sizeof(int32_t) * tot_extensions * 2                            // prefix_ht_size_d, ctg_seq_offsets_d
                        + sizeof(int32_t) * tot_extensions * 2                          // rds_l_cnt_offset_d, rds_r_cnt_offset_d
@@ -195,13 +195,13 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
     uint64_t temp_max_ht = 0, temp_max_r_rds = 0, temp_max_l_rds = 0, temp_max_ctg_len = 0;
 
     temp_max_ht = accumulate(sizes_vecs.ht_sizes.begin() + extensions_offset,
-                             sizes_vecs.ht_sizes.begin() + extensions_offset + num_extensions, (uint64_t) 0);
+                             sizes_vecs.ht_sizes.begin() + extensions_offset + num_extensions, (uint64_t)0);
     temp_max_r_rds = accumulate(sizes_vecs.r_reads_count.begin() + extensions_offset,
-                                sizes_vecs.r_reads_count.begin() + extensions_offset + num_extensions, (uint64_t) 0);
+                                sizes_vecs.r_reads_count.begin() + extensions_offset + num_extensions, (uint64_t)0);
     temp_max_l_rds = accumulate(sizes_vecs.l_reads_count.begin() + extensions_offset,
-                                sizes_vecs.l_reads_count.begin() + extensions_offset + num_extensions, (uint64_t) 0);
+                                sizes_vecs.l_reads_count.begin() + extensions_offset + num_extensions, (uint64_t)0);
     temp_max_ctg_len = accumulate(sizes_vecs.ctg_sizes.begin() + extensions_offset,
-                                  sizes_vecs.ctg_sizes.begin() + extensions_offset + num_extensions, (uint64_t) 0);
+                                  sizes_vecs.ctg_sizes.begin() + extensions_offset + num_extensions, (uint64_t)0);
 
     if (temp_max_ht > max_ht) max_ht = temp_max_ht;
     if (temp_max_r_rds > max_r_rds_its) max_r_rds_its = temp_max_r_rds;
@@ -246,7 +246,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
   unique_ptr<char[]> longest_walks_r_h{new char[all_walk_size]};  // reserve memory for all the walks
   unique_ptr<char[]> longest_walks_l_h{new char[all_walk_size]};  // not needed on device, will re-use right walk memory
   unique_ptr<uint32_t[]> final_walk_lens_r_h{new uint32_t[max_slice_size * iterations]};  // reserve memory for all the walks.
-  unique_ptr<uint32_t[]> final_walk_lens_l_h{new uint32_t[max_slice_size * iterations]};  // not needed on device, will re use right walk memory
+  unique_ptr<uint32_t[]> final_walk_lens_l_h{
+      new uint32_t[max_slice_size * iterations]};  // not needed on device, will re use right walk memory
   unique_ptr<uint32_t[]> prefix_ht_size_h{new uint32_t[max_slice_size]};
 
   gpu_mem_req = sizeof(int32_t) * max_slice_size * 2                            // prefix_ht_size_d, ctg_seq_offsets_d
@@ -334,7 +335,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
       for (unsigned j = 0; j < temp_data.reads_left.size(); j++) {
         auto read_size = temp_data.reads_left[j].seq.size();
         auto qual_size = temp_data.reads_left[j].quals.size();
-        if (read_size != qual_size || read_size > max_read_size || reads_l_offset_sum + max_read_size > (uint64_t) max_reads_left_h) {
+        if (read_size != qual_size || read_size > max_read_size ||
+            reads_l_offset_sum + max_read_size > (uint64_t)max_reads_left_h) {
           if (!num_bad)
             fprintf(stderr,
                     "WARN: myrank=%d: Invalid reads_left[%u of %lu].seq read_size=%lu qual_size=%lu i=%u of %lu, cid=%lu "
@@ -362,7 +364,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
       for (unsigned j = 0; j < temp_data.reads_right.size(); j++) {
         auto read_size = temp_data.reads_right[j].seq.size();
         auto qual_size = temp_data.reads_right[j].quals.size();
-        if (read_size != qual_size || read_size > max_read_size || reads_r_offset_sum + max_read_size > (uint64_t) max_reads_right_h) {
+        if (read_size != qual_size || read_size > max_read_size ||
+            reads_r_offset_sum + max_read_size > (uint64_t)max_reads_right_h) {
           if (!num_bad)
             fprintf(stderr,
                     "WARN: myrank=%d: Invalid reads_right[%u of %lu].seq read_size=%lu quals_size=%lu i=%u of %lu, cid=%lu "
@@ -386,7 +389,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
         fprintf(stderr, "WARN: my_rank=%d read_r_index=%lu > max_r_rds_its=%lu reads_r_offset_sum=%lu\n", my_rank, read_r_index,
                 max_r_rds_its, reads_r_offset_sum);
 
-    }                                        // data packing for loop ends
+    }  // data packing for loop ends
     if (num_bad) fprintf(stderr, "WARN: myrank=%d found %d excess sized reads from line %d\n", my_rank, num_bad, debug_line);
 
     uint32_t total_r_reads_slice = read_r_index;
