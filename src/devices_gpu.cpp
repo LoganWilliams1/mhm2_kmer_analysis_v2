@@ -82,7 +82,7 @@ upcxx::team &get_gpu_team() {
     upcxx::intrank_t color = upcxx::team::color_none;
     if (gpu_utils::gpus_present()) {
       auto my_uuid = gpu_utils::get_gpu_uuid();
-      color = std::hash<string>{}(my_uuid) & 0xffffffff;
+      color = std::hash<string>{}(my_uuid)&0xffffffff;
       if (color < 0) color = -color;
     } else {
       color = 0;  // i.e. just a copy of the local team
@@ -100,7 +100,7 @@ void init_devices() {
   // initialize the GPU and first-touch memory and functions in a new thread as this can take many seconds to complete
   detect_gpu_fut = execute_in_thread_pool([]() {
                      DBG("Initializing GPUs\n");
-                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me());
+                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me(), get_gpu_avail_mem_per_rank());
                      stringstream ss;
                      ss << "Done initializing GPU: " << (gpu_utils::gpus_present() ? "Found" : "NOT FOUND");
                      if (gpu_utils::gpus_present()) {
