@@ -123,7 +123,7 @@ void LinearAllocatorPool::Init() {
 }
 
 void LinearAllocatorPool::AddBlock() {
-  auto m_start_ptr = calloc(1,m_block_size); // allocate and touch
+  auto m_start_ptr = calloc(1, m_block_size);  // allocate and touch
   if (m_start_ptr == nullptr) throw std::bad_alloc();
   m_blocks.push_back({m_start_ptr, 0});
   LOG("Added new ", get_size_str(m_block_size), " block. size=", m_blocks.size(), " num_allocations=", m_num_allocations,

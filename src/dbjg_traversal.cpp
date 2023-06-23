@@ -58,7 +58,7 @@
 #include "utils.hpp"
 
 #define DBG_TRAVERSE DBG
-//#define DBG_TRAVERSE(...)
+// #define DBG_TRAVERSE(...)
 
 using namespace std;
 using namespace upcxx;

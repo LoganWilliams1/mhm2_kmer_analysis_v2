@@ -327,7 +327,7 @@ struct MerFreqs {
         if (runner_up_rating < 3) ext = top_rated_base;
       } else if (top_rating == 6) {  // viable and fair hiQ support
         if (runner_up_rating < 4) ext = top_rated_base;
-      } else {  // strongest rating trumps
+      } else {                       // strongest rating trumps
         if (runner_up_rating < 7) {
           ext = top_rated_base;
         } else {

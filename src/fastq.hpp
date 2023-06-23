@@ -58,11 +58,11 @@ using upcxx::promise;
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-using upcxx_utils::IntermittentTimer;
 using upcxx_utils::AsyncTimer;
 using upcxx_utils::BarrierTimer;
-using upcxx_utils::Timer;
 using upcxx_utils::get_basename;
+using upcxx_utils::IntermittentTimer;
+using upcxx_utils::Timer;
 
 #define INT_CEIL(numerator, denominator) (((numerator)-1) / (denominator) + 1)
 #define BUF_SIZE 2047
@@ -85,11 +85,11 @@ class FastqReader {
   int read_count = 0;  // used in subsample
   shared_ptr<FastqReader> fqr2;
   bool first_file;
-  bool _is_paired;       // file was declared as paired by the user
+  bool _is_paired;        // file was declared as paired by the user
   bool _is_interleaved;   // 1 file that also _is_paired
   bool _fix_paired_name;  // Issue124 - file contains identical names of paired reads, so fix each paired read name to be unique
                           // on-the-fly
-  bool _first_pair;      // alternate for pair1 (first_pair) and pair2 (!first_pair)
+  bool _first_pair;       // alternate for pair1 (first_pair) and pair2 (!first_pair)
   bool _trim_comment;
   bool _is_bgzf;
   IntermittentTimer io_t, read_io_t;
@@ -130,9 +130,9 @@ class FastqReader {
   int64_t get_fptr_for_next_record(int64_t offset);
 
  public:
-  FastqReader() = delete;  // no default constructor
+  FastqReader() = delete;                                    // no default constructor
   FastqReader(const string &_fname, upcxx::future<> first_wait = make_future(), bool is_second_file = false);
-  FastqReader(const FastqReader &copy) = delete;  // no copy
+  FastqReader(const FastqReader &copy) = delete;             // no copy
   FastqReader(FastqReader &&move) = default;
   FastqReader &operator=(const FastqReader &copy) = delete;  // no copy
   FastqReader &operator=(FastqReader &&move) = delete;
@@ -202,7 +202,7 @@ class FastqReader {
   uint64_t get_num_pairs() const { return num_pairs; }
   bool is_first_file() const { return (_is_paired && fqr2) || _is_interleaved || !_is_paired; }
 
-}; // FastqReader
+};  // FastqReader
 
 class FastqReaders {
   // singleton class to hold as set of fastq readers open and re-usable
@@ -294,14 +294,14 @@ class FastqReaders {
         needs_blocking = true;
         AsyncTimer t_file_sizes("Get file sizes of " + get_basename(fqr.get_fname()));
         t_file_sizes.start();
-        upcxx::future<> fut =
-            when_all(fqr.get_file_size(true), fqr.get_file_size(false))
-                .then([t_file_sizes, &fqr, &total_size, &file_size = file_sizes[filenum], &file_size1 = file_sizes1[filenum]](int64_t sz, int64_t sz1) {
-                  file_size = sz;
-                  file_size1 = sz1;
-                  total_size += sz;
-                  t_file_sizes.stop();
-                });
+        upcxx::future<> fut = when_all(fqr.get_file_size(true), fqr.get_file_size(false))
+                                  .then([t_file_sizes, &fqr, &total_size, &file_size = file_sizes[filenum],
+                                         &file_size1 = file_sizes1[filenum]](int64_t sz, int64_t sz1) {
+                                    file_size = sz;
+                                    file_size1 = sz1;
+                                    total_size += sz;
+                                    t_file_sizes.stop();
+                                  });
         chain_fut = when_all(chain_fut, fut);
         chain_open_fut = when_all(chain_open_fut, fqr.get_open_fut());
       }
@@ -428,7 +428,7 @@ class FastqReaders {
     chain_open_fut.wait();
     t_finish_seek.initiate_start_reduction();
     t_finish_seek.initiate_stop_reduction();
-    
+
     DBG("All ", fnames.size(), " file (pairs) open.  total_size=", total_size, "\n");
     return total_size;
   }
@@ -438,4 +438,4 @@ class FastqReaders {
   static void close(const string fname);
 
   static void close_all();
-}; // FastqReaders
+};  // FastqReaders

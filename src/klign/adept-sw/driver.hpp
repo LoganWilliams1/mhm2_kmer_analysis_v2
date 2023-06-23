@@ -62,7 +62,7 @@ struct AlignmentResults {
   short *ref_end = nullptr;
   short *query_end = nullptr;
   short *top_scores = nullptr;
-  char  *cigar = nullptr;
+  char *cigar = nullptr;
 };
 
 struct DriverState;
