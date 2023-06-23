@@ -39,7 +39,9 @@ elseif(ENABLE_HIP)
     target_link_libraries(${tgt} ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES})
   endif()
   list(APPEND KCOUNT_TARGET_OBJECTS $<TARGET_OBJECTS:${tgt}>)
-  set(KCOUNT_TARGET_OBJECTS ${KCOUNT_TARGET_OBJECTS} PARENT_SCOPE)
+  set(KCOUNT_TARGET_OBJECTS
+      ${KCOUNT_TARGET_OBJECTS}
+      PARENT_SCOPE)
 
 else()
   set(tgt kcount_cpu)
