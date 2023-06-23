@@ -37,7 +37,7 @@ Duplication ratio            1.001
 # mismatches per 100 kbp     320.54
 # indels per 100 kbp         10.92
 Largest alignment            3156
-Total aligned length         2047004
+Total aligned length         2024737
 NA50                         685
 NA90                         528
 auNA                         804.2
