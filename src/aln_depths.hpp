@@ -48,7 +48,8 @@
 #include "contigs.hpp"
 
 // for scaffolding
-void compute_aln_depths_scaffolding(Contigs &ctgs, const Alns &alns, int max_kmer_len, int min_ctg_len, bool double_count_merged_region);
+void compute_aln_depths_scaffolding(Contigs &ctgs, const Alns &alns, int max_kmer_len, int min_ctg_len,
+                                    bool double_count_merged_region);
 
 // for post-assembly
 class CtgsDepths;

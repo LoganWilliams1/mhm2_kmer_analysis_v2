@@ -53,7 +53,6 @@
 
 #include "upcxx_utils/timers.hpp"
 
-
 using std::shared_ptr;
 using upcxx::global_ptr;
 
@@ -152,9 +151,6 @@ struct ReadRecordPtr {
 
 template <int MAX_K>
 class KmerCtgDHT;
-
-
-
 
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,

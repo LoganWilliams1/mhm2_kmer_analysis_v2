@@ -164,7 +164,7 @@ void Kmer<MAX_K>::get_kmers(unsigned kmer_len, string seq, vector<Kmer> &kmers, 
   get_kmers(kmer_len, std::string_view(seq.data(), seq.size()), kmers, check_n);
 }
 
-//#include "upcxx_utils/log.hpp"
+// #include "upcxx_utils/log.hpp"
 template <int MAX_K>
 void Kmer<MAX_K>::get_kmers(unsigned kmer_len, const std::string_view &seq, std::vector<Kmer> &kmers, bool check_n) {
   // only need rank 0 to check
@@ -314,7 +314,7 @@ void Kmer<MAX_K>::set_kmer(const char *s) {
     longs[l] |= ((x + ((x ^ (*s & 2)) >> 1)) << (2 * (31 - j)));
 #else
     // This is the same, but broken down...
-    x = ((*s) & 4) >> 1;  // i.e. Gg/Tt will set bit 1, so x == 2 | 0
+    x = ((*s) & 4) >> 1;         // i.e. Gg/Tt will set bit 1, so x == 2 | 0
     assert(x == 2 || x == 0);
     x |= (x ^ ((*s) & 2)) >> 1;  // i.e. Cc/Gg will not set bit 0, Aa/Tt will set bit 0
     assert(x >= 0 && x <= 3);

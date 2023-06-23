@@ -60,7 +60,6 @@ uint64_t murmur_hash2_64(const void *key, uint32_t len);
 uint32_t SuperFastHash(const char *data, int len);
 uint64_t quick_hash(uint64_t v);
 
-
 #ifdef __cplusplus
 }
 #endif

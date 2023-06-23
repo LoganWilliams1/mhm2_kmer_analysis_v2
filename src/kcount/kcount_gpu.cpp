@@ -49,7 +49,7 @@
 #include "kcount-gpu/parse_and_pack.hpp"
 #include "kcount-gpu/gpu_hash_table.hpp"
 
-//#define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+// #define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
 #define SLOG_GPU SLOG_VERBOSE
 
 using namespace std;
@@ -287,17 +287,18 @@ void HashTableInserter<MAX_K>::flush_inserts() {
     auto fut_num_dropped_qf = pr.reduce_all((uint64_t)insert_stats.dropped_qf, op_fast_add);
     auto fut_qf_max_load = pr.reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_max, 0);
     auto fut_qf_tot_load = pr.reduce_one(state->ht_gpu_driver.get_qf_load_factor(), op_fast_add, 0);
-    fut_report = when_all(fut_report, fut_num_unique_qf, fut_num_dropped_qf, fut_qf_max_load, fut_qf_tot_load,
-                          fut_num_inserts, fut_num_attempted_inserts)
-                     .then([=](auto num_unique_qf, auto num_dropped_qf, auto qf_max_load, auto qf_tot_load,
-                               auto num_inserts, auto num_attempted_inserts) {
+    fut_report = when_all(fut_report, fut_num_unique_qf, fut_num_dropped_qf, fut_qf_max_load, fut_qf_tot_load, fut_num_inserts,
+                          fut_num_attempted_inserts)
+                     .then([=](auto num_unique_qf, auto num_dropped_qf, auto qf_max_load, auto qf_tot_load, auto num_inserts,
+                               auto num_attempted_inserts) {
                        if (num_unique_qf) {
                          // SLOG_GPU("  QF found ", perc_str(num_unique_qf, num_inserts), " unique kmers ", num_inserts, "\n");
                          SLOG_GPU("  QF filtered out ", perc_str(num_unique_qf - num_inserts, num_unique_qf), " singletons\n");
                          double qf_avg_load = (double)qf_tot_load / rank_n();
                          SLOG_GPU("  QF load factor ", fixed, setprecision(2), qf_avg_load, " avg ", qf_max_load, " max ",
                                   qf_avg_load / qf_max_load, " balance\n");
-                         SLOG_VERBOSE("QF kcount found total of ", num_unique_qf + num_dropped_qf, " unique kmers including singletons and dropped\n");
+                         SLOG_VERBOSE("QF kcount found total of ", num_unique_qf + num_dropped_qf,
+                                      " unique kmers including singletons and dropped\n");
 
                          if (num_dropped_qf)
                            SWARN("GPU QF: failed to insert ", perc_str(num_dropped_qf, num_attempted_inserts), " elements");

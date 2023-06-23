@@ -44,7 +44,7 @@
 #include "utils.hpp"
 #include "kcount.hpp"
 
-//#define DBG_ADD_KMER DBG
+// #define DBG_ADD_KMER DBG
 #define DBG_ADD_KMER(...)
 
 using namespace std;
