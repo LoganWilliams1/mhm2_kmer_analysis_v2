@@ -93,7 +93,7 @@ add_definitions(-DKLIGN_MAX_MEM_PCT=10)
 # max contigs per kmer for temporary fix to Issue137
 add_definitions(-DKLIGN_MAX_CTGS_PER_KMER=500) # 0 disables
 # bypass rget_irregular and directly call rget on large contigs over this size
-add_definitions(-DKLIGN_MAX_IRREGULAR_RGET=8292)
+add_definitions(-DKLIGN_MAX_IRREGULAR_RGET=8128)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
