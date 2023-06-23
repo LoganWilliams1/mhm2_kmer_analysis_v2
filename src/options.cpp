@@ -279,6 +279,10 @@ double Options::setup_output_dir() {
       }
     }
   }
+  if (!adapter_fname.empty() && adapter_fname[0] != '/') {
+    // prepend cwd to adapters file
+    adapter_fname = string(cwd_str) + "/" + adapter_fname;
+  }
   // all change to the output directory
   auto chdir_attempts = 0;
   while (chdir(output_dir.c_str()) != 0) {
