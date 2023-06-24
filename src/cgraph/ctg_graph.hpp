@@ -56,16 +56,16 @@ using std::vector;
 
 #include "utils.hpp"
 
-//#define DBG_BUILD DBG
+// #define DBG_BUILD DBG
 #define DBG_BUILD(...)
 
-//#define DBG_WALK DBG
+// #define DBG_WALK DBG
 #define DBG_WALK(...)
 
-//#define DBG_WALK_CONT DBG_CONT
+// #define DBG_WALK_CONT DBG_CONT
 #define DBG_WALK_CONT(...)
 
-//#define DBG_SPANS DBG
+// #define DBG_SPANS DBG
 #define DBG_SPANS(...)
 
 using cid_t = int64_t;

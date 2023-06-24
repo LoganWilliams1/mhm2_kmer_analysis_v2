@@ -60,48 +60,47 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
   assert(upcxx::master_persona().active_with_caller());
 
   future<> fut = upcxx_utils::execute_serially_in_thread_pool([aln_block_data, report_cigar, &klign_timers]() {
-  
     DBG("Starting _gpu_align_block_kernel of ", aln_block_data->kernel_alns.size(), "\n");
 
-    unsigned maxContigSize = aln_block_data->max_clen ;
-    unsigned maxReadSize = aln_block_data->max_rlen ;
+    unsigned maxContigSize = aln_block_data->max_clen;
+    unsigned maxReadSize = aln_block_data->max_rlen;
     auto &aln_kernel_timer = klign_timers.aln_kernel;
     auto &block_timer = klign_timers.aln_kernel_block;
     double launch_time = 0, mem_time = 0;
-    unsigned maxCIGAR = (maxContigSize > maxReadSize ) ? 3* maxContigSize : 3* maxReadSize; //3* size to eliminate overflow FIXME: Truncate CIGARs that are over maxCIGAR
-    //printf("GPU align block: maxContigSize passed in = %d, maxReadSize passed in = %d\n", maxContigSize, maxReadSize);
-    if (report_cigar){
-      
+    unsigned maxCIGAR = (maxContigSize > maxReadSize) ?
+                            3 * maxContigSize :
+                            3 * maxReadSize;  // 3* size to eliminate overflow FIXME: Truncate CIGARs that are over maxCIGAR
+    // printf("GPU align block: maxContigSize passed in = %d, maxReadSize passed in = %d\n", maxContigSize, maxReadSize);
+    if (report_cigar) {
       aln_kernel_timer.start();
 
       gpu_driver->run_kernel_traceback(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
-                                      aln_block_data->max_clen, launch_time, mem_time);
+                                       aln_block_data->max_clen, launch_time, mem_time);
       block_timer.start();
       gpu_driver->kernel_block_fwd();
       block_timer.stop();
-      
+
       aln_kernel_timer.stop();
       klign_timers.aln_kernel_launch += launch_time;
-      klign_timers.aln_kernel_mem += mem_time; 
+      klign_timers.aln_kernel_mem += mem_time;
     } else {
-
       aln_kernel_timer.start();
 
       // align query_seqs, ref_seqs, max_query_size, max_ref_size
       gpu_driver->run_kernel_forwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
-                                    aln_block_data->max_clen, launch_time, mem_time);
+                                      aln_block_data->max_clen, launch_time, mem_time);
       block_timer.start();
       gpu_driver->kernel_block_fwd();
       block_timer.stop();
       gpu_driver->run_kernel_backwards(aln_block_data->read_seqs, aln_block_data->ctg_seqs, aln_block_data->max_rlen,
-                                     aln_block_data->max_clen, launch_time, mem_time);
+                                       aln_block_data->max_clen, launch_time, mem_time);
       block_timer.start();
       gpu_driver->kernel_block_rev();
       block_timer.stop();
 
       aln_kernel_timer.stop();
       klign_timers.aln_kernel_launch += launch_time;
-      klign_timers.aln_kernel_mem += mem_time; 
+      klign_timers.aln_kernel_mem += mem_time;
     }
 
     auto aln_results = gpu_driver->get_aln_results();
@@ -114,15 +113,15 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
       aln.set(aln_results.ref_begin[i], aln_results.ref_end[i], aln_results.query_begin[i], aln_results.query_end[i],
               aln_results.top_scores[i], 0, 0, aln_block_data->read_group_id);
       if (report_cigar) {
-        //std::string cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
+        // std::string cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
         std::string cig = "";
-	      int k = i*maxCIGAR;
-	      while (aln_results.cigar[k]) {
+        int k = i * maxCIGAR;
+        while (aln_results.cigar[k]) {
           cig += aln_results.cigar[k];
           k++;
         }
-        aln.set_sam_string(aln_block_data->read_seqs[i],cig);
-        //cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
+        aln.set_sam_string(aln_block_data->read_seqs[i], cig);
+        // cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
         cig = "";
       }
       aln_block_data->alns->add_aln(aln);

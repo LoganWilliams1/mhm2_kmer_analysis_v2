@@ -340,4 +340,3 @@ uint64_t quick_hash(uint64_t v) {
   v ^= v << 5;
   return v;
 }
-
