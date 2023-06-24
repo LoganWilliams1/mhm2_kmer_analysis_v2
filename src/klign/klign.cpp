@@ -606,7 +606,7 @@ class Aligner {
   }
 
   void compute_alns_for_read(CtgAndReadLocsMap &aligned_ctgs_map, const string &rname, const string &rseq_fw, int read_group_id,
-                             KlignTimers &timers) {
+                             int rget_buf_size, KlignTimers &timers) {
     assert(!upcxx::in_progress());
     assert(upcxx::master_persona().active_with_caller());
     int rlen = rseq_fw.length();
@@ -645,7 +645,7 @@ class Aligner {
         } else {
           auto target = ctg_loc.seq_gptr.where();
           rget_requests[target].push_back({ctg_loc, rname, rseq, rstart, cstart, orient, overlap_len, read_group_id});
-          if (rget_requests[target].size() == KLIGN_RGET_BUF_SIZE) do_rget_irregular(target, timers);
+          if (rget_requests[target].size() == rget_buf_size) do_rget_irregular(target, timers);
           remote_ctg_fetches++;
         }
       }
@@ -878,7 +878,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 
 template <int MAX_K>
 void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
-                  bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, KlignTimers &timers) {
+                  bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, int rget_buf_size, KlignTimers &timers) {
   assert(!upcxx::in_progress());
   assert(upcxx::master_persona().active_with_caller());
   auto short_name = get_basename(packed_reads->get_fname());
@@ -901,7 +901,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
     if (read_record.aligned_ctgs_map.size()) {
       num_reads_aligned++;
       packed_reads->get_read(read_record.index, read_id, read_seq, read_quals);
-      aligner.compute_alns_for_read(read_record.aligned_ctgs_map, read_id, read_seq, read_group_id, timers);
+      aligner.compute_alns_for_read(read_record.aligned_ctgs_map, read_id, read_seq, read_group_id, rget_buf_size, timers);
     }
   }
   aligner.flush_remaining(read_group_id, timers);
@@ -971,7 +971,7 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
                        Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
-                       int min_ctg_len) {
+                       int min_ctg_len, int rget_buf_size) {
   BarrierTimer timer(__FILEFUNC__);
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
 
@@ -989,7 +989,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
     compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, use_blastn_scores, all_num_ctgs,
-                        timers);
+                        rget_buf_size, timers);
     read_group_id++;
   }
   timers.done_all();

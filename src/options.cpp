@@ -412,6 +412,8 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 1000));
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
       ->check(CLI::Range(1, 100));
+  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
+      ->check(CLI::Range(10000, 10000000));
   app.add_option("--optimize", optimize_for,
                  "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
