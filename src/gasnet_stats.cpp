@@ -132,10 +132,11 @@ static void aggregate_stats() {
   } else {
     string line;
     // this stage will always be last in the stats file
-    while (getline(stats_file, line) && line.find(_current_stats_stage) == string::npos);
-    //SLOG(line, "\n");
+    while (getline(stats_file, line) && line.find(_current_stats_stage) == string::npos)
+      ;
+    // SLOG(line, "\n");
     while (getline(stats_file, line)) {
-      //SLOG(line, "\n");
+      // SLOG(line, "\n");
       auto tokens = split_string(line, "\\s+");
       if (tokens.size() < 3) continue;
       if (tokens[1] == "Total" && tokens[2] == "gets:")

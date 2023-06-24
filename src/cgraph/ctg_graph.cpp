@@ -74,7 +74,6 @@ using std::string;
 using std::to_string;
 using std::tuple;
 using std::vector;
-using std::shared_ptr;
 
 using namespace upcxx_utils;
 

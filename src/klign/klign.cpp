@@ -505,7 +505,7 @@ class Aligner {
       auto it = ctgs_fetched.find(req.ctg_loc.cid);
       if (it == ctgs_fetched.end()) {
         it = ctgs_fetched.insert({req.ctg_loc.cid, string(clen, ' ')}).first;
-        if (MAX_IRREGULAR_RGET > 0 && clen >= MAX_IRREGULAR_RGET) {
+        if (KLIGN_MAX_IRREGULAR_RGET > 0 && clen >= KLIGN_MAX_IRREGULAR_RGET) {
           // issue a normal rget
           auto fut = rget(req.ctg_loc.seq_gptr, const_cast<char *>(it->second.data()), clen);
           fut_chain = when_all(fut, fut_chain);

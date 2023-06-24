@@ -82,7 +82,7 @@ upcxx::team &get_gpu_team() {
     upcxx::intrank_t color = upcxx::team::color_none;
     if (gpu_utils::gpus_present()) {
       auto my_uuid = gpu_utils::get_gpu_uuid();
-      color = std::hash<string>{}(my_uuid) & 0xffffffff;
+      color = std::hash<string>{}(my_uuid)&0xffffffff;
       if (color < 0) color = -color;
     } else {
       color = 0;  // i.e. just a copy of the local team

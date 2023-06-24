@@ -61,9 +61,9 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define DBG_INS_CTG_KMER DBG
+// #define DBG_INS_CTG_KMER DBG
 #define DBG_INS_CTG_KMER(...)
-//#define DBG_INSERT_KMER DBG
+// #define DBG_INSERT_KMER DBG
 #define DBG_INSERT_KMER(...)
 
 void Supermer::pack(const string &unpacked_seq) {
