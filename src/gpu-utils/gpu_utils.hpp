@@ -59,6 +59,6 @@ bool gpus_present();
 
 // The first call to create the context on the GPU can take several seconds of real time but no cpu time
 // so start it asap (call this in a new thread)
-void initialize_gpu(double &time_to_initialize, int rank_me, size_t gpu_mem_avail_per_rank);
+void initialize_gpu(double &time_to_initialize, int rank_me, int team_rank_n);
 
 }  // namespace gpu_utils
