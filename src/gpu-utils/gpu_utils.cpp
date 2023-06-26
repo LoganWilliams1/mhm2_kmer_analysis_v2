@@ -186,7 +186,7 @@ void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me, int team
   _rank_me = rank_me;
   set_gpu_device(_rank_me);
   ERROR_CHECK(DeviceReset());
-  /*
+
   auto gpu_mem_avail_per_rank = get_gpu_avail_mem() / team_rank_n;
 
   char *buf;
@@ -194,7 +194,7 @@ void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me, int team
   ERROR_CHECK(Malloc(&buf, buf_size));
   ERROR_CHECK(Memset(buf, 0, buf_size));
   ERROR_CHECK(Free(buf));
-  */
+
   elapsed = chrono::high_resolution_clock::now() - t;
   time_to_initialize = elapsed.count();
 }
