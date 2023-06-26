@@ -7,8 +7,8 @@ module load craype-hugepages2M
 
 module use /global/common/software/m2878/perlmutter/modulefiles
 module rm upcxx
-# module load upcxx
-module load upcxx/nightly ; export GASNET_OFI_RECEIVE_BUFF_SIZE=recv ; export GASNET_OFI_NUM_RECEIVE_BUFFS=400 # FIXME when slingshot is fixed
+module load upcxx/2023.3.0
+export GASNET_OFI_RECEIVE_BUFF_SIZE=recv ; export GASNET_OFI_NUM_RECEIVE_BUFFS=400 # FIXME when slingshot is fixed
 export FI_OFI_RXM_RX_SIZE=8192 # FIXME when slingshot is fixed
 #export FI_CXI_DEFAULT_CQ_SIZE=13107200 # FIXME when slingshot is fixed
 export FI_CXI_DEFAULT_CQ_SIZE=$((13107200 / 5)) # FIXME when slingshot is fixed
