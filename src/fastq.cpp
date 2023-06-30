@@ -322,9 +322,12 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
             break;
           }
         } else if (is_interleaved()) {
-          WARN("Improper interleaved-paired file (--reads).  If this actually two fastq files, use --paired-reads or "
-               "--unpaired-reads for unpaired fastq: ",
+          WARN("Improper interleaved-paired file (--reads).  If this actually two fastq files, use --paired-reads; if this is "
+               " unpaired, use --unpaired-reads: ",
                get_basename(fname), "\n\tAdjacent reads share the same pair id ", last_header, " vs ", header, "\n");
+          WARN("Changing file from interleaved to unpaired");
+          _is_paired = false;
+          _is_interleaved = false;
         } else if (is_paired() && !is_interleaved()) {
           DBG("Paired files can have any pair id here\n");
           break;
