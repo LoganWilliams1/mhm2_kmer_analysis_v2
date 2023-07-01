@@ -251,12 +251,12 @@ int16_t fast_count_mismatches(const char *a, const char *b, int len, int16_t max
 #define MAX_ADAPTER_K 32
 
 // using string_view so we don't store the string again for every kmer
-using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<string_view>>;
+using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<int>>;
 using adapter_sequences_t = vector<string>;
 
-static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_seqs, adapter_hash_table_t &adapters,
+static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_seqs, adapter_hash_table_t &kmer_adapter_map,
                               int adapter_k) {
-  adapters.clear();
+  kmer_adapter_map.clear();
 
   // avoid every rank reading this small file
   adapter_sequences_t new_seqs;
@@ -325,21 +325,21 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
   }
   concat_seqs.clear();
 
-  for (auto const &seq : adapter_seqs) {
+  for (int i = 0; i < adapter_seqs.size(); i++) {
+    auto &seq = adapter_seqs[i];
     vector<Kmer<MAX_ADAPTER_K>> kmers;
     Kmer<MAX_ADAPTER_K>::set_k(adapter_k);
     Kmer<MAX_ADAPTER_K>::get_kmers(adapter_k, seq, kmers, false);
     for (int i = 0; i < kmers.size(); i++) {
       auto kmer = kmers[i];
-      auto it = adapters.find(kmer);
-
-      if (it == adapters.end())
-        adapters.insert({kmer, {string_view(seq)}});
+      auto it = kmer_adapter_map.find(kmer);
+      if (it == kmer_adapter_map.end())
+        kmer_adapter_map.insert({kmer, {i}});
       else
-        it->second.push_back(string_view(seq));
+        it->second.push_back(i);
     }
   }
-  SLOG_VERBOSE("Loaded ", adapter_seqs.size() / 2, " adapters, with a total of ", adapters.size(), " kmers\n");
+  SLOG_VERBOSE("Loaded ", adapter_seqs.size() / 2, " adapters, with a total of ", kmer_adapter_map.size(), " kmers\n");
   /*
   #ifdef DEBUG
   barrier();
@@ -356,8 +356,9 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
 }
 
 static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter,
-                          adapter_hash_table_t &adapters, const string &rname, string &seq, bool is_read_1, int adapter_k,
-                          int64_t &bases_trimmed, int64_t &reads_removed, BaseTimer &time_overhead, BaseTimer &time_ssw) {
+                          adapter_sequences_t &adapter_seqs, adapter_hash_table_t &kmer_adapter_map, const string &rname,
+                          string &seq, bool is_read_1, int adapter_k, int64_t &bases_trimmed, int64_t &reads_removed,
+                          BaseTimer &time_overhead, BaseTimer &time_ssw) {
   time_overhead.start();
   vector<Kmer<MAX_ADAPTER_K>> kmers;
   // Kmer<MAX_ADAPTER_K>::set_k(adapter_k);
@@ -365,19 +366,24 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
   double best_identity = 0;
   int best_trim_pos = seq.length();
   string best_adapter_seq;
-  HASH_TABLE<string_view, bool> adapters_matching;
+
+  vector<bool> adapters_matching(adapter_seqs.size(), false);
   bool found = false;
-  for (int i = 0; i < kmers.size(); i+=4) {
+  for (int i = 0; i < kmers.size(); i += 4) {
     auto &kmer = kmers[i];
-    auto it = adapters.find(kmer);
-    if (it != adapters.end()) {
-      for (auto &adapter_seq : it->second) {
-        if (adapters_matching.find(adapter_seq) != adapters_matching.end()) continue;
+    auto it = kmer_adapter_map.find(kmer);
+    if (it != kmer_adapter_map.end()) {
+      for (auto adapter_index : it->second) {
+        if (adapters_matching[adapter_index]) continue;
+        auto &adapter_seq = adapter_seqs[adapter_index];
         time_ssw.start();
-        adapters_matching[adapter_seq] = true;
+        adapters_matching[adapter_index] = true;
         StripedSmithWaterman::Alignment ssw_aln;
+
+        // FIXME: use the kmer location to align only the necessary subsequence in the adapter seq
         ssw_aligner.Align(adapter_seq.data(), adapter_seq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
                           max((int)(seq.length() / 2), 15));
+
         int max_match_len = min(adapter_seq.length(), seq.length() - ssw_aln.ref_begin);
         double identity = (double)ssw_aln.sw_score / (double)ssw_aligner.get_match_score() / (double)(max_match_len);
         if (identity >= best_identity) {
@@ -416,7 +422,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   fake_qual += (char)qual_offset;
 
   adapter_sequences_t adapter_seqs;
-  adapter_hash_table_t adapters;
+  adapter_hash_table_t kmer_adapter_map;
   StripedSmithWaterman::Aligner ssw_aligner;
   ssw_aligner.Clear();
   if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
@@ -425,9 +431,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   StripedSmithWaterman::Filter ssw_filter;
 
   ssw_filter.report_cigar = false;
-  if (!adapter_fname.empty()) {
-    load_adapter_seqs(adapter_fname, adapter_seqs, adapters, min_kmer_len);
-  }
+  if (!adapter_fname.empty()) load_adapter_seqs(adapter_fname, adapter_seqs, kmer_adapter_map, min_kmer_len);
 
   uint64_t total_size = FastqReaders::open_all(reads_fname_list, subsample_pct);
   vector<string> merged_reads_fname_list;
@@ -640,11 +644,11 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       if (id1.compare(0, id1.length() - 2, id2, 0, id2.length() - 2) != 0) DIE("Mismatched pairs ", id1, " ", id2);
       if (id1[id1.length() - 1] != '1' || id2[id2.length() - 1] != '2') DIE("Mismatched pair numbers ", id1, " ", id2);
 
-      if (!adapters.empty()) {
-        bool trim1 = trim_adapters(ssw_aligner, ssw_filter, adapters, id1, seq1, true, min_kmer_len, bases_trimmed, reads_removed,
-                                   trim_timer, trim_timer_ssw);
-        bool trim2 = trim_adapters(ssw_aligner, ssw_filter, adapters, id2, seq2, false, min_kmer_len, bases_trimmed, reads_removed,
-                                   trim_timer, trim_timer_ssw);
+      if (!adapter_seqs.empty()) {
+        bool trim1 = trim_adapters(ssw_aligner, ssw_filter, adapter_seqs, kmer_adapter_map, id1, seq1, true, min_kmer_len,
+                                   bases_trimmed, reads_removed, trim_timer, trim_timer_ssw);
+        bool trim2 = trim_adapters(ssw_aligner, ssw_filter, adapter_seqs, kmer_adapter_map, id2, seq2, false, min_kmer_len,
+                                   bases_trimmed, reads_removed, trim_timer, trim_timer_ssw);
         // trim to same length - like the tpe option in bbduk
         if ((trim1 || trim2) && seq1.length() > 1 && seq2.length() > 1) {
           auto min_seq_len = min(seq1.length(), seq2.length());
@@ -874,7 +878,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
   fut_summary = when_all(fut_summary, fut_reductions)
-                    .then([ri, bytes_read, &adapters](
+                    .then([ri, bytes_read, &adapter_seqs](
                               int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
                               int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
                               int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1, int64_t all_missing_read2,
@@ -885,7 +889,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                       SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
                       SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
                       SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
-                      if (!adapters.empty()) {
+                      if (!adapter_seqs.empty()) {
                         SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
                         SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
                         SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
