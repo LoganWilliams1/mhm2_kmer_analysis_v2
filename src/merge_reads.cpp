@@ -251,7 +251,7 @@ int16_t fast_count_mismatches(const char *a, const char *b, int len, int16_t max
 #define MAX_ADAPTER_K 32
 
 // kmer mapping to {index for adapter seq in adapter_seqs vector, offset within adapter seq}
-using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<int>>;
+using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<pair<int, int>>>;
 using adapter_sequences_t = vector<string>;
 
 static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_seqs, adapter_hash_table_t &kmer_adapter_map,
@@ -334,9 +334,9 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
       auto kmer = kmers[j];
       auto it = kmer_adapter_map.find(kmer);
       if (it == kmer_adapter_map.end())
-        kmer_adapter_map.insert({kmer, {i}});
+        kmer_adapter_map.insert({kmer, {{i, j}}});
       else
-        it->second.push_back(i);
+        it->second.push_back({i, j});
     }
   }
   SLOG_VERBOSE("Loaded ", adapter_seqs.size() / 2, " adapters, with a total of ", kmer_adapter_map.size(), " kmers\n");
@@ -373,15 +373,21 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
     auto &kmer = kmers[i];
     auto it = kmer_adapter_map.find(kmer);
     if (it != kmer_adapter_map.end()) {
-      for (auto adapter_index : it->second) {
+      for (auto adapter_record : it->second) {
+        int adapter_index = adapter_record.first;
+        int kmer_offset = adapter_record.second;
         if (adapters_matching[adapter_index]) continue;
         auto &adapter_seq = adapter_seqs[adapter_index];
         time_ssw.start();
         adapters_matching[adapter_index] = true;
         StripedSmithWaterman::Alignment ssw_aln;
 
+        int adapter_seq_start = max(0, kmer_offset - i - 2);
+        int adapter_seq_match_len = min(adapter_seq_start + seq.length() + 2, adapter_seq.length());
+        auto adapter_subseq = adapter_seq.substr(adapter_seq_start, adapter_seq_match_len);
+
         // FIXME: use the kmer location to align only the necessary subsequence in the adapter seq
-        ssw_aligner.Align(adapter_seq.data(), adapter_seq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
+        ssw_aligner.Align(adapter_subseq.data(), adapter_subseq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
                           max((int)(seq.length() / 2), 15));
 
         int max_match_len = min(adapter_seq.length(), seq.length() - ssw_aln.ref_begin);
