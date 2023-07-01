@@ -250,7 +250,7 @@ int16_t fast_count_mismatches(const char *a, const char *b, int len, int16_t max
 
 #define MAX_ADAPTER_K 32
 
-// using string_view so we don't store the string again for every kmer
+// kmer mapping to {index for adapter seq in adapter_seqs vector, offset within adapter seq}
 using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<int>>;
 using adapter_sequences_t = vector<string>;
 
@@ -330,8 +330,8 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
     vector<Kmer<MAX_ADAPTER_K>> kmers;
     Kmer<MAX_ADAPTER_K>::set_k(adapter_k);
     Kmer<MAX_ADAPTER_K>::get_kmers(adapter_k, seq, kmers, false);
-    for (int i = 0; i < kmers.size(); i++) {
-      auto kmer = kmers[i];
+    for (int j = 0; j < kmers.size(); j++) {
+      auto kmer = kmers[j];
       auto it = kmer_adapter_map.find(kmer);
       if (it == kmer_adapter_map.end())
         kmer_adapter_map.insert({kmer, {i}});
