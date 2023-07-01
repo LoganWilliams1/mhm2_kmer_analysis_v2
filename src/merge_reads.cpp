@@ -366,7 +366,9 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
   int best_trim_pos = seq.length();
   string best_adapter_seq;
   HASH_TABLE<string_view, bool> adapters_matching;
-  for (auto &kmer : kmers) {
+  bool found = false;
+  for (int i = 0; i < kmers.size(); i+=4) {
+    auto &kmer = kmers[i];
     auto it = adapters.find(kmer);
     if (it != adapters.end()) {
       for (auto &adapter_seq : it->second) {
@@ -382,11 +384,13 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
           best_identity = identity;
           best_trim_pos = ssw_aln.ref_begin;
           best_adapter_seq = adapter_seq;
+          if (identity > 0.97) found = true;
         }
         time_ssw.stop();
         break;
       }
     }
+    if (found) break;
   }
   time_overhead.stop();
   if (best_identity >= 0.5) {
