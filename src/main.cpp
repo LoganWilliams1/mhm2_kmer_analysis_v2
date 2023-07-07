@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
   // capture the free memory and timers before upcxx::init is called
   auto starting_free_mem = get_free_mem();
   char *proc_id = getenv("OMPI_COMM_WORLD_NODE_RANK");
-  if (!proc_id) = getenv("SLURM_PROCID");
+  if (!proc_id) proc_id = getenv("SLURM_PROCID");
   int my_rank = -1;
   if (proc_id) {
     my_rank = atol(proc_id);
