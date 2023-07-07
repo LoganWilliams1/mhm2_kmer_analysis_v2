@@ -42,21 +42,141 @@
  form.
 */
 
+#include <memory>
+#include <upcxx/upcxx.hpp>
+
 #include "alignments.hpp"
 #include "contigs.hpp"
+#include "kmer.hpp"
 #include "packed_reads.hpp"
+#include "utils.hpp"
+
+#include "upcxx_utils/timers.hpp"
+
+using std::shared_ptr;
+using upcxx::global_ptr;
+
+#include "upcxx_utils/timers.hpp"
+
+struct KlignTimers {
+  upcxx_utils::IntermittentTimer fetch_ctg_maps, compute_alns, rget_ctg_seqs, aln_kernel, aln_kernel_mem, aln_kernel_block,
+      aln_kernel_launch, sort_t;
+
+  KlignTimers()
+      : fetch_ctg_maps("klign: fetch ctg maps")
+      , compute_alns("klign: compute alns")
+      , rget_ctg_seqs("klign: rget ctg seqs")
+      , aln_kernel("klign: aln kernel")
+      , aln_kernel_mem("klign: aln kernel mem")
+      , aln_kernel_block("klign: aln kernel block")
+      , aln_kernel_launch("klign: aln kernel launch")
+      , sort_t("klign: sort alns") {}
+
+  void done_all() {
+    fetch_ctg_maps.done_all_async();
+    compute_alns.done_all_async();
+    rget_ctg_seqs.done_all_async();
+    aln_kernel.done_all_async();
+    aln_kernel_mem.done_all_async();
+    aln_kernel_block.done_all_async();
+    aln_kernel_launch.done_all_async();
+    sort_t.done_all_async();
+  }
+
+  void clear() {
+    fetch_ctg_maps.clear();
+    compute_alns.clear();
+    rget_ctg_seqs.clear();
+    aln_kernel.clear();
+    aln_kernel_mem.clear();
+    aln_kernel_block.clear();
+    aln_kernel_launch.clear();
+    sort_t.clear();
+  }
+};  // struct KlignTimers
+
+struct CtgLoc {
+  cid_t cid;
+  global_ptr<char> seq_gptr;
+  int32_t clen;
+  float depth;
+  int32_t pos : 31;    // pack int 31 bits
+  uint32_t is_rc : 1;  // bool
+};
+
+struct CtgAndReadLoc {
+  CtgLoc ctg_loc;
+  int32_t cstart;
+  int32_t pos_in_read : 31;  // pack into 31 bits
+  uint32_t read_is_rc : 1;   // bool
+};
+
+template <int MAX_K>
+struct KmerAndCtgLoc {
+  Kmer<MAX_K> kmer;
+  CtgLoc ctg_loc;
+  UPCXX_SERIALIZED_FIELDS(kmer, ctg_loc);
+};
+
+struct CtgLocAndKmerIdx {
+  CtgLoc ctg_loc;
+  int kmer_i;
+};
+
+using CtgAndReadLocsMap = HASH_TABLE<cid_t, vector<CtgAndReadLoc>>;
+
+struct ReadRecord {
+  int64_t index : 40;
+  int64_t rlen : 24;
+
+  CtgAndReadLocsMap aligned_ctgs_map;
+
+  ReadRecord()
+      : index(-1)
+      , rlen(0) {}
+
+  ReadRecord(int index, int rlen)
+      : index(index)
+      , rlen(rlen)
+      , aligned_ctgs_map{} {}
+
+  bool is_valid() const { return index >= 0 && rlen > 0; }
+};  // struct ReadRecord
+
+struct ReadRecordPtr {
+  ReadRecord *read_record;
+  int read_offset;
+  bool is_rc;
+};  // struct ReadRecordPtr
+
+template <int MAX_K>
+class KmerCtgDHT;
 
 template <int MAX_K>
 double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
                        Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
-                       int min_ctg_len);
+                       int min_ctg_len, int rget_buf_size);
+
+template <int MAX_K>
+shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned, int, int, Contigs &, int, bool);
+
+template <int MAX_K>
+void compute_alns(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int, KlignTimers &);
+
+template <int MAX_K>
+void fetch_ctg_maps(KmerCtgDHT<MAX_K> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
 
 // Reduce compile time by instantiating templates of common types
 // extern template declarations are in kmer.hpp
 // template instantiations each happen in src/CMakeLists via kmer-extern-template.in.cpp
 
-#define __MACRO_KLIGN__(KMER_LEN, MODIFIER) \
-  MODIFIER double find_alignments<KMER_LEN>(unsigned, PackedReadsList &, int, int, Contigs &, Alns &, int, int, bool, bool, int);
+#define __MACRO_KLIGN__(KMER_LEN, MODIFIER)                                                                                      \
+  MODIFIER double find_alignments<KMER_LEN>(unsigned, PackedReadsList &, int, int, Contigs &, Alns &, int, int, bool, bool, int, \
+                                            int);                                                                                \
+  MODIFIER shared_ptr<KmerCtgDHT<KMER_LEN>> build_kmer_ctg_dht<KMER_LEN>(unsigned, int, int, Contigs &, int, bool);              \
+  MODIFIER void compute_alns<KMER_LEN>(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int,          \
+                                       KlignTimers &);                                                                           \
+  MODIFIER void fetch_ctg_maps<KMER_LEN>(KmerCtgDHT<KMER_LEN> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
 
 __MACRO_KLIGN__(32, extern template);
 #if MAX_BUILD_KMER >= 64

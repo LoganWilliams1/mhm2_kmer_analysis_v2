@@ -41,6 +41,7 @@
 */
 
 #include <sys/resource.h>
+#include <random>
 
 #include "contigging.hpp"
 #include "klign.hpp"
@@ -91,6 +92,7 @@ int main(int argc, char **argv) {
   init_timer.stop();
   auto init_timings_fut = init_timer.reduce_timings();
   upcxx::promise<> prom_report_init_timings(1);
+  srand(rank_me() + 10);
 
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
@@ -112,7 +114,8 @@ int main(int argc, char **argv) {
       when_all(prom_report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings(),
                msm_starting_free_mem_fut, msm_post_init_free_mem_fut)
           .then([&total_timer](const upcxx_utils::MinSumMax<double> &entry_msm, upcxx_utils::ShTimings sh_timings,
-                               upcxx_utils::ShTimings sh_first_barrier_timings, const upcxx_utils::MinSumMax<float> &starting_mem_msm,
+                               upcxx_utils::ShTimings sh_first_barrier_timings,
+                               const upcxx_utils::MinSumMax<float> &starting_mem_msm,
                                const upcxx_utils::MinSumMax<float> &post_init_mem_msm) {
             SLOG_VERBOSE("upcxx::init Before=", entry_msm.to_string(), "\n");
             SLOG_VERBOSE("upcxx::init After=", sh_timings->to_string(), "\n");

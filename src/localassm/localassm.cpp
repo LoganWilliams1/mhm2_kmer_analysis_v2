@@ -74,7 +74,7 @@ void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_lis
   unsigned max_read_len = 0;
   for (auto &packed_reads : packed_reads_list) {
     auto l_reads = packed_reads->get_local_num_reads();
-    max_read_len = std::max(max_read_len, (unsigned) packed_reads->get_max_read_len());
+    max_read_len = std::max(max_read_len, (unsigned)packed_reads->get_max_read_len());
     num_reads += l_reads;
   }
   max_read_len = upcxx::reduce_all(max_read_len, upcxx::op_fast_max).wait();

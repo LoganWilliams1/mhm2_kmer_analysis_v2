@@ -142,9 +142,24 @@ bool Options::find_restart(string stage_type, int k) {
 
 void Options::get_restart_options() {
   // check directory for most recent contigs file dump
-  bool found = false;
-  for (auto it = scaff_kmer_lens.rbegin(); it != scaff_kmer_lens.rend(); ++it) {
-    if ((found = find_restart("scaff-contigs", *it)) == true) break;
+  bool found = file_exists("final_assembly.fasta");
+  if (found) {
+    // assembly completed check for post assembly options
+    if (post_assm_abundances || post_assm_aln) {
+      if (!post_assm_only) {
+        SLOG_VERBOSE("Running with --post-asm-only as this run has already completed\n");
+        post_assm_only = true;
+      }
+      ctgs_fname = "final_assembly.fasta";
+    } else {
+      SWARN("This run has already completed (final_assembly.fasta exists) but --restart was chosen without any --post-asm options");
+      found = false;
+    }
+  }
+  if (!found) {
+    for (auto it = scaff_kmer_lens.rbegin(); it != scaff_kmer_lens.rend(); ++it) {
+      if ((found = find_restart("scaff-contigs", *it)) == true) break;
+    }
   }
   if (!found) {
     for (auto it = kmer_lens.rbegin(); it != kmer_lens.rend(); ++it) {
@@ -397,6 +412,8 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 1000));
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
       ->check(CLI::Range(1, 100));
+  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
+      ->check(CLI::Range(10000, 10000000));
   app.add_option("--optimize", optimize_for,
                  "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")

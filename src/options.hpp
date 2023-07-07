@@ -95,6 +95,7 @@ class Options {
   int max_rpcs_in_flight = 100;
   int dmin_thres = 2.0;
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
+  int klign_rget_buf_size = KLIGN_RGET_BUF_SIZE;
   bool checkpoint = true;
   bool dump_merged = false;
   bool post_assm_aln = false;

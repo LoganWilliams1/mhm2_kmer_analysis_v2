@@ -50,9 +50,8 @@ template <int MAX_K>
 void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
                  int &max_expected_ins_size, int &ins_avg, int &ins_stddev, std::shared_ptr<Options> options);
 
-#define __MACRO_SCAFFOLDING__(KMER_LEN, MODIFIER)                                                                \
-  MODIFIER void scaffolding<KMER_LEN>(int, int, int, PackedReadsList &, Contigs &, int &, int &, int &, \
-                                      std::shared_ptr<Options>);
+#define __MACRO_SCAFFOLDING__(KMER_LEN, MODIFIER) \
+  MODIFIER void scaffolding<KMER_LEN>(int, int, int, PackedReadsList &, Contigs &, int &, int &, int &, std::shared_ptr<Options>);
 
 // Reduce compile time by instantiating templates of common types
 // extern template declarations are in scaffolding.hpp

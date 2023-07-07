@@ -454,21 +454,21 @@ void log_env() {
 
 #ifndef DEBUG
     // skip cruft unless debugging
-    pos = env.find("PATH");  // skip path
+    pos = env.find("PATH");   // skip path
     if (pos != string::npos) continue;
-    pos = env.find("_DIR");  // skip dir
+    pos = env.find("_DIR");   // skip dir
     if (pos != string::npos) continue;
-    pos = env.find("CRAY");  // skip cray
+    pos = env.find("CRAY");   // skip cray
     if (pos != string::npos) continue;
-    pos = env.find("PE_");  // skip cray programming envs
+    pos = env.find("PE_");    // skip cray programming envs
     if (pos != string::npos) continue;
-    pos = env.find("LANG");  // skip language
+    pos = env.find("LANG");   // skip language
     if (pos != string::npos) continue;
-    pos = env.find("SSH");  // skip ssh
+    pos = env.find("SSH");    // skip ssh
     if (pos != string::npos) continue;
-    pos = env.find("TERM");  // skip terminal
+    pos = env.find("TERM");   // skip terminal
     if (pos != string::npos) continue;
-    pos = env.find("TTY");  // skip tty
+    pos = env.find("TTY");    // skip tty
     if (pos != string::npos) continue;
     pos = env.find("COLOR");  // skip color
     if (pos != string::npos) continue;

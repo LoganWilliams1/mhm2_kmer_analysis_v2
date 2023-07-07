@@ -38,7 +38,7 @@ env | grep TMP
 
 df -h $TMPDIR
 
-for t in Debug RelWithDebug RelWithDebInfo Release
+for t in Debug RelWithDebInfo Release
 do
   export MHM2_BUILD=${BUILD_PREFIX}-gpu-$t
   mkdir -p ${MHM2_BUILD}
@@ -57,7 +57,7 @@ source $envir
 module list
 env | grep '\(GASNET\|FI_\|UPC\)'
 
-for t in Debug RelWithDebug RelWithDebInfo Release
+for t in Debug RelWithDebInfo Release
 do
   export MHM2_BUILD=${BUILD_PREFIX}-cpu-$t
   mkdir -p ${MHM2_BUILD}

@@ -42,8 +42,17 @@
  form.
 */
 
+#include <memory>
+
 #include "alignments.hpp"
 #include "contigs.hpp"
 
-void compute_aln_depths(const string &fname, Contigs &ctgs, Alns &alns, int kmer_len, int min_ctg_len,
-                        std::vector<string> read_groups, bool double_count_merged_region);
+// for scaffolding
+void compute_aln_depths_scaffolding(Contigs &ctgs, const Alns &alns, int max_kmer_len, int min_ctg_len,
+                                    bool double_count_merged_region);
+
+// for post-assembly
+class CtgsDepths;
+shared_ptr<CtgsDepths> build_ctgs_depths(Contigs &ctgs, int min_ctg_len, int num_read_groups);
+void compute_aln_depths_post_asm(CtgsDepths &ctg_depths, const Alns &alns, bool double_count_merged_region, int read_group_id);
+void write_aln_depths(CtgsDepths &ctg_depths, string fname, const vector<string> &read_group_names);

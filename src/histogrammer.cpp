@@ -56,7 +56,7 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-bool bad_alignment(Aln *aln) {
+bool bad_alignment(const Aln *aln) {
   // with match and mismatch scores of 2 this means at most two errors
   if (aln->score1 < aln->rlen - 4) return true;
   return false;
@@ -67,7 +67,7 @@ pair<int, int> calculate_insert_size(Alns &alns, int expected_ins_avg, int expec
   BarrierTimer timer(__FILEFUNC__);
   auto unmerged_rlen = alns.calculate_unmerged_rlen();
   ProgressBar progbar(alns.size(), "Processing alignments to compute insert size");
-  Aln *prev_aln = nullptr;
+  const Aln *prev_aln = nullptr;
   int64_t prev_cid = -1;
   int64_t num_valid_pairs = 0;
   int64_t num_overlap_rejected = 0;

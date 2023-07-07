@@ -86,8 +86,14 @@ add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
 # number of rget requests buffered together for a target rank
 add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
-# how many kmers are buffered before doing a kmer-ctg-map fetch
-add_definitions(-DKLIGN_KMERS_BUF_SIZE=1000000)
+# maximum message size of KLIGN aggregated messages buffers
+add_definitions(-DKLIGN_MAX_RPC_MESSAGE_SIZE=256000)
+# percent of max free memory to use in buffering within klign's per_rank buffers
+add_definitions(-DKLIGN_MAX_MEM_PCT=10)
+# max contigs per kmer for temporary fix to Issue137
+add_definitions(-DKLIGN_MAX_CTGS_PER_KMER=500) # 0 disables
+# bypass rget_irregular and directly call rget on large contigs over this size
+add_definitions(-DKLIGN_MAX_IRREGULAR_RGET=8128)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)

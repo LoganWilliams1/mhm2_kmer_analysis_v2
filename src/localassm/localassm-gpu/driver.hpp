@@ -60,7 +60,7 @@ struct accum_data {
 };
 
 struct ctg_bucket {
-  std::vector<CtgWithReads*> ctg_vec;
+  std::vector<CtgWithReads *> ctg_vec;
   accum_data sizes_vec;
   uint32_t l_max, r_max, max_contig_sz, max_read_sz;
   uint64_t tot_ht, tot_ctg, tot_l_reads, tot_r_reads, count;
@@ -70,13 +70,12 @@ struct ctg_bucket {
       , l_max{0}
       , r_max{0}
       , max_contig_sz{0}
-      , max_read_sz{max_read_sz} 
+      , max_read_sz{max_read_sz}
       , tot_ht{0}
       , tot_ctg{0}
       , tot_l_reads{0}
       , tot_r_reads{0}
-      , count{0}
-      {}
+      , count{0} {}
   ctg_bucket(const ctg_bucket &copy) = default;
   ctg_bucket(ctg_bucket &&move) = default;
   void add(CtgWithReads *p_cwr) {
@@ -97,7 +96,7 @@ struct ctg_bucket {
     sizes_vec.r_reads_count.push_back(reads_right_size);
     tot_r_reads += reads_right_size;
     count++;
-  
+
     if (l_max < reads_left_size) l_max = reads_left_size;
     if (r_max < reads_right_size) r_max = reads_right_size;
     if (max_contig_sz < seq_size) max_contig_sz = seq_size;
@@ -110,7 +109,7 @@ struct ctg_bucket {
 };
 
 void localassm_driver(std::vector<CtgWithReads *> &data_in, uint32_t max_ctg_size, uint32_t max_read_size, uint32_t max_r_count,
-                      uint32_t max_l_count, int mer_len, int max_kmer_len, accum_data& sizes_outliers, int walk_len_limit,
+                      uint32_t max_l_count, int mer_len, int max_kmer_len, accum_data &sizes_outliers, int walk_len_limit,
                       int qual_offset, int my_rank, size_t gpu_mem_avail, int debug_line);
 
 }  // namespace localassm_driver

@@ -62,8 +62,9 @@ using namespace upcxx;
 
 #include "fastq.hpp"
 #include "packed_reads.hpp"
-#include "upcxx_utils.hpp"
 #include "upcxx_utils/ofstream.hpp"
+#include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/progress_bar.hpp"
 #include "utils.hpp"
 #include "zstr.hpp"
 #include "kmer.hpp"
@@ -828,7 +829,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       // inc by 2 so that we can use a later optimization of treating the even as /1 and the odd as /2
       read_id += 2;
       if (read_id % 1000 == 0) progress();
-    } // reading for each pair of records
+    }                   // reading for each pair of records
     read_files_t.start();
     fqr.advise(false);  // free kernel memory
     read_files_t.stop();

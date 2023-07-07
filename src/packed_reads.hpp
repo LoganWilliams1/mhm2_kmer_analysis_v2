@@ -148,7 +148,7 @@ class PackedReads {
 
  public:
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
-  PackedReads(int qual_offset, PackedReadsContainer &packed_reads);
+  PackedReads(int qual_offset, PackedReadsContainer &packed_reads, const string &fname);
   ~PackedReads();
 
   bool get_next_read(string &id, string &seq, string &quals);
@@ -186,7 +186,8 @@ class PackedReads {
 
   int64_t get_local_bases() const;
 
-  int64_t get_bases();
+  upcxx::future<uint64_t> fut_get_bases() const;
+  uint64_t get_bases() const;
 
   int get_qual_offset();
 

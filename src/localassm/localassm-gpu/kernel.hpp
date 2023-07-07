@@ -82,7 +82,6 @@ struct cstr_type {
       }
     return str_eq;
   }
-
 };
 
 __device__ void cstr_copy(cstr_type& str1, cstr_type& str2);
@@ -187,7 +186,7 @@ struct MerFreqs {
         if (runner_up_rating < 3) ext = top_rated_base;
       } else if (top_rating == 6) {  // viable and fair hiQ support
         if (runner_up_rating < 4) ext = top_rated_base;
-      } else {  // strongest rating trumps
+      } else {                       // strongest rating trumps
         if (runner_up_rating < 7) {
           ext = top_rated_base;
         } else {
@@ -213,23 +212,27 @@ struct MerFreqs {
 struct loc_ht {
   cstr_type key;
   gpu_loc_assem::MerFreqs val;
-  __device__ loc_ht() : key{}, val{} {}
+  __device__ loc_ht()
+      : key{}
+      , val{} {}
   __device__ loc_ht(cstr_type in_key, gpu_loc_assem::MerFreqs in_val) {
     key = in_key;
     val = in_val;
   }
-  __device__ static bool is_valid(const loc_ht& x) { return x.key.length != FULL; } // EMPTY is valid
+  __device__ static bool is_valid(const loc_ht& x) { return x.key.length != FULL; }  // EMPTY is valid
 };
 
 struct loc_ht_bool {
   cstr_type key;
   bool val;
-  __device__ loc_ht_bool() : key{}, val{} {}
+  __device__ loc_ht_bool()
+      : key{}
+      , val{} {}
   __device__ loc_ht_bool(cstr_type in_key, bool in_val) {
     key = in_key;
     val = in_val;
   }
-  __device__ static bool is_valid(const loc_ht_bool& x) { return x.key.length != FULL; } // EMPTY is valid
+  __device__ static bool is_valid(const loc_ht_bool& x) { return x.key.length != FULL; }  // EMPTY is valid
 };
 
 __device__ void print_mer(cstr_type& mer);
