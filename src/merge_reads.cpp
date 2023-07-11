@@ -361,15 +361,20 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
                           BaseTimer &time_overhead, BaseTimer &time_ssw) {
   time_overhead.start();
   vector<Kmer<MAX_ADAPTER_K>> kmers;
-  // Kmer<MAX_ADAPTER_K>::set_k(adapter_k);
   Kmer<MAX_ADAPTER_K>::get_kmers(adapter_k, seq, kmers, false);
   double best_identity = 0;
+  int best_match_len = 0;
   int best_trim_pos = seq.length();
-  string best_adapter_seq;
+  string best_adapter_seq = "";
 
   vector<bool> adapters_matching(adapter_seqs.size(), false);
   bool found = false;
-  for (int i = 0; i < kmers.size(); i += 4) {
+#ifdef TRIM_WITH_SSW
+  const int STEP = 4;
+#else
+  const int STEP = 1;
+#endif
+  for (int i = 0; i < kmers.size(); i += STEP) {
     auto &kmer = kmers[i];
     auto it = kmer_adapter_map.find(kmer);
     if (it != kmer_adapter_map.end()) {
@@ -380,6 +385,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
         auto &adapter_seq = adapter_seqs[adapter_index];
         time_ssw.start();
         adapters_matching[adapter_index] = true;
+#ifdef TRIM_WITH_SSW
         StripedSmithWaterman::Alignment ssw_aln;
 
         int adapter_seq_start = max(0, kmer_offset - i - 2);
@@ -398,6 +404,28 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
           best_adapter_seq = adapter_seq;
           if (identity > 0.97) found = true;
         }
+#else
+        int num_mismatches = 0;
+        for (int j = 0;; j++) {
+          int seq_pos = adapter_k + i + j;
+          int adapter_pos = adapter_k + kmer_offset + j;
+          if (seq_pos >= seq.length() || adapter_pos >= adapter_seq.length()) break;
+          if (adapter_seq[adapter_pos] != seq[seq_pos]) {
+            num_mismatches++;
+            if (num_mismatches > 1) {
+              int match_len = adapter_k + j;
+              if (match_len > best_match_len) {
+                best_identity = (double)match_len / (double)adapter_seq.length();
+                best_trim_pos = i;
+                best_adapter_seq = adapter_seq;
+                best_match_len = match_len;
+                if (match_len >= adapter_seq.length() - 1) found = true;
+              }
+              break;
+            }
+          }
+        }
+#endif
         time_ssw.stop();
         break;
       }
@@ -405,6 +433,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
     if (found) break;
   }
   time_overhead.stop();
+
   if (best_identity >= 0.5) {
     if (best_trim_pos < 12) best_trim_pos = 0;
     // DBG("Read ", rname, " is trimmed at ", best_trim_pos, " best identity ", best_identity, "\n", best_adapter_seq, "\n", seq,
