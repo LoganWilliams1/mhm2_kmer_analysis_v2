@@ -216,6 +216,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
 
   char last_pair = '\0', this_pair = '\1';
   int i;
+  int interleaved_failures = 0;
   string possible_header, last_header;
   for (i = 0; i < lines.size(); i++) {
     int64_t this_tell = tells[i];
@@ -322,12 +323,14 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
             break;
           }
         } else if (is_interleaved()) {
-          WARN("Improper interleaved-paired file (--reads) at ", this_pair, ".  If this actually two fastq files, "
-               "use --paired-reads; if this is unpaired, use --unpaired-reads: ", get_basename(fname));
+          WARN("Improper interleaved-paired file (--reads). If this actually two fastq files, "
+               "use --paired-reads; if this is unpaired, use --unpaired-reads: ",
+               get_basename(fname));
           WARN("Adjacent reads share the same pair id ", last_header, " vs ", header);
-          WARN("Changing file ", this->fname, " from interleaved to unpaired");
-          _is_paired = false;
-          _is_interleaved = false;
+          interleaved_failures++;
+          // WARN("Changing file ", this->fname, " from interleaved to unpaired");
+          //_is_paired = false;
+          //_is_interleaved = false;
         } else if (is_paired() && !is_interleaved()) {
           DBG("Paired files can have any pair id here\n");
           break;
@@ -373,9 +376,11 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     return file_size;
   }
   DBG("Found record at ", last_tell, " after offset ", offset, "\n");
-  if (offset == 0 && last_tell != 0) {
+  if (offset == 0 && last_tell != 0)
     WARN("First rank to read really should return the first byte for ", fname, " offset=", offset, " last_tell=", last_tell, "\n");
-  }
+  if (interleaved_failures)
+    SLOG_VERBOSE("When searching for next fastq record, found ", interleaved_failures,
+                 " records that were not correctly interleaved, starting on ", last_header, "\n");
   return last_tell;
 }
 
@@ -998,6 +1003,10 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
   if ((_is_paired && is_first_file() && !_is_interleaved) || (_is_interleaved && _first_pair)) num_pairs++;
   _first_pair = !_first_pair;
+  if (_first_read) {
+    DBG("First read ", id, "\n");
+    _first_read = false;
+  }
   return bytes_read;
 }
 

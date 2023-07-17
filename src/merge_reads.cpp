@@ -590,8 +590,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         read_id += 2;
         if (read_id % 1000 == 0) progress();
         if (dump_merged) {
-          *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
-          *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
+          *sh_out_file << "@r" << read_id << "/1 #" << id1 << "\n" << seq1 << "\n+\n" << quals1 << "\n";
+          *sh_out_file << "@r" << read_id << "/2 #" << id1 << "\nN\n+\n" << fake_qual << "\n";
         }
         continue;
       }
@@ -856,8 +856,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         if (dump_merged) {
-          *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
-          *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
+          *sh_out_file << "@r" << read_id << "/1 #" << id1 << "\n" << seq1 << "\n+\n" << quals1 << "\n";
+          *sh_out_file << "@r" << read_id << "/2 #" << id1 << "\nN\n+\n" << fake_qual << "\n";
         }
       }
       if (!is_merged) {
@@ -865,8 +865,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", seq2, quals2);
         if (dump_merged) {
-          *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
-          *sh_out_file << "@r" << read_id << "/2\n" << seq2 << "\n+\n" << quals2 << "\n";
+          *sh_out_file << "@r" << read_id << "/1 #" << id1 << "\n" << seq1 << "\n+\n" << quals1 << "\n";
+          *sh_out_file << "@r" << read_id << "/2 #" << id1 << "\n" << seq2 << "\n+\n" << quals2 << "\n";
         }
       }
       // inc by 2 so that we can use a later optimization of treating the even as /1 and the odd as /2
