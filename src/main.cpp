@@ -83,9 +83,12 @@ int main(int argc, char **argv) {
   BaseTimer init_timer("upcxx::init");
   BaseTimer first_barrier("FirstBarrier");
   init_timer.start();
-  if (!my_rank)
-    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on pid=" << getpid() << " at " << get_current_time()
-              << std::endl;
+  if (!my_rank) {
+    char hnbuf[64];
+    gethostname(hnbuf, sizeof(hnbuf) - 1);
+    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on " << hnbuf << " pid=" << getpid() 
+	      << " at " << get_current_time() << std::endl;
+  }
 
   upcxx::init();
   auto init_entry_msm_fut = init_timer.reduce_start();
