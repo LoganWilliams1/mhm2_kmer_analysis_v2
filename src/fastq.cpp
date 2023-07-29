@@ -196,12 +196,14 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   }
   int64_t last_tell = tellg();
 
+  // having a lot of lines enhances robustness to mangled FASTA files
+  const int NUM_LINES = 1000;
   // read up to 20 lines and store tellg() at each line, then process them below...
   std::vector<string> lines;
-  lines.reserve(20);
+  lines.reserve(NUM_LINES);
   std::vector<int64_t> tells;
-  tells.reserve(20);
-  for (int i = 0; i < 20; i++) {
+  tells.reserve(NUM_LINES);
+  for (int i = 0; i < NUM_LINES; i++) {
     tells.push_back(tellg());
     read_io_t.start();
     std::getline(*in, buf);
