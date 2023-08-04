@@ -369,7 +369,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
 
   vector<bool> adapters_matching(adapter_seqs.size(), false);
   bool found = false;
-#ifdef TRIM_WITH_SSW
+#ifdef MERGE_READS_TRIM_WITH_SSW
   const int STEP = 4;
 #else
   const int STEP = 1;
@@ -385,7 +385,7 @@ static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmi
         auto &adapter_seq = adapter_seqs[adapter_index];
         time_ssw.start();
         adapters_matching[adapter_index] = true;
-#ifdef TRIM_WITH_SSW
+#ifdef MERGE_READS_TRIM_WITH_SSW
         StripedSmithWaterman::Alignment ssw_aln;
 
         int adapter_seq_start = max(0, kmer_offset - i - 2);
