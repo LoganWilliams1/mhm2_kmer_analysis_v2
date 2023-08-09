@@ -177,7 +177,7 @@ string gpu_utils::get_gpu_uuid() {
 
 bool gpu_utils::gpus_present() { return get_gpu_device_count(); }
 
-void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me) {
+void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me, int team_rank_n) {
   using timepoint_t = chrono::time_point<chrono::high_resolution_clock>;
   timepoint_t t = chrono::high_resolution_clock::now();
   chrono::duration<double> elapsed;
@@ -186,6 +186,15 @@ void gpu_utils::initialize_gpu(double &time_to_initialize, int rank_me) {
   _rank_me = rank_me;
   set_gpu_device(_rank_me);
   ERROR_CHECK(DeviceReset());
+
+  auto gpu_mem_avail_per_rank = get_gpu_avail_mem() / team_rank_n;
+
+  char *buf;
+  size_t buf_size = gpu_mem_avail_per_rank * 0.8;
+  ERROR_CHECK(Malloc(&buf, buf_size));
+  ERROR_CHECK(Memset(buf, 0, buf_size));
+  ERROR_CHECK(Free(buf));
+
   elapsed = chrono::high_resolution_clock::now() - t;
   time_to_initialize = elapsed.count();
 }
