@@ -250,7 +250,7 @@ TEST(MHMTest, AdeptSW) {
   int device_count;
   size_t total_mem;
 #ifdef ENABLE_GPUS
-  gpu_utils::initialize_gpu(time_to_initialize, 0);
+  gpu_utils::initialize_gpu(time_to_initialize, 0, 0);
   //  if (device_count > 0) {
   //    EXPECT_TRUE(total_mem > 32 * 1024 * 1024);  // >32 MB
   //  }
