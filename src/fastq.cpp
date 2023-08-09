@@ -210,6 +210,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     read_io_t.stop();
     if (in->eof() || buf.empty()) {
       DBG("Got eof or empty getline while reading ", NUM_LINES, " after offset=", offset, " returning end of file=", file_size, "\n");
+      in->clear();
       return file_size;
     }
     if (in->fail()) {
@@ -802,6 +803,11 @@ void FastqReader::set_block(int64_t start, int64_t size) {
 
 void FastqReader::seek_start() {
   // seek to first record
+  assert(know_file_size.get_future().ready());
+  if (start_read >= file_size || start_read >= end_read) {
+    DBG("Not reading this file as start is at the end\n");
+    return;
+  }
   DBG("Seeking to start_read=", start_read, " reading through end_read=", end_read, " my_file_size=", my_file_size(false),
       " fname=", fname, "\n");
   io_t.start();
@@ -1028,7 +1034,7 @@ void FastqReader::reset() {
   if (!open_fut.ready()) {
     open_fut.wait();
   }
-  if (block_size > 0) {
+  if (block_size > 0 && start_read < file_size && start_read < end_read) {
     if (!in) {
       DIE("Reset called on unopened file\n");
     }
