@@ -385,7 +385,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   if (offset == 0 && last_tell != 0)
     WARN("First rank to read really should return the first byte for ", fname, " offset=", offset, " last_tell=", last_tell, "\n");
   if (interleaved_failures)
-    SLOG_VERBOSE("When searching for next fastq record, found ", interleaved_failures,
+    WARN("When searching for next fastq record, found ", interleaved_failures,
                  " records that were not correctly interleaved, starting on ", last_header, "\n");
   return last_tell;
 }
