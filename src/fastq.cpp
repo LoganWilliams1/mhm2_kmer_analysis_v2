@@ -208,8 +208,12 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     read_io_t.start();
     std::getline(*in, buf);
     read_io_t.stop();
-    if (in->eof() || in->fail() || buf.empty()) {
-      DBG("Got eof, fail or empty getline at ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
+    if (in->eof() || buf.empty()) {
+      DBG("Got eof or empty getline while reading ", NUM_LINES, " after offset=", offset, " returning end of file=", file_size, "\n");
+      return file_size;
+    }
+    if (in->fail()) {
+      DBG("Got fail ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
       break;
     }
     assert(buf.back() != '\n');
