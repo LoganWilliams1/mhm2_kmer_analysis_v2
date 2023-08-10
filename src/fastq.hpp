@@ -92,6 +92,8 @@ class FastqReader {
   bool _first_pair;       // alternate for pair1 (first_pair) and pair2 (!first_pair)
   bool _trim_comment;
   bool _is_bgzf;
+  bool _first_read = true;
+
   IntermittentTimer io_t, read_io_t;
   struct PromStartStop {
     promise<int64_t> start_prom, stop_prom;

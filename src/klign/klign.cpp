@@ -838,13 +838,15 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
   }
 
   // flush any buffers
-  for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
-    auto &tgt_kr_buf = kmers_reads_buffers[target];
-    if (tgt_kr_buf.size()) {
-      auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
-                                                 bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
-      upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
-      fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+  if (num_local_reads > 0) {
+    for (auto target : upcxx_utils::foreach_rank_by_node()) {  // stagger by rank_me, round robin by node
+      auto &tgt_kr_buf = kmers_reads_buffers[target];
+      if (tgt_kr_buf.size()) {
+        auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
+                                                  bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+        upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
+        fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
+      }
     }
   }
   upcxx_utils::flush_outstanding_futures();
