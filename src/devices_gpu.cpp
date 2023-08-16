@@ -100,7 +100,7 @@ void init_devices() {
   // initialize the GPU and first-touch memory and functions in a new thread as this can take many seconds to complete
   detect_gpu_fut = execute_in_thread_pool([]() {
                      DBG("Initializing GPUs\n");
-                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me());
+                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me(), local_team().rank_n());
                      stringstream ss;
                      ss << "Done initializing GPU: " << (gpu_utils::gpus_present() ? "Found" : "NOT FOUND");
                      if (gpu_utils::gpus_present()) {

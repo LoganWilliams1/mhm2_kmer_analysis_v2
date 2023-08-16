@@ -196,18 +196,25 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   }
   int64_t last_tell = tellg();
 
+  // having a lot of lines enhances robustness to mangled FASTA files
+  const int NUM_LINES = 1000;
   // read up to 20 lines and store tellg() at each line, then process them below...
   std::vector<string> lines;
-  lines.reserve(20);
+  lines.reserve(NUM_LINES);
   std::vector<int64_t> tells;
-  tells.reserve(20);
-  for (int i = 0; i < 20; i++) {
+  tells.reserve(NUM_LINES);
+  for (int i = 0; i < NUM_LINES; i++) {
     tells.push_back(tellg());
     read_io_t.start();
     std::getline(*in, buf);
     read_io_t.stop();
-    if (in->eof() || in->fail() || buf.empty()) {
-      DBG("Got eof, fail or empty getline at ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
+    if (in->eof() || buf.empty()) {
+      DBG("Got eof or empty getline while reading ", NUM_LINES, " after offset=", offset, " returning end of file=", file_size, "\n");
+      in->clear();
+      return file_size;
+    }
+    if (in->fail()) {
+      DBG("Got fail ", tellg(), " eof=", in->eof(), " fail=", in->fail(), " buf=", buf.size(), "\n");
       break;
     }
     assert(buf.back() != '\n');
@@ -216,6 +223,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
 
   char last_pair = '\0', this_pair = '\1';
   int i;
+  int interleaved_failures = 0;
   string possible_header, last_header;
   for (i = 0; i < lines.size(); i++) {
     int64_t this_tell = tells[i];
@@ -322,12 +330,14 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
             break;
           }
         } else if (is_interleaved()) {
-          WARN("Improper interleaved-paired file (--reads).  If this actually two fastq files, use --paired-reads; if this is "
-               " unpaired, use --unpaired-reads: ",
-               get_basename(fname), "\n\tAdjacent reads share the same pair id ", last_header, " vs ", header, "\n");
-          WARN("Changing file ", this->fname, " from interleaved to unpaired");
-          _is_paired = false;
-          _is_interleaved = false;
+          WARN("Improper interleaved-paired file (--reads). If this actually two fastq files, "
+               "use --paired-reads; if this is unpaired, use --unpaired-reads: ",
+               get_basename(fname));
+          WARN("Adjacent reads share the same pair id ", last_header, " vs ", header);
+          interleaved_failures++;
+          // WARN("Changing file ", this->fname, " from interleaved to unpaired");
+          //_is_paired = false;
+          //_is_interleaved = false;
         } else if (is_paired() && !is_interleaved()) {
           DBG("Paired files can have any pair id here\n");
           break;
@@ -373,9 +383,11 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     return file_size;
   }
   DBG("Found record at ", last_tell, " after offset ", offset, "\n");
-  if (offset == 0 && last_tell != 0) {
+  if (offset == 0 && last_tell != 0)
     WARN("First rank to read really should return the first byte for ", fname, " offset=", offset, " last_tell=", last_tell, "\n");
-  }
+  if (interleaved_failures)
+    WARN("When searching for next fastq record, found ", interleaved_failures,
+                 " records that were not correctly interleaved, starting on ", last_header, "\n");
   return last_tell;
 }
 
@@ -791,6 +803,11 @@ void FastqReader::set_block(int64_t start, int64_t size) {
 
 void FastqReader::seek_start() {
   // seek to first record
+  assert(know_file_size.get_future().ready());
+  if (start_read >= file_size || start_read >= end_read) {
+    DBG("Not reading this file as start is at the end\n");
+    return;
+  }
   DBG("Seeking to start_read=", start_read, " reading through end_read=", end_read, " my_file_size=", my_file_size(false),
       " fname=", fname, "\n");
   io_t.start();
@@ -998,6 +1015,10 @@ size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, b
   DBG_VERBOSE("Read ", id, " bytes=", bytes_read, "\n");
   if ((_is_paired && is_first_file() && !_is_interleaved) || (_is_interleaved && _first_pair)) num_pairs++;
   _first_pair = !_first_pair;
+  if (_first_read) {
+    DBG("First read ", id, "\n");
+    _first_read = false;
+  }
   return bytes_read;
 }
 
@@ -1013,7 +1034,7 @@ void FastqReader::reset() {
   if (!open_fut.ready()) {
     open_fut.wait();
   }
-  if (block_size > 0) {
+  if (block_size > 0 && start_read < file_size && start_read < end_read) {
     if (!in) {
       DIE("Reset called on unopened file\n");
     }
