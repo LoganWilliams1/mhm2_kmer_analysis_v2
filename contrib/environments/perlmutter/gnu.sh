@@ -1,7 +1,6 @@
 module load PrgEnv-gnu
+module load gpu
 module load cmake
-module load cpe-cuda
-module load cudatoolkit
 #module swap PrgEnv-gnu/8.2.0
 module swap gcc/11.2.0
 module remove darshan
