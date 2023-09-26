@@ -116,16 +116,21 @@ bool FastqReader::get_fq_name(string &header) {
         header.resize(end_pos);
         return true;
       }
-      if ((len < end_pos + 7) || header[end_pos + 2] != ':' || header[end_pos + 4] != ':' || header[end_pos + 6] != ':' ||
-          (header[end_pos + 1] != '1' && header[end_pos + 1] != '2')) {
-        // unknown pairing format
-        SWARN("unknown format ", header, " end pos ", end_pos, "\n");
-        return false;
+      if ((len >= end_pos + 7) && header[end_pos + 2] == ':' && header[end_pos + 4] == ':' && header[end_pos + 6] == ':' &&
+          (header[end_pos + 1] == '1' || header[end_pos + 1] == '2')) {
+        // known illuminapaired formatting
+        // @pair 1:Y:.:.: or @pair 2:Y:.:.:
+        // replace with @pair/1 or @pair/2
+        header[end_pos] = '/';
+        header.resize(end_pos + 2);
+        return true;
+      } else {
+        // unknown pairing format, just remove comment
+        LOG("unknown format ", header, " end pos ", end_pos, " removing comment\n");
+        header.resize(end_pos);
+        return true;
       }
-      // @pair 1:Y:.:.: or @pair 2:Y:.:.:
-      // replace with @pair/1 or @pair/2
-      header[end_pos] = '/';
-      header.resize(end_pos + 2);
+      
     }
   }
   return true;
@@ -226,11 +231,13 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   int interleaved_failures = 0;
   string possible_header, last_header;
   for (i = 0; i < lines.size(); i++) {
+    if (i == lines.size() - 1) DIE("Could not find the partition boundary on ", get_fname(), " after offset=", offset, "\n");
     int64_t this_tell = tells[i];
     string &tmp = lines[i];
     if (tmp[0] == '@') {
       string header(tmp);
       possible_header = header;
+      if (!get_fq_name(possible_header)) continue;
       if (possible_header.compare(last_header) == 0) {
         // test and possibly fix identical read pair names without corresponding header field - Issue124
         if (_is_paired && !_fix_paired_name) {
@@ -254,8 +261,8 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       DBG_VERBOSE("Testing for header: ", header, "\n");
       for (int j = 0; j < 3; j++) {
         if (i + 1 + j >= lines.size())
-          DIE("Missing record info at ", get_basename(fname), " around pos ", tells[i], " lines: ", lines[0], " header: ", header,
-              "\n");
+          DIE("Missing record info at ", get_basename(fname), " around pos ", tells[i], " i=", i, " lines: ", lines[0], " - ", lines[i], " header: ", header,
+              " possible_header=", possible_header, "\n");
         string &tmp2 = lines[i + 1 + j];
 
         if (j == 0) {
@@ -322,6 +329,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       this_pair = header[header.length() - 1];
       if (has_sep) DBG("Found possible pair ", (char)this_pair, ", header: ", header, "\n");
       bool is_same_header = last_header.compare(possible_header) == 0;
+      DBG("i=", i, " last_header=", last_header, " possible=", header, " is_same=", is_same_header, " has_sep=", has_sep, "\n");
       auto tpos1 = string::npos, tpos2 = string::npos;
       if (has_sep && last_pair == this_pair) {
         if (_fix_paired_name) {
