@@ -77,7 +77,7 @@ set_dir_striping()
   echo "set_dir_striping ${stripe} ${dir}"
   if [ -x "${LFS}" ]
   then
-     lfsdf=$(${LFS} df ${dir})
+     lfsdf=$(${LFS} df ${dir} || /bin/true)
      if [ -z "${lfsdf}" ]
      then
          echo "LUSTRE is not on ${dir}"
