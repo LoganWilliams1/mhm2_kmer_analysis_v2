@@ -1,4 +1,5 @@
 module load PrgEnv-gnu
+module rm gpu
 module load cmake
 #module swap PrgEnv-gnu/8.2.0
 module swap gcc/11.2.0

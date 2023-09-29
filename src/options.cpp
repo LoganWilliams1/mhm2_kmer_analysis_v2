@@ -318,18 +318,27 @@ double Options::setup_log_file() {
 }
 
 string Options::get_job_id() {
-  static const char *env_ids[] = {"SLURM_JOBID", "LSB_JOBID", "JOB_ID", "COBALT_JOBID", "LOAD_STEP_ID", "PBS_JOBID"};
-  for (auto env : env_ids) {
-    auto env_p = std::getenv(env);
-    if (env_p) return string(env_p);
+  static const char *env_ids[] = {"SLURM_JOB_ID", "SLURM_JOBID", "LSB_JOBID", "JOB_ID", "COBALT_JOBID", "LOAD_STEP_ID", "PBS_JOBID"};
+  static string job_id;
+  if (job_id.empty()) {
+    for (auto env : env_ids) {
+      auto env_p = std::getenv(env);
+      if (env_p) {
+        job_id = env_p;
+	break;
+      }
+    }
+    if (job_id.empty()) job_id = std::to_string(getpid());
+    auto sz = upcxx::broadcast(job_id.size(), 0, upcxx::world()).wait();
+    job_id.resize(sz, ' ');
+    upcxx::broadcast(job_id.data(), sz, 0, upcxx::world()).wait();
   }
-  // no job, broadcast the pid of rank 0
-  auto pid = upcxx::broadcast(getpid(), 0, upcxx::world()).wait();
-  return std::to_string(pid);
+  return job_id;
 }
 
 Options::Options() {
   char buf[32];
+  memset(buf, 0, sizeof(buf));
   if (!upcxx::rank_me()) {
     setup_time = get_current_time(true);
     strncpy(buf, setup_time.c_str(), sizeof(buf) - 1);
@@ -416,6 +425,8 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 1000));
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
       ->check(CLI::Range(1, 100));
+  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
+      ->check(CLI::Range(10000, 10000000));
   app.add_option("--optimize", optimize_for,
                  "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")

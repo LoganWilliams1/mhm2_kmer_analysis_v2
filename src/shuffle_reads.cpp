@@ -404,6 +404,7 @@ static void move_reads_to_targets(PackedReadsList &packed_reads_list, dist_objec
     num_bases += packed_reads->get_local_num_reads() * packed_reads->get_max_read_len();
   }
   // reduce max_store_bytes by the extra_size of this non-trivial updated data
+  num_updates = reduce_all(num_updates, upcxx::op_fast_max).wait();
   auto non_trivial_size = sizeof(PairPackedRead) + ((num_bases + num_updates - 1) / num_updates);
   max_store_bytes = max_store_bytes * sizeof(PairPackedRead) / non_trivial_size;
   read_seq_store.set_size("Read seq store", max_store_bytes, local_n * 2, num_updates);

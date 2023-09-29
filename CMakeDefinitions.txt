@@ -38,6 +38,9 @@
  # sublicense such enhancements or derivative works thereof, in binary and source code
  # form.
 
+# use SSW for trimming reads - better quality, but maybe slower
+add_definitions(-DMERGE_READS_TRIM_WITH_SSW)
+
 # error rate per base, fraction
 add_definitions(-DBASE_ERROR_RATE=0.005)
 
