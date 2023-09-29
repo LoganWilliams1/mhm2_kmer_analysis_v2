@@ -126,7 +126,7 @@ bool FastqReader::get_fq_name(string &header) {
         return true;
       } else {
         // unknown pairing format, just remove comment
-        LOG("unknown format ", header, " end pos ", end_pos, " removing comment\n");
+        if (end_read > start_read && start_read + 1000 > tellg()) DBG("unknown format ", header, " end pos ", end_pos, " removing comment\n");
         header.resize(end_pos);
         return true;
       }
