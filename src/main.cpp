@@ -86,8 +86,8 @@ int main(int argc, char **argv) {
   if (!my_rank) {
     char hnbuf[64];
     gethostname(hnbuf, sizeof(hnbuf) - 1);
-    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on " << hnbuf << " pid=" << getpid() 
-	      << " at " << get_current_time() << std::endl;
+    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on " << hnbuf << " pid=" << getpid() << " at "
+              << get_current_time() << std::endl;
   }
 
   upcxx::init();
@@ -393,6 +393,7 @@ int main(int argc, char **argv) {
     SLOG("    ", stage_timers.dbjg_traversal->get_final(), "\n");
     SLOG("    ", stage_timers.alignments->get_final(), "\n");
     SLOG("      -> ", stage_timers.kernel_alns->get_final(), "\n");
+    SLOG("      -> ", stage_timers.aln_comms->get_final(), "\n");
     SLOG("    ", stage_timers.localassm->get_final(), "\n");
     if (options->shuffle_reads) SLOG("    ", stage_timers.shuffle_reads->get_final(), "\n");
     SLOG("    ", stage_timers.cgraph->get_final(), "\n");
