@@ -5,13 +5,11 @@ module load git
 module load cmake
 
 module rm xl
-module rm gcc
 module load gcc
-module rm rocm
 module load rocm/5.2.0
 # this causes a remap failure when using GPUs
 #module load craype-hugepages2M
-module use /lustre/orion/csc296/world-shared/crusher/modulefiles
+module use /lustre/orion/csc296/world-shared/frontier/modulefiles
 module rm upcxx
 module load upcxx/2023.3.0
 export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
@@ -25,10 +23,10 @@ module rm craype-hugepages2M # FIXME when slingshot is fixed
 
 #module list
 which upcxx
+upcxx --version
 
 module load cray-python
 
 export MHM2_CMAKE_EXTRAS="-DCMAKE_C_COMPILER=$(which cc) -DCMAKE_CXX_COMPILER=$(which CC) -DENABLE_CUDA=Off -DENABLE_HIP=On -DUPCXX_UTILS_IO_NO_THREAD=1"
 export MHM2_BUILD_THREADS=8
 
-# salloc/sbatch with: -A BIF115_crusher  --gpus-per-node=8 --ntasks-per-gpu=7

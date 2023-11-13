@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
  # HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  # through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -67,6 +67,8 @@ _proc = None
 _output_dir = ''
 _err_thread = None
 _stop_thread = False
+_start_time = None
+_show_help = False
 
 def print_red(*args):
     print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
@@ -377,7 +379,7 @@ def print_err_msgs(err_msgs, return_status):
             if return_status == 9: # SIGKILL
                 suspect_oom = "Got SIGKILLed"
             err_msgs.append("Return status: %d\n" % (return_status))
-            print_red("mhm2.py: MHM2 failed")
+            print_red("mhm2.py: MHM2 failed, elapsed %.2f s" % (time.time() - _start_time))
         # keep track of all msg copies so we don't print duplicates
         seen_msgs = {}
         per_rank_dir = _output_dir + 'per_rank/'
@@ -412,12 +414,16 @@ def main():
     global _proc
     global _output_dir
     global _err_thread
+    global _start_time
 
-    start_time = time.time()
+    _start_time = time.time()
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    argparser = argparse.ArgumentParser(add_help=False)
+    argparser = argparse.ArgumentParser(add_help=False,
+                                        description="mhm2.py is a wrapper script that launches the mhm2 binary. " +\
+                                            "There are several optional parameters to mhm2.py:",
+                                        epilog="The options for the mhm2 binary are listed below.")
     argparser.add_argument("--auto-resume", action="store_true", help="Automatically resume after a failure")
     argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
     #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
@@ -429,6 +435,11 @@ def main():
     argparser.add_argument("--binary", default="mhm2", help="File name for UPC++ binary (default mhm2)")
 
     options, unknown_options = argparser.parse_known_args()
+
+    if '-h' in unknown_options or '--help' in unknown_options:
+        _show_help = True
+        argparser.print_help()
+        print()
 
     if options.auto_resume:
         print("--auto-resume is enabled: will try to restart if run fails")
@@ -481,11 +492,21 @@ def main():
         gpus_per_node = 8
         tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
         cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
-               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms']
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
         if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
             os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
         os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
         print("This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+
+    if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "frontier":
+        gpus_per_node = 8
+        tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
+        cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
+               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
+        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
+            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
+        os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
+        print("This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
 
     if 'UPCXX_SHARED_HEAP_SIZE' in os.environ and 'GASNET_MAX_SEGSIZE' not in os.environ:
         print("Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ", os.environ['UPCXX_SHARED_HEAP_SIZE'], " to avoid gasnet memory probe")
@@ -522,7 +543,10 @@ def main():
         runtime_vars += runtime_output_vars
 
     if options.gasnet_trace:
-        runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_TRACEMASK="U", GASNET_STATSMASK="", '
+        runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_STATSMASK=""'
+        if not "GASNET_TRACEMASK" in os.environ:
+            runtime_vars += ', GASNET_TRACEMASK="GPWBNIH"'
+        runtime_vars += ', '
         print("Ignoring SIGUSR2 as gasnet traces will be generated when that is sent")
         signal.signal(signal.SIGUSR2, log_signal)
 
@@ -656,7 +680,7 @@ def main():
                 else:
                     err_msgs.append("Could not find the final assembly!  It should be at %s\n" % (final_assembly))
                 print_err_msgs(err_msgs, _proc.returncode)
-                print('Overall time taken (including any restarts): %.2f s' % (time.time() - start_time))
+                print('Overall time taken (including any restarts): %.2f s' % (time.time() - _start_time))
                 break
         except:
             print_red("Got an exception")
@@ -674,7 +698,6 @@ def main():
                     traceback.print_tb(sys.exc_info()[2], limit=100)
                     raise
             raise
-
     return 0
 
 if __name__ == "__main__":

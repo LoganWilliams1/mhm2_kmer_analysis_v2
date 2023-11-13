@@ -90,7 +90,7 @@ struct KmerCountsMap {
   KmerArray<MAX_K> *keys = nullptr;
   CountsArray *vals = nullptr;
   int64_t capacity = 0;
-  int num = 0;
+  int64_t num = 0;
 
   void init(int64_t ht_capacity);
   void clear();
@@ -107,11 +107,11 @@ struct KmerExtsMap {
 };
 
 struct InsertStats {
-  unsigned int dropped = 0;
-  unsigned int dropped_qf = 0;
-  unsigned int attempted = 0;
-  unsigned int new_inserts = 0;
-  unsigned int num_unique_qf = 0;
+  uint64_t dropped = 0;
+  uint64_t dropped_qf = 0;
+  uint64_t attempted = 0;
+  uint64_t new_inserts = 0;
+  uint64_t num_unique_qf = 0;
 };
 
 template <int MAX_K>
@@ -124,7 +124,7 @@ class HashTableGPUDriver {
   int upcxx_rank_me;
   int upcxx_rank_n;
   int kmer_len;
-  int buff_len = 0;
+  uint64_t buff_len = 0;
   std::vector<KmerArray<MAX_K>> output_keys;
   std::vector<CountExts> output_vals;
   size_t output_index = 0;
@@ -144,7 +144,7 @@ class HashTableGPUDriver {
   int num_gpu_calls = 0;
 
   void insert_supermer_block();
-  void purge_invalid(int &num_purged, int &num_entries);
+  void purge_invalid(uint64_t &num_purged, uint64_t &num_entries);
 
  public:
   PASS_TYPE pass_type;
@@ -155,15 +155,15 @@ class HashTableGPUDriver {
   void init(int upcxx_rank_me, int upcxx_rank_n, int kmer_len, size_t max_elems, size_t max_ctg_elems, size_t num_errors,
             size_t gpu_avail_mem, std::string &msgs, std::string &warnings, bool use_qf);
 
-  void init_ctg_kmers(int max_elems, size_t gpu_avail_mem);
+  void init_ctg_kmers(uint64_t max_elems, size_t gpu_avail_mem);
 
   void insert_supermer(const std::string &supermer_seq, count_t supermer_count);
 
   void flush_inserts();
 
-  void done_ctg_kmer_inserts(int &attempted_inserts, int &dropped_inserts, int &new_inserts);
+  void done_ctg_kmer_inserts(uint64_t &attempted_inserts, uint64_t &dropped_inserts, uint64_t &new_inserts);
 
-  void done_all_inserts(int &num_dropped, int &num_unique, int &num_purged);
+  void done_all_inserts(uint64_t &num_dropped, uint64_t &num_unique, uint64_t &num_purged);
 
   std::pair<KmerArray<MAX_K> *, CountExts *> get_next_entry();
 

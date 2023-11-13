@@ -50,17 +50,17 @@ using namespace upcxx;
 using namespace upcxx_utils;
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
-                  int rlen_limit) {}
+                  int rlen_limit, bool compute_cigar) {}
 void cleanup_aligner() {}
 
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
-                        IntermittentTimer &aln_kernel_timer) {
+                        KlignTimers &klign_timers) {
   if (!kernel_alns.empty()) {
     active_kernel_fut.wait();  // should be ready already
     shared_ptr<AlignBlockData> aln_block_data =
         make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id);
     assert(kernel_alns.empty());
-    active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, aln_kernel_timer);
+    active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, klign_timers.aln_kernel);
   }
 }

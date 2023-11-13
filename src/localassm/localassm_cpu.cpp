@@ -60,7 +60,7 @@ using namespace upcxx_utils;
 using namespace localassm_core;
 
 void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len,
-                 int qual_offset) {
+                 int qual_offset, unsigned max_read_size) {
   BarrierTimer timer(__FILEFUNC__);
   // walk should never be more than this. Note we use the maximum insert size from all libraries
   int walk_len_limit = insert_avg + 2 * insert_stddev;

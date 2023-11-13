@@ -103,7 +103,8 @@ class GPUTimer {
   double get_elapsed();
 };
 
-inline __device__ int warpReduceSum(int val, int n) {
+template <typename T>
+inline __device__ T warpReduceSum(T val, int n) {
   unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
 #ifdef HIP_GPU
   for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down(val, offset);
@@ -113,18 +114,19 @@ inline __device__ int warpReduceSum(int val, int n) {
   for (int offset = warpSize / 2; offset > 0; offset /= 2) val += __shfl_down_sync(mask, val, offset);
 #endif
   return val;
-}
+};
 
-inline __device__ int blockReduceSum(int val, int n) {
-  static __shared__ int shared[32];  // Shared mem for 32 partial sums
+template <typename T>
+inline __device__ T blockReduceSum(T val, int n) {
+  static __shared__ T shared[32];  // Shared mem for 32 partial sums
   int lane_id = threadIdx.x % warpSize;
   int warp_id = threadIdx.x / warpSize;
 
-  val = warpReduceSum(val, n);  // Each warp performs partial reduction
+  val = warpReduceSum(val, n);              // Each warp performs partial reduction
 
   if (lane_id == 0) shared[warp_id] = val;  // Write reduced value to shared memory
 
-  __syncthreads();  // Wait for all partial reductions
+  __syncthreads();                          // Wait for all partial reductions
 
   // read from shared memory only if that warp existed
   val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane_id] : 0;
@@ -132,11 +134,16 @@ inline __device__ int blockReduceSum(int val, int n) {
   if (warp_id == 0) val = warpReduceSum(val, n);  // Final reduce within first warp
   __syncthreads();
   return val;
+};
+
+inline __device__ void reduce(uint32_t count, int num, uint32_t *result) {
+  uint32_t block_num = blockReduceSum(count, num);
+  if (threadIdx.x == 0) atomicAdd(result, block_num);
 }
 
-inline __device__ void reduce(int count, int num, unsigned int *result) {
-  int block_num = blockReduceSum(count, num);
-  if (threadIdx.x == 0) atomicAdd(result, block_num);
+inline __device__ void reduce(uint64_t count, int num, uint64_t *result) {
+  unsigned long long int block_num = blockReduceSum(count, num);
+  if (threadIdx.x == 0) atomicAdd((unsigned long long int *)result, block_num);
 }
 
 template <class T>

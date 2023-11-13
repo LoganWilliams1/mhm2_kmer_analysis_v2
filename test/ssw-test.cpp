@@ -62,9 +62,10 @@ void test_aligns_gpu(vector<Alignment> &alns, vector<string> query, vector<strin
     if (max_q_len < query[i].size()) max_q_len = query[i].size();
     if (max_ref_len < ref[i].size()) max_ref_len = ref[i].size();
   }
-  gpu_driver.run_kernel_forwards(query, ref, max_q_len, max_ref_len);
+  double t1,t2;
+  gpu_driver.run_kernel_forwards(query, ref, max_q_len, max_ref_len,t1,t2);
   gpu_driver.kernel_block_fwd();
-  gpu_driver.run_kernel_backwards(query, ref, max_q_len, max_ref_len);
+  gpu_driver.run_kernel_backwards(query, ref, max_q_len, max_ref_len,t1,t2);
   gpu_driver.kernel_block_rev();
 
   auto aln_results = gpu_driver.get_aln_results();
@@ -249,14 +250,14 @@ TEST(MHMTest, AdeptSW) {
   int device_count;
   size_t total_mem;
 #ifdef ENABLE_GPUS
-  gpu_utils::initialize_gpu(time_to_initialize, 0);
+  gpu_utils::initialize_gpu(time_to_initialize, 0, 1);
   //  if (device_count > 0) {
   //    EXPECT_TRUE(total_mem > 32 * 1024 * 1024);  // >32 MB
   //  }
 
   double init_time = 0;
   adept_sw::GPUDriver gpu_driver(0, 1, (short)aln_scoring.match, (short)-aln_scoring.mismatch, (short)-aln_scoring.gap_opening,
-                                 (short)-aln_scoring.gap_extending, 300, init_time);
+                                 (short)-aln_scoring.gap_extending, 300, false, init_time);
   // std::cout << "Initialized gpu in " << time_to_initialize << "s and " << init_time << "s\n";
 #endif
 

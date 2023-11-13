@@ -61,9 +61,9 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define DBG_INS_CTG_KMER DBG
+// #define DBG_INS_CTG_KMER DBG
 #define DBG_INS_CTG_KMER(...)
-//#define DBG_INSERT_KMER DBG
+// #define DBG_INSERT_KMER DBG
 #define DBG_INSERT_KMER(...)
 
 void Supermer::pack(const string &unpacked_seq) {
@@ -104,8 +104,8 @@ int Supermer::get_bytes() { return seq.length() + sizeof(kmer_count_t); }
 template <int MAX_K>
 KmerDHT<MAX_K>::KmerDHT(uint64_t my_num_kmers, size_t my_num_ctg_kmers, size_t max_kmer_store_bytes, int max_rpcs_in_flight,
                         bool use_qf, int sequencing_depth)
-    : local_kmers({})
-    , ht_inserter({})
+    : local_kmers(KmerMap<MAX_K>{})
+    , ht_inserter(HashTableInserter<MAX_K>{})
     , kmer_store()
     , max_kmer_store_bytes(max_kmer_store_bytes)
     , my_num_kmers(my_num_kmers)
@@ -219,7 +219,7 @@ bool KmerDHT<MAX_K>::kmer_exists(Kmer<MAX_K> kmer_fw) {
 
   return rpc(
              get_kmer_target_rank(kmer_fw, &kmer_rc),
-             [](Kmer<MAX_K> kmer, dist_object<KmerMap<MAX_K>> &local_kmers) -> bool {
+             [](const Kmer<MAX_K> &kmer, dist_object<KmerMap<MAX_K>> &local_kmers) -> bool {
                const auto it = local_kmers->find(kmer);
                if (it == local_kmers->end()) return false;
                return true;

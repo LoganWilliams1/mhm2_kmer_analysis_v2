@@ -85,7 +85,7 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
   assert(SHUFFLE_KMER_LEN < 32);
   kmer_t::set_k(SHUFFLE_KMER_LEN);
   // create kmer-cid hash table - this will only be for k < 32
-  dist_object<kmer_to_cid_map_t> kmer_to_cid_map({});
+  dist_object<kmer_to_cid_map_t> kmer_to_cid_map(kmer_to_cid_map_t{});
   ThreeTierAggrStore<pair<uint64_t, int64_t>> kmer_cid_store;
   kmer_cid_store.set_update_func([&kmer_to_cid_map](pair<uint64_t, int64_t> &&kmer_cid_info) {
     auto it = kmer_to_cid_map->find(kmer_cid_info.first);
@@ -152,7 +152,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                                  vector<UpdateCidReadsBuffer> &update_buffer) {
   auto fut = rpc(
                  target,
-                 [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, vector<uint64_t> kmers) -> vector<int64_t> {
+                 [](dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, const vector<uint64_t> &kmers) -> vector<int64_t> {
                    vector<int64_t> cids;
                    cids.resize(kmers.size());
                    for (int i = 0; i < kmers.size(); i++) {
@@ -162,7 +162,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
                    return cids;
                  },
                  kmer_to_cid_map, kmer_req_buf.kmers)
-                 .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](vector<int64_t> cids) {
+                 .then([read_ids = kmer_req_buf.read_ids, &cid_reads_store, &update_buffer](const vector<int64_t> &cids) {
                    if (cids.size() != read_ids.size()) WARN("buff size is wrong, ", cids.size(), " != ", read_ids.size());
                    for (int i = 0; i < cids.size(); i++) {
                      // if (cids[i] != -1) cid_reads_store.update(get_target_rank(cids[i]), {cids[i], read_ids[i]});
@@ -177,7 +177,7 @@ static future<> update_cid_reads(intrank_t target, KmerReqBuf &kmer_req_buf, dis
 static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList &packed_reads_list,
                                                                 dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
-  dist_object<cid_to_reads_map_t> cid_to_reads_map({});
+  dist_object<cid_to_reads_map_t> cid_to_reads_map(cid_to_reads_map_t{});
   cid_to_reads_map->reserve(num_ctgs);
   ThreeTierAggrStore<pair<int64_t, int64_t>> cid_reads_store;
   cid_reads_store.set_update_func([&cid_to_reads_map](pair<int64_t, int64_t> &&cid_reads_info) {
@@ -246,7 +246,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList 
 static dist_object<cid_to_reads_map_t> process_alns(PackedReadsList &packed_reads_list, Alns &alns, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   using read_to_cid_map_t = HASH_TABLE<int64_t, pair<int64_t, int>>;
-  dist_object<read_to_cid_map_t> read_to_cid_map({});
+  dist_object<read_to_cid_map_t> read_to_cid_map(read_to_cid_map_t{});
   ThreeTierAggrStore<tuple<int64_t, int64_t, int>> read_cid_store;
   read_cid_store.set_update_func([&read_to_cid_map](tuple<int64_t, int64_t, int> &&read_cid_info) {
     auto &[read_id, cid, score] = read_cid_info;
@@ -273,7 +273,7 @@ static dist_object<cid_to_reads_map_t> process_alns(PackedReadsList &packed_read
   read_cid_store.flush_updates();
   barrier();
 
-  dist_object<cid_to_reads_map_t> cid_to_reads_map({});
+  dist_object<cid_to_reads_map_t> cid_to_reads_map(cid_to_reads_map_t{});
   cid_to_reads_map->reserve(num_ctgs);
   ThreeTierAggrStore<pair<int64_t, int64_t>> cid_reads_store;
   cid_reads_store.set_update_func([&cid_to_reads_map](pair<int64_t, int64_t> &&cid_reads_info) {
@@ -316,7 +316,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
 
   // complete pending reductions
   pr.fulfill().wait();
-  auto max_num_mapped_reads =fut_max_num_mapped_reads.wait();
+  auto max_num_mapped_reads = fut_max_num_mapped_reads.wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
   LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
@@ -326,7 +326,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   SLOG_VERBOSE("Avg mapped reads per rank ", avg_num_mapped_reads, " max ", max_num_mapped_reads, " balance ",
                (double)avg_num_mapped_reads / max_num_mapped_reads, "\n");
 
-  dist_object<read_to_target_map_t> read_to_target_map({});
+  dist_object<read_to_target_map_t> read_to_target_map(read_to_target_map_t{});
   upcxx_utils::ThreeTierAggrStore<ReadTarget> read_target_store;
   auto local_n = local_team().rank_n();
   int64_t mem_to_use = 0.1 * get_free_mem(true) / local_n;
@@ -358,6 +358,7 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   auto fut_progbar = progbar.set_done();
   read_target_store.flush_updates();
   read_target_store.clear();
+  Timings::wait_pending();
   fut_progbar.wait();
   barrier();
   auto tot_reads_found = reduce_one(read_to_target_map->size(), op_fast_add, 0).wait();
@@ -403,6 +404,7 @@ static void move_reads_to_targets(PackedReadsList &packed_reads_list, dist_objec
     num_bases += packed_reads->get_local_num_reads() * packed_reads->get_max_read_len();
   }
   // reduce max_store_bytes by the extra_size of this non-trivial updated data
+  num_updates = reduce_all(num_updates, upcxx::op_fast_max).wait();
   auto non_trivial_size = sizeof(PairPackedRead) + ((num_bases + num_updates - 1) / num_updates);
   max_store_bytes = max_store_bytes * sizeof(PairPackedRead) / non_trivial_size;
   read_seq_store.set_size("Read seq store", max_store_bytes, local_n * 2, num_updates);
@@ -458,7 +460,7 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   auto kmer_to_cid_map = compute_kmer_to_cid_map(ctgs);
   auto cid_to_reads_map = compute_cid_to_reads_map(packed_reads_list, kmer_to_cid_map, ctgs.size());
   auto read_to_target_map = compute_read_locations(cid_to_reads_map, all_num_reads);
-  dist_object<PackedReadsContainer> new_packed_reads({});
+  dist_object<PackedReadsContainer> new_packed_reads(PackedReadsContainer{});
   new_packed_reads->reserve(num_reads * 1.3);
   move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads, new_packed_reads);
 
@@ -467,7 +469,7 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   // now copy the new packed reads to the old
   for (auto packed_reads : packed_reads_list) delete packed_reads;
   packed_reads_list.clear();
-  packed_reads_list.push_back(new PackedReads(qual_offset, *new_packed_reads));
+  packed_reads_list.push_back(new PackedReads(qual_offset, *new_packed_reads, "combined-shuffled-reads"));
   packed_reads_list[0]->set_max_read_len();
   assert(packed_reads_list.size() == 1);
   uint64_t num_reads_received = packed_reads_list[0]->get_local_num_reads();
@@ -478,16 +480,16 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   uint64_t num_bases_received = packed_reads_list[0]->get_local_bases();
   auto fut_msm_bases_received = pr.msm_reduce_one(num_bases_received);
 
-  auto fut =
-      when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
-          .then([msm_num_reads, all_num_reads](MinSumMax<uint64_t> shuffled_msm_num_reads, MinSumMax<uint64_t> shuffled_msm_num_bases) {
-            SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
-            SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
-            SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");
-            auto all_num_new_reads = shuffled_msm_num_reads.sum;
-            if (all_num_new_reads != all_num_reads)
-              SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
-          });
+  auto fut = when_all(Timings::get_pending(), fut_msm_num_reads_received, fut_msm_bases_received)
+                 .then([msm_num_reads, all_num_reads](const MinSumMax<uint64_t> &shuffled_msm_num_reads,
+                                                      const MinSumMax<uint64_t> &shuffled_msm_num_bases) {
+                   SLOG_VERBOSE("initial  num_reads: ", msm_num_reads.to_string(), "\n");
+                   SLOG_VERBOSE("shuffled num_reads: ", shuffled_msm_num_reads.to_string(), "\n");
+                   SLOG_VERBOSE("shuffled num_bases: ", shuffled_msm_num_bases.to_string(), "\n");
+                   auto all_num_new_reads = shuffled_msm_num_reads.sum;
+                   if (all_num_new_reads != all_num_reads)
+                     SWARN("Not all reads shuffled, expected ", all_num_reads, " but only shuffled ", all_num_new_reads);
+                 });
   // finish pending reductions
   pr.fulfill().wait();
   Timings::wait_pending();

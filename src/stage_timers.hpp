@@ -42,7 +42,9 @@
  form.
 */
 
-#include "upcxx_utils.hpp"
+#include "upcxx_utils/log.hpp"
+#include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/timers.hpp"
 
 using upcxx_utils::IntermittentTimer;
 

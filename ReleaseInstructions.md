@@ -32,4 +32,5 @@
 ## Release
    * upload tar.gz to Downloads section of bitbucket
    * update the wiki page to announce and link to the release: https://bitbucket.org/berkeleylab/mhm2/wiki/Home
+   * build and push docker image to robegan21/mhm2 with vX.Y.Z tag and latest
 

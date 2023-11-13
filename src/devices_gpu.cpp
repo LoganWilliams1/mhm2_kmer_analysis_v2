@@ -60,9 +60,10 @@ static double gpu_startup_duration = 0;
 static int num_gpus_on_node = 0;
 
 size_t get_gpu_avail_mem_per_rank() {
-  barrier(local_team());
-  auto avail_mem = (gpu_utils::get_gpu_avail_mem() * num_gpus_on_node) / local_team().rank_n();
-  barrier(local_team());
+  auto &gpu_team = get_gpu_team();
+  barrier(gpu_team);
+  auto avail_mem = gpu_utils::get_gpu_avail_mem() / gpu_team.rank_n();
+  barrier(gpu_team);
   return avail_mem;
 }
 
@@ -75,13 +76,31 @@ static vector<string> &get_gpu_uuids() {
   return uuids;
 }
 
+upcxx::team &get_gpu_team() {
+  static upcxx::team tm = []() {
+    assert(upcxx::master_persona().active_with_caller() && "Called from master persona");
+    upcxx::intrank_t color = upcxx::team::color_none;
+    if (gpu_utils::gpus_present()) {
+      auto my_uuid = gpu_utils::get_gpu_uuid();
+      color = std::hash<string>{}(my_uuid)&0xffffffff;
+      if (color < 0) color = -color;
+    } else {
+      color = 0;  // i.e. just a copy of the local team
+    }
+    assert(color != upcxx::team::color_none);
+    log_local("GPU team color", std::to_string(color));
+    return upcxx::local_team().split(color, upcxx::local_team().rank_me());
+  }();
+  return tm;
+}
+
 void init_devices() {
   SLOG("Initializing GPUs\n");
   init_gpu_thread = true;
   // initialize the GPU and first-touch memory and functions in a new thread as this can take many seconds to complete
   detect_gpu_fut = execute_in_thread_pool([]() {
                      DBG("Initializing GPUs\n");
-                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me());
+                     gpu_utils::initialize_gpu(gpu_startup_duration, rank_me(), local_team().rank_n());
                      stringstream ss;
                      ss << "Done initializing GPU: " << (gpu_utils::gpus_present() ? "Found" : "NOT FOUND");
                      if (gpu_utils::gpus_present()) {
@@ -137,8 +156,12 @@ void done_init_devices() {
       }
       barrier(local_team());
       num_gpus_on_node = broadcast(num_gpus_on_node, 0, local_team()).wait();
+      auto msm_local = upcxx_utils::min_sum_max_reduce_one(gpu_startup_duration, 0, upcxx::local_team()).wait();
+      auto msm_global = upcxx_utils::min_sum_max_reduce_one(gpu_startup_duration, 0).wait();
       // gpu_avail_mem = broadcast(gpu_avail_mem, 0, local_team()).wait();
       SLOG_GPU("Available number of GPUs on this node ", num_gpus_on_node, ". Detected in ", gpu_startup_duration, " s\n");
+      if (!local_team().rank_me()) LOG("Initialized on node in ", msm_local.to_string(), "\n");
+      if (!rank_me()) LOG("Initialized globally in ", msm_global.to_string(), "\n");
       // SLOG_GPU("Rank 0 is using GPU ", gpu_utils::get_gpu_device_name(), " on node 0, with ", get_size_str(gpu_avail_mem),
       //         " available memory (", get_size_str(gpu_avail_mem / local_team().rank_n()), " per rank). Detected in ",
       //         gpu_startup_duration, " s\n");
@@ -150,6 +173,11 @@ void done_init_devices() {
       SDIE("No GPUs available - this build requires GPUs");
     }
   }
+}
+
+void tear_down_devices() {
+  auto &gpu_team = get_gpu_team();
+  gpu_team.destroy();
 }
 
 void log_gpu_uuid() {

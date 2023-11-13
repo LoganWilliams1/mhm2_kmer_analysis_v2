@@ -62,6 +62,7 @@ struct AlignmentResults {
   short *ref_end = nullptr;
   short *query_end = nullptr;
   short *top_scores = nullptr;
+  char *cigar = nullptr;
 };
 
 struct DriverState;
@@ -72,14 +73,15 @@ class GPUDriver {
 
  public:
   GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score, short gap_opening_score,
-            short gap_extending_score, int rlen_limit, double &init_time);
+            short gap_extending_score, int rlen_limit, bool compute_cigar, double &init_time);
   ~GPUDriver();
 
   void run_kernel_forwards(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
-                           unsigned maxContigSize);
+                           unsigned maxContigSize, double &launch_time, double &mem_time);
   void run_kernel_backwards(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
-                            unsigned maxContigSize);
-
+                            unsigned maxContigSize, double &launch_time, double &mem_time);
+  void run_kernel_traceback(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,
+                            unsigned maxContigSize, double &launch_time, double &mem_time);
   void kernel_block_fwd();
   void kernel_block_rev();
 

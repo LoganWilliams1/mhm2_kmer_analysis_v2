@@ -10,7 +10,7 @@ variables:
   APPLICATION: mhm2
   TEST_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:latest
   RELEASE_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:$CI_BUILD_REF_NAME
-  UPCXX_VER: 2022.9.0
+  UPCXX_VER: 2023.3.0
 
 stages:
   - build
@@ -18,13 +18,13 @@ stages:
   - accuracy
 
 #
-# cori
+# perlmutter
 #
 
-Cori:build:
+Perlmutter:build:
   stage: build
   tags:
-    - Cori
+    - Perlmutter
   script:
     - set -e
     - git submodule init
@@ -35,74 +35,34 @@ Cori:build:
     - date
     - echo "Establishing variables"
     - export MHM2_SOURCE=$(pwd)
-    - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export INSTALL_PREFIX=${CI_SCRATCH}/install
-    - export BUILD_PREFIX=${CI_SCRATCH}/build
-    - export RUN_PREFIX=${CI_SCRATCH}/runs
-    - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
+    - export BASE=${PSCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
+    - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - mkdir -p ${BASE}
-    - rm -rf ${CI_SCRATCH}/?*/
+    - rm -rf ${CI_SCRATCH}
     - echo "Cleaning out old installs"
-    - find ${BASE}/scratch -maxdepth 1  -name "${CI_PROJECT_NAME}-*-*-*"  -mtime +7 -type d -exec rm -rf '{}' ';' || /bin/true
-    - mkdir -p ${CI_SCRATCH} ${RUN_PREFIX}
+    - find ${BASE}/ -maxdepth 1  -name "${CI_PROJECT_NAME}-*-*-*"  -mtime +14 -type d -exec rm -rf '{}' ';' || /bin/true
+    - mkdir -p ${CI_SCRATCH}
     - dt=$(date '+%Y%m%d_%H%M%S')
-    - exec >  >(tee -ia ${CI_SCRATCH}/build-$dt.log)
-    - exec 2> >(tee -ia ${CI_SCRATCH}/build-$dt.err >&2)    
+    - exec >  >(tee -ia ${CI_SCRATCH}/build-${dt}.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/build-${dt}.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/build-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
-    - env
-    - module list
-    - git describe --always
-    - cd upcxx-utils
-    - git describe --always
-    - cd ${MHM2_SOURCE}
-    - set -x
-    - echo "Copying source from ${MHM2_SOURCE}/ to ${CI_SCRATCH}/src/"
-    - mkdir -p ${CI_SCRATCH}/src
-    - rsync -a --exclude '.git*' ${MHM2_SOURCE}/ ${CI_SCRATCH}/src/
-    - lmstat -a -c $INTEL_LICENSE_FILE || /bin/true
-    - echo "Loading Haswell modules for upcxx GNU"
-    - source ${MHM2_SOURCE}/contrib/environments/cori-haswell/gnu.sh
-    - module list
-    - export MHM2_BUILD=${BUILD_PREFIX}-haswell-dbg
-    - mkdir -p ${MHM2_BUILD}
-    - cd $MHM2_BUILD
-    - echo "Building Haswell GNU Debug"
-    - CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-haswell -DCMAKE_BUILD_TYPE=Debug ${MHM2_SOURCE}
-    - make -j 12 all check install
-    - export MHM2_BUILD=${BUILD_PREFIX}-haswell
-    - mkdir -p ${MHM2_BUILD}
-    - cd $MHM2_BUILD
-    - echo "Building Haswell GNU Release"
-    - CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-haswell -DCMAKE_BUILD_TYPE=Release ${MHM2_SOURCE}
-    - make -j 12 all check install
-    - echo "Loading KNL modules for upcxx on cori GNU"
-    - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
-    - module list
-    - export MHM2_BUILD=${BUILD_PREFIX}-knl-dbg
-    - mkdir -p ${MHM2_BUILD}
-    - cd $MHM2_BUILD
-    - echo "Building KNL GNU Debug"
-    - CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-knl-dbg -DCMAKE_BUILD_TYPE=Debug ${MHM2_SOURCE}
-    - make -j 12 all install # cannot check knl build on haswell
-    - export MHM2_BUILD=${BUILD_PREFIX}-knl-rwdi
-    - mkdir -p ${MHM2_BUILD}
-    - cd $MHM2_BUILD
-    - echo "Building KNL GNU RelWithDebInfo"
-    - CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-knl-rwdi -DCMAKE_BUILD_TYPE=RelWithDebInfo ${MHM2_SOURCE}
-    - make -j 12 all install # cannot check knl build on haswell
-    - export MHM2_BUILD=${BUILD_PREFIX}-knl
-    - mkdir -p ${MHM2_BUILD}
-    - cd $MHM2_BUILD
-    - echo "Building KNL GNU Release"
-    - CXX=CC cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}-knl -DCMAKE_BUILD_TYPE=Release ${MHM2_SOURCE}
-    - make -j 12 all install # cannot check knl build on haswell
-    - echo "Done building"
+    - export MHM2_NEW_SOURCE=${CI_SCRATCH}/repo
+    - echo "Copying source from ${MHM2_SOURCE}/ to ${MHM2_NEW_SOURCE}/"
+    - export MHM2_BUILD_THREADS=64
+    - mkdir -p ${MHM2_NEW_SOURCE}
+    - rsync -a ${MHM2_SOURCE}/ ${MHM2_NEW_SOURCE}
+    - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
+    - cd ${CI_SCRATCH}/repo
+    - export OUT=perlmutter.build.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
+    - sbatch --output=$OUT --account=m2865 --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
+    - cat $OUT
+    - echo "Perlmutter build done"
 
-Cori:validation:
+Perlmutter:validation:
   stage: validation
   tags:
-    - Cori
+    - Perlmutter
   script:
     - set -e
     - uname -a
@@ -110,71 +70,21 @@ Cori:validation:
     - date
     - export GASNET_BACKTRACE=1
     - echo "Establishing variables"
-    - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export INSTALL_PREFIX=${CI_SCRATCH}/install
-    - export BUILD_PREFIX=${CI_SCRATCH}/build
-    - export RUN_PREFIX=${CI_SCRATCH}/runs
-    - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
-    - echo "Loading KNL modules for upcxx on cori"
-    - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
-    - module list
-    - cd $CI_SCRATCH
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
+    - export MHM2_SOURCE=${CI_SCRATCH}/repo
+    - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - dt=$(date '+%Y%m%d_%H%M%S')
-    - exec >  >(tee -ia ${CI_SCRATCH}/validation-$dt.log)
-    - exec 2> >(tee -ia ${CI_SCRATCH}/validation-$dt.err >&2)   
+    - exec >  >(tee -ia ${CI_SCRATCH}/validation-${dt}.log)
+    - exec 2> >(tee -ia ${CI_SCRATCH}/validation-${dt}.err >&2)    
     - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
-    - env
-    - module list
-    - set -x
-    - FAILED=""   
-    - inst=${INSTALL_PREFIX}-knl
-    - echo "Testing builds on KNL - $inst"
-    - export RWDI=${INSTALL_PREFIX}-knl-rwdi/bin/
-    - export DBG=${INSTALL_PREFIX}-knl-dbg/bin/
-    - export REL=${INSTALL_PREFIX}-knl/bin/
-    - export ARCTIC=/global/cscratch1/sd/regan/GitlabCIData/
-    - export OPTS="-r ${ARCTIC}/arctic_sample_0.fq -v --checkpoint=yes"
-    - export GASNET_BACKTRACE=1
-    - echo "Submitting job on 3 nodes - on 2 nodes roughly RWDI=400s, DBG --kmer-lens 63 =456s  ...REL=170s"
-    - knl_job=$(sbatch --parsable --job-name="CImhv-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=3 --qos=debug --time=30:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/knl-rwdi-0 && ${DBG}/mhm2.py ${OPTS} --kmer-lens 63 -o ${RUN_PREFIX}/knl-dbg-0-k63 && echo Good")
-    - echo "KNL JOB ${knl_job}"
-    - echo "Submitting build on cori gpu"
-    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 -c 5 -G 1 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; mkdir -p build-cori-gpu && cd build-cori-gpu && cmake \$MHM2_CMAKE_EXTRAS -DCMAKE_INSTALL_PREFIX=install ${CI_SCRATCH}/src && make VERBOSE=1 -j 10 all install && srun install/bin/mhm2_test")
-    - echo "GPU Build job $gpu_job"
-    - echo "Waiting for knl job $knl_job"
-    - date
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(sacct -j $knl_job -X -n)
-    - echo "sacct $sacct"
-    - cat slurm-${knl_job}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job} failed somehow - ${wasgood}"; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/knl-rwdi-0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-rwdi-0" ; fi
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-rwdi-0 --expected-quals ${RWDI}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py on knl-rwdi-0"
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/knl-dbg-0-k63/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on knl-dbg-0-k63" ; fi
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - ${RWDI}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/knl-dbg-0-k63 --expected-quals ${RWDI}/../share/good-arctic-sample0-k63.txt --refs ${ARCTIC}/arcticsynth-refs.fa || echo "WARN Did not pass check_asm_quality.py on knl-dbg-0-k63 with reduced workflow k63"
-    - echo "Waiting for gpu job ${gpu_job}"
-    - module load cgpu
-    - date
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(sacct -j $gpu_job -X -n)
-    - cat slurm-${gpu_job}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else FAILED="${FAILED} -- gpu job ${gpu_job} failed somehow - ${wasgood}"; fi
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - echo "Completed"
+    - ${MHM2_SOURCE}/ci/perlmutter.validation.sh
+    - echo "Perlmutter validation done"
 
-Cori:accuracy:
+Perlmutter:accuracy:
   stage: accuracy
   tags:
-    - Cori
+    - Perlmutter
   script:
     - set -e
     - uname -a
@@ -182,76 +92,16 @@ Cori:accuracy:
     - date
     - export GASNET_BACKTRACE=1
     - echo "Establishing variables"
-    - export MHM2_SOURCE=$(pwd)
     - export BASE=${SCRATCH}/gitlab-ci/${NERSC_HOST}-${CI_PROJECT_NAME}-${USER}
-    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
-    - export INSTALL_PREFIX=${CI_SCRATCH}/install
-    - export BUILD_PREFIX=${CI_SCRATCH}/build
-    - export RUN_PREFIX=${CI_SCRATCH}/runs
-    - echo "BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
-    - echo "Loading KNL modules for upcxx on cori"
-    - source ${MHM2_SOURCE}/contrib/environments/cori-knl/gnu.sh
+    - export CI_SCRATCH=${BASE}/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
+    - export MHM2_SOURCE=${CI_SCRATCH}/repo
+    - echo "MHM2_SOURCE=${MHM2_SOURCE} BASE=${BASE} CI_SCRATCH=${CI_SCRATCH}"
     - dt=$(date '+%Y%m%d_%H%M%S')
     - exec >  >(tee -ia ${CI_SCRATCH}/accuracy-$dt.log)
     - exec 2> >(tee -ia ${CI_SCRATCH}/accuracy-$dt.err >&2)
     - echo "Logging to ${CI_SCRATCH}/accuracy-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
-    - env
-    - module list
-    - set -x
-    - cd $CI_SCRATCH
-    - FAILED=""
-    - echo "Testing accuracy"
-    - export RWDI=${INSTALL_PREFIX}-knl-rwdi/bin/
-    - export REL=${INSTALL_PREFIX}-knl/bin/
-    - export ARCTIC=/global/cscratch1/sd/regan/GitlabCIData/
-    - export OPTS="-r ${ARCTIC}/arctic_sample_0.fq --checkpoint=no"
-    - echo "Submitting job on 6 nodes rwdi build... on 2 nodes rel build is roughly REL=170s"
-    - knl_job=$(sbatch --parsable --job-name="CImha-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=6 --qos=debug --time=10:00 --wrap="${RWDI}/mhm2.py $OPTS -o ${RUN_PREFIX}/rel && echo Good")
-    - echo "Submitting full arctic job on 15 nodes"
-    - export OPTS2="-r ${ARCTIC}/arctic_samples.fq --checkpoint=no"
-    - knl_job2=$(sbatch --parsable --job-name="CI-mhm2-${CI_COMMIT_SHORT_SHA}" --account=m2865 -C knl --nodes=15 --qos=debug --time=30:00 --wrap="${REL}/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-full && echo Good")
-    - echo "Submitting GPU full arctic job on 2 cori GPU nodes"
-    - gpu_job=$(module load cgpu; sbatch --parsable -C gpu -t 30 --exclusive --nodes=2 -G 16 -A m342 --wrap="source ${CI_SCRATCH}/src/contrib/environments/cori-gpu/gnu.sh ; build-cori-gpu/install/bin/mhm2.py $OPTS2 -o ${RUN_PREFIX}/rel-gpu && echo Good")
-    - echo "Waiting for knl job $knl_job"
-    - date
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(sacct -j $knl_job -X -n)
-    - echo "sacct $sacct"
-    - cat slurm-${knl_job}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job} failed somehow - ${wasgood}"; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/rel/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - ${REL}/check_asm_quality.py --asm-dir ${RUN_PREFIX}/rel --expected-quals ${REL}/../share/good-arctic-sample0.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py"
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - echo "Waiting for second (full) job to finish ${knl_job2}"
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(sacct -j $knl_job2 -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(sacct -j $knl_job2 -X -n)
-    - echo "sacct $sacct"
-    - cat slurm-${knl_job2}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else  echo "knl job ${knl_job2} failed somehow - ${wasgood}"; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/rel-full/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel-full" ; fi
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - ${REL}/check_asm_quality.py --thres 0.015 --rna --asm-dir ${RUN_PREFIX}/rel-full --expected-quals ${REL}/../share/good-arcticsynth.txt --refs ${ARCTIC}/arcticsynth-refs.fa || FAILED="${FAILED} Did not pass check_asm_quality.py (full)"
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - echo "Waiting for GPU job to finish ${gpu_job}"
-    - while /bin/true ; do sleep 60 ; date ; sacct=$(module load cgpu; sacct -j $gpu_job -o state -X -n 2>/dev/null || true) ; if [ -n "${sacct}" -a -z "$(echo "${sacct}" | grep ING)" ] ; then break ; fi ; done
-    - echo "sacct $sacct"
-    - sacct=$(module load cgpu; sacct -j $gpu_job -X -n)
-    - echo "sacct $sacct"
-    - cat slurm-${gpu_job}.out
-    - wasgood=$(echo "${sacct}" | grep -v '0:0' || true)
-    - if [ -z "$wasgood" ] ; then  true ; else  echo "gpu job ${gpu_job} failed somehow - ${wasgood}"; false ; fi
-    - if [ ! -f ${RUN_PREFIX}/rel-gpu/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel-gpu" ; fi
-    - echo "FAILED=${FAILED}"
-    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
-    - echo "Completed"
-
-
-
+    - ${MHM2_SOURCE}/ci/perlmutter.accuracy.sh
+    - echo "Perlmutter accuracy done"
 
 
 #
@@ -265,7 +115,7 @@ HULK:build:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
@@ -291,7 +141,7 @@ HULK:validation:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
@@ -314,7 +164,7 @@ HULK:accuracy:
   script:
     - set -e
     - export BASE=/work/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install to PATH"
@@ -350,7 +200,7 @@ Bacteria:build:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -377,7 +227,7 @@ Bacteria:validation:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -391,7 +241,20 @@ Bacteria:validation:
     - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
     - env
     - set -x
-    - ./ci/ubuntu.validation.sh ${BASE}
+    - cp -p ./ci/ubuntu.validation.sh ${CI_SCRATCH}
+    - cd ${CI_SCRATCH}
+    - test_file=validation_test-$dt
+    - rm -f ${test_file}
+    - |
+      batch << END_TEXT
+        export PATH=${PATH} # keep CI path within batch
+        date >> ${test_file}.log
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+      END_TEXT
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
+    - cat ${test_file} ${test_file}.log
+    - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Completed successfully on bacteria"
 
 Bacteria:accuracy:
@@ -401,7 +264,7 @@ Bacteria:accuracy:
   script:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install, cuda and quast to path"
@@ -416,18 +279,32 @@ Bacteria:accuracy:
     - echo "Logging to ${CI_SCRATCH}/accuracy-$dt.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
     - env
     - set -x
-    - ./ci/ubuntu.accuracy.sh ${BASE}
-    - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
+    - cp -p ./ci/ubuntu.accuracy.sh ${CI_SCRATCH}
     - cd ${CI_SCRATCH}
-    - rm -f full_test_status
+    - test_file=ci_asm_qual_full_test-$dt
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >full_test.log 2>&1  && echo Success > full_test_status || echo Failed > full_test_status
+        date >> ${test_file}.log
+        ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
-    - while [ ! -f full_test_status ] ; do echo "Waiting for job to complete via batch subsystem"; date; uptime ; sleep 60  ; done
-    - cat full_test.log
-    - grep Success full_test_status || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
+    - cat ${test_file} ${test_file}.log
+    - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - echo "Extra full CI run on bacteria and fungi using GPUs scheduled via the batch system"
+    - test_file=ci_asm_qual_full_test_2node-$dt
+    - rm -f ${test_file}
+    - |
+      batch << END_TEXT
+        export PATH=${PATH} # keep CI path within batch
+        date >> ${test_file}.log
+        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+      END_TEXT
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
+    - cat ${test_file} ${test_file}.log
+    - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
@@ -446,7 +323,7 @@ Fungi:build:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
@@ -472,7 +349,7 @@ Fungi:validation:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -486,7 +363,21 @@ Fungi:validation:
     - echo "Logging to ${CI_SCRATCH}/validation-$dt.log and .err at $(date) on $(uname -n) in $(pwd)"
     - env
     - set -x
-    - ./ci/ubuntu.validation.sh ${BASE}
+    - cp -p ./ci/ubuntu.validation.sh ${CI_SCRATCH}
+    - cd ${CI_SCRATCH}
+    - test_file=validation_test-$dt
+    - rm -f ${test_file}
+    - |
+      batch << END_TEXT
+        export PATH=${PATH} # keep CI path within batch
+        date >> ${test_file}.log
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+      END_TEXT
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
+    - cat ${test_file} ${test_file}.log
+    - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - echo "Completed successfully on fungi"
 
 Fungi:accuracy:
   stage: accuracy
@@ -495,7 +386,7 @@ Fungi:accuracy:
   script:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
-    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}
+    - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
     - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install and quast to path"
@@ -510,18 +401,32 @@ Fungi:accuracy:
     - echo "Logging to ${CI_SCRATCH}/accuracy-$dt.log and .err at $(date) on $(uname -n) in $(pwd) $(uptime)"
     - env
     - set -x
-    - ./ci/ubuntu.accuracy.sh ${BASE}
-    - echo "Extra full CI run on fungi and bacteria CPU only scheduled via the batch system"
+    - cp -p ./ci/ubuntu.accuracy.sh ${CI_SCRATCH}
     - cd ${CI_SCRATCH}
-    - rm -f full_test_status
+    - echo "Single node CI run on CPU only scheduled via the batch system"
+    - test_file=ci_asm_qual_full_test-$dt
+    - rm -f ${test_file}
     - |
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
-        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >full_test.log 2>&1  && echo Success > full_test_status || echo Failed > full_test_status
+        date >> ${test_file}.log
+       ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
+    - cat ${test_file}
+    - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
+    - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
+    - echo "Extra full CI run on both fungi and bacteria CPU only scheduled via the batch system"
+    - test_file=ci_asm_qual_full_test_2node-$dt
+    - rm -f ${test_file}
+    - |
+      batch << END_TEXT
+        export PATH=${PATH} # keep CI path within batch
+        date >> ${test_file}.log
+       ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
       END_TEXT
-    - while [ ! -f full_test_status ] ; do echo "Waiting for job to complete via batch subsystem"; date; uptime ; sleep 60  ; done
-    - cat full_test.log
-    - grep Success full_test_status || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
+    - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
+    - cat ${test_file} ${test_file}.log
+    - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - if [ ! -f ./test-arctic-samples/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi

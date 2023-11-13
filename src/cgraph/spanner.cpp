@@ -58,7 +58,7 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define DUMP_LINKS
+// #define DUMP_LINKS
 
 static CtgGraph *_graph = nullptr;
 
@@ -300,7 +300,7 @@ ProcessPairResult process_pair(int insert_avg, int insert_stddev, Aln &aln1, Aln
     return true;
   };
 
-  DBG_VERBOSE("process_pair: ", aln1.to_string(), " vs ", aln2.to_string(), "\n");
+  // DBG_VERBOSE("process_pair: ", aln1.to_string(), " vs ", aln2.to_string(), "\n");
   assert(aln1.read_id.size() == aln2.read_id.size());
   assert(aln1.read_id.substr(0, aln1.read_id.size() - 1).compare(aln2.read_id.substr(0, aln2.read_id.size() - 1)) == 0);
   assert(aln1.read_id[aln1.read_id.size() - 1] != aln2.read_id[aln2.read_id.size() - 1]);

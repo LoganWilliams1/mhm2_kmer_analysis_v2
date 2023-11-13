@@ -49,7 +49,7 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-//#define SLOG_CPU_HT(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
+// #define SLOG_CPU_HT(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
 #define SLOG_CPU_HT(...) SLOG_VERBOSE(__VA_ARGS__)
 
 template <int MAX_K>
@@ -413,7 +413,7 @@ struct HashTableInserter<MAX_K>::HashTableInserterState {
   upcxx_utils::BaseTimer insert_timer, kernel_timer;
 
   HashTableInserterState()
-      : kmers({}) {}
+      : kmers(KmerMapExts<MAX_K>{}) {}
 };
 
 template <int MAX_K>
@@ -509,6 +509,7 @@ void HashTableInserter<MAX_K>::flush_inserts() {
   if (tot_num_dropped) SLOG_CPU_HT("  Number dropped ", perc_str(tot_num_dropped, tot_kmers), "\n");
   auto tot_num_overrides = reduce_one(state->kmers->get_num_singleton_overrides(), op_fast_add, 0).wait();
   if (tot_num_overrides) SLOG_CPU_HT("  Number singleton overrides ", perc_str(tot_num_overrides, tot_kmers), "\n");
+  SLOG_VERBOSE("CPU kcount found total of ", tot_num_kmers + tot_num_dropped, " unique kmers including singletons and dropped\n");
   if (100.0 * tot_num_dropped / tot_kmers > 0.1)
     SWARN("Lack of memory caused ", perc_str(tot_num_dropped, tot_kmers), " kmers to be dropped (singleton overrides ",
           perc_str(tot_num_overrides, tot_kmers), ")\n");
@@ -575,7 +576,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   LOG_MEM("After inserting into local hashtable");
   auto tot_num_purged = reduce_one(num_purged, op_fast_add, 0).wait();
   auto tot_num_kmers = reduce_one(state->kmers->size(), op_fast_add, 0).wait();
-  SLOG_CPU_HT("Purged ", tot_num_purged, " kmers ( ", perc_str(tot_num_purged, tot_num_kmers), ")\n");
+  SLOG_CPU_HT("CPU Hashtable: purged ", perc_str(tot_num_purged, tot_num_kmers), " singleton kmers out of ", tot_num_kmers, "\n");
   auto final_load_factor = (double)reduce_one(local_kmers->load_factor(), op_fast_add, 0).wait() / rank_n();
   auto max_final_load_factor = (double)reduce_one(local_kmers->load_factor(), op_fast_max, 0).wait();
   auto all_kmers_inserted = reduce_all(num_inserted, op_fast_add).wait();

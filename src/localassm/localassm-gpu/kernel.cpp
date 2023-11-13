@@ -53,15 +53,15 @@
 __device__ int bcast_warp(int arg) {
   int laneId = threadIdx.x & 0x1f;
   int value;
-  if (laneId == 0)  // Note unused variable for
-    value = arg;    // all threads except lane 0
+  if (laneId == 0)                            // Note unused variable for
+    value = arg;                              // all threads except lane 0
 #ifdef CUDA_GPU
   value = __shfl_sync(0xffffffff, value, 0);  // Synchronize all threads in warp, and get "value" from lane 0
 #endif
 #ifdef HIP_GPU
   value = __shfl(value, 0);  // Get "value" from lane 0
 #endif
-  //if (value != arg && laneId == 0) printf("failed to bcast_warp\n");
+  // if (value != arg && laneId == 0) printf("failed to bcast_warp\n");
   return value;
 }
 
@@ -337,7 +337,7 @@ __device__ loc_ht& ht_get_atomic(loc_ht* thread_ht, cstr_type kmer_key, uint32_t
     hash_val = (hash_val + 1) % max_size;  // hash_val = (hash_val + 1) & (HT_SIZE -1);
     if (hash_val == orig_hash) {           // loop till you reach the same starting positions and then return error
       printf("*****end reached, ht_get_atomic hashtable full(atomic) from: thread:%d max_size=%d orig_hash=%d *****\n", threadIdx.x,
-             max_size, orig_hash);  // for debugging
+             max_size, orig_hash);         // for debugging
       // FIXME THIS BREAKS CORI GPU: return thread_ht[max_size];   // last extra bucket is FULL
     }
   }
@@ -785,7 +785,7 @@ __global__ void iterative_walks_kernel(uint64_t* cid, uint32_t* ctg_offsets, cha
 #endif
         if (active == 0) break;  // return if lane 0 has returned
         shift = bcast_warp(shift);
-      }  // warp id cond end
+      }                          // warp id cond end
     }
     if (lane_id == 0) {
       if (longest_walk_thread.length > 0) {

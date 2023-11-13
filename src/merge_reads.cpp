@@ -62,8 +62,9 @@ using namespace upcxx;
 
 #include "fastq.hpp"
 #include "packed_reads.hpp"
-#include "upcxx_utils.hpp"
 #include "upcxx_utils/ofstream.hpp"
+#include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/progress_bar.hpp"
 #include "utils.hpp"
 #include "zstr.hpp"
 #include "kmer.hpp"
@@ -249,13 +250,13 @@ int16_t fast_count_mismatches(const char *a, const char *b, int len, int16_t max
 
 #define MAX_ADAPTER_K 32
 
-// using string_view so we don't store the string again for every kmer
-using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<string_view>>;
+// kmer mapping to {index for adapter seq in adapter_seqs vector, offset within adapter seq}
+using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<pair<int, int>>>;
 using adapter_sequences_t = vector<string>;
 
-static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_seqs, adapter_hash_table_t &adapters,
+static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_seqs, adapter_hash_table_t &kmer_adapter_map,
                               int adapter_k) {
-  adapters.clear();
+  kmer_adapter_map.clear();
 
   // avoid every rank reading this small file
   adapter_sequences_t new_seqs;
@@ -324,21 +325,21 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
   }
   concat_seqs.clear();
 
-  for (auto const &seq : adapter_seqs) {
+  for (int i = 0; i < adapter_seqs.size(); i++) {
+    auto &seq = adapter_seqs[i];
     vector<Kmer<MAX_ADAPTER_K>> kmers;
     Kmer<MAX_ADAPTER_K>::set_k(adapter_k);
     Kmer<MAX_ADAPTER_K>::get_kmers(adapter_k, seq, kmers, false);
-    for (int i = 0; i < kmers.size(); i++) {
-      auto kmer = kmers[i];
-      auto it = adapters.find(kmer);
-
-      if (it == adapters.end())
-        adapters.insert({kmer, {string_view(seq)}});
+    for (int j = 0; j < kmers.size(); j++) {
+      auto kmer = kmers[j];
+      auto it = kmer_adapter_map.find(kmer);
+      if (it == kmer_adapter_map.end())
+        kmer_adapter_map.insert({kmer, {{i, j}}});
       else
-        it->second.push_back(string_view(seq));
+        it->second.push_back({i, j});
     }
   }
-  SLOG_VERBOSE("Loaded ", adapter_seqs.size() / 2, " adapters, with a total of ", adapters.size(), " kmers\n");
+  SLOG_VERBOSE("Loaded ", adapter_seqs.size() / 2, " adapters, with a total of ", kmer_adapter_map.size(), " kmers\n");
   /*
   #ifdef DEBUG
   barrier();
@@ -355,39 +356,84 @@ static void load_adapter_seqs(const string &fname, adapter_sequences_t &adapter_
 }
 
 static bool trim_adapters(StripedSmithWaterman::Aligner &ssw_aligner, StripedSmithWaterman::Filter &ssw_filter,
-                          adapter_hash_table_t &adapters, const string &rname, string &seq, bool is_read_1, int adapter_k,
-                          int64_t &bases_trimmed, int64_t &reads_removed, BaseTimer &time_overhead, BaseTimer &time_ssw) {
+                          adapter_sequences_t &adapter_seqs, adapter_hash_table_t &kmer_adapter_map, const string &rname,
+                          string &seq, bool is_read_1, int adapter_k, int64_t &bases_trimmed, int64_t &reads_removed,
+                          BaseTimer &time_overhead, BaseTimer &time_ssw) {
   time_overhead.start();
   vector<Kmer<MAX_ADAPTER_K>> kmers;
-  // Kmer<MAX_ADAPTER_K>::set_k(adapter_k);
   Kmer<MAX_ADAPTER_K>::get_kmers(adapter_k, seq, kmers, false);
   double best_identity = 0;
+  int best_match_len = 0;
   int best_trim_pos = seq.length();
-  string best_adapter_seq;
-  HASH_TABLE<string_view, bool> adapters_matching;
-  for (auto &kmer : kmers) {
-    auto it = adapters.find(kmer);
-    if (it != adapters.end()) {
-      for (auto &adapter_seq : it->second) {
-        if (adapters_matching.find(adapter_seq) != adapters_matching.end()) continue;
+  string best_adapter_seq = "";
+
+  vector<bool> adapters_matching(adapter_seqs.size(), false);
+  bool found = false;
+#ifdef MERGE_READS_TRIM_WITH_SSW
+  const int STEP = 4;
+#else
+  const int STEP = 1;
+#endif
+  for (int i = 0; i < kmers.size(); i += STEP) {
+    auto &kmer = kmers[i];
+    auto it = kmer_adapter_map.find(kmer);
+    if (it != kmer_adapter_map.end()) {
+      for (auto adapter_record : it->second) {
+        int adapter_index = adapter_record.first;
+        int kmer_offset = adapter_record.second;
+        if (adapters_matching[adapter_index]) continue;
+        auto &adapter_seq = adapter_seqs[adapter_index];
         time_ssw.start();
-        adapters_matching[adapter_seq] = true;
+        adapters_matching[adapter_index] = true;
+#ifdef MERGE_READS_TRIM_WITH_SSW
         StripedSmithWaterman::Alignment ssw_aln;
-        ssw_aligner.Align(adapter_seq.data(), adapter_seq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
+
+        int adapter_seq_start = max(0, kmer_offset - i - 2);
+        int adapter_seq_match_len = min(adapter_seq_start + seq.length() + 2, adapter_seq.length());
+        auto adapter_subseq = adapter_seq.substr(adapter_seq_start, adapter_seq_match_len);
+
+        // FIXME: use the kmer location to align only the necessary subsequence in the adapter seq
+        ssw_aligner.Align(adapter_subseq.data(), adapter_subseq.length(), seq.data(), seq.length(), ssw_filter, &ssw_aln,
                           max((int)(seq.length() / 2), 15));
+
         int max_match_len = min(adapter_seq.length(), seq.length() - ssw_aln.ref_begin);
         double identity = (double)ssw_aln.sw_score / (double)ssw_aligner.get_match_score() / (double)(max_match_len);
         if (identity >= best_identity) {
           best_identity = identity;
           best_trim_pos = ssw_aln.ref_begin;
           best_adapter_seq = adapter_seq;
+          if (identity > 0.97) found = true;
         }
+#else
+        int num_mismatches = 0;
+        for (int j = 0;; j++) {
+          int seq_pos = adapter_k + i + j;
+          int adapter_pos = adapter_k + kmer_offset + j;
+          if (seq_pos >= seq.length() || adapter_pos >= adapter_seq.length()) break;
+          if (adapter_seq[adapter_pos] != seq[seq_pos]) {
+            num_mismatches++;
+            if (num_mismatches > 1) {
+              int match_len = adapter_k + j;
+              if (match_len > best_match_len) {
+                best_identity = (double)match_len / (double)adapter_seq.length();
+                best_trim_pos = i;
+                best_adapter_seq = adapter_seq;
+                best_match_len = match_len;
+                if (match_len >= adapter_seq.length() - 1) found = true;
+              }
+              break;
+            }
+          }
+        }
+#endif
         time_ssw.stop();
         break;
       }
     }
+    if (found) break;
   }
   time_overhead.stop();
+
   if (best_identity >= 0.5) {
     if (best_trim_pos < 12) best_trim_pos = 0;
     // DBG("Read ", rname, " is trimmed at ", best_trim_pos, " best identity ", best_identity, "\n", best_adapter_seq, "\n", seq,
@@ -411,7 +457,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   fake_qual += (char)qual_offset;
 
   adapter_sequences_t adapter_seqs;
-  adapter_hash_table_t adapters;
+  adapter_hash_table_t kmer_adapter_map;
   StripedSmithWaterman::Aligner ssw_aligner;
   ssw_aligner.Clear();
   if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
@@ -420,9 +466,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   StripedSmithWaterman::Filter ssw_filter;
 
   ssw_filter.report_cigar = false;
-  if (!adapter_fname.empty()) {
-    load_adapter_seqs(adapter_fname, adapter_seqs, adapters, min_kmer_len);
-  }
+  if (!adapter_fname.empty()) load_adapter_seqs(adapter_fname, adapter_seqs, kmer_adapter_map, min_kmer_len);
 
   uint64_t total_size = FastqReaders::open_all(reads_fname_list, subsample_pct);
   vector<string> merged_reads_fname_list;
@@ -546,8 +590,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         read_id += 2;
         if (read_id % 1000 == 0) progress();
         if (dump_merged) {
-          *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
-          *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
+          *sh_out_file << "@r" << read_id << "/1 #" << id1 << "\n" << seq1 << "\n+\n" << quals1 << "\n";
+          *sh_out_file << "@r" << read_id << "/2 #" << id1 << "\nN\n+\n" << fake_qual << "\n";
         }
         continue;
       }
@@ -635,11 +679,11 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
       if (id1.compare(0, id1.length() - 2, id2, 0, id2.length() - 2) != 0) DIE("Mismatched pairs ", id1, " ", id2);
       if (id1[id1.length() - 1] != '1' || id2[id2.length() - 1] != '2') DIE("Mismatched pair numbers ", id1, " ", id2);
 
-      if (!adapters.empty()) {
-        bool trim1 = trim_adapters(ssw_aligner, ssw_filter, adapters, id1, seq1, true, min_kmer_len, bases_trimmed, reads_removed,
-                                   trim_timer, trim_timer_ssw);
-        bool trim2 = trim_adapters(ssw_aligner, ssw_filter, adapters, id2, seq2, false, min_kmer_len, bases_trimmed, reads_removed,
-                                   trim_timer, trim_timer_ssw);
+      if (!adapter_seqs.empty()) {
+        bool trim1 = trim_adapters(ssw_aligner, ssw_filter, adapter_seqs, kmer_adapter_map, id1, seq1, true, min_kmer_len,
+                                   bases_trimmed, reads_removed, trim_timer, trim_timer_ssw);
+        bool trim2 = trim_adapters(ssw_aligner, ssw_filter, adapter_seqs, kmer_adapter_map, id2, seq2, false, min_kmer_len,
+                                   bases_trimmed, reads_removed, trim_timer, trim_timer_ssw);
         // trim to same length - like the tpe option in bbduk
         if ((trim1 || trim2) && seq1.length() > 1 && seq2.length() > 1) {
           auto min_seq_len = min(seq1.length(), seq2.length());
@@ -812,8 +856,8 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", "N", fake_qual);
         if (dump_merged) {
-          *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
-          *sh_out_file << "@r" << read_id << "/2\nN\n+\n" << fake_qual << "\n";
+          *sh_out_file << "@r" << read_id << "/1 #" << id1 << "\n" << seq1 << "\n+\n" << quals1 << "\n";
+          *sh_out_file << "@r" << read_id << "/2 #" << id1 << "\nN\n+\n" << fake_qual << "\n";
         }
       }
       if (!is_merged) {
@@ -821,14 +865,14 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
         packed_reads_i->add_read("r" + to_string(read_id) + "/1", seq1, quals1);
         packed_reads_i->add_read("r" + to_string(read_id) + "/2", seq2, quals2);
         if (dump_merged) {
-          *sh_out_file << "@r" << read_id << "/1\n" << seq1 << "\n+\n" << quals1 << "\n";
-          *sh_out_file << "@r" << read_id << "/2\n" << seq2 << "\n+\n" << quals2 << "\n";
+          *sh_out_file << "@r" << read_id << "/1 #" << id1 << "\n" << seq1 << "\n+\n" << quals1 << "\n";
+          *sh_out_file << "@r" << read_id << "/2 #" << id1 << "\n" << seq2 << "\n+\n" << quals2 << "\n";
         }
       }
       // inc by 2 so that we can use a later optimization of treating the even as /1 and the odd as /2
       read_id += 2;
       if (read_id % 1000 == 0) progress();
-    }
+    }                   // reading for each pair of records
     read_files_t.start();
     fqr.advise(false);  // free kernel memory
     read_files_t.stop();
@@ -844,7 +888,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
     num_pairs += num_pairs_in_file;
     ri++;
     FastqReaders::close(reads_fname);
-    discharge();
+    progress();
 #ifdef ONE_FASTQ_AT_A_TIME
     BarrierTimer bt("Waiting for all ranks to finish reading " + get_basename(reads_fname));
     fut_reductions.wait();
@@ -852,6 +896,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
   }
   auto prog_done = progbar.set_done();
   wrote_all_files_fut = when_all(wrote_all_files_fut, prog_done);
+  discharge();
 
   // start the collective reductions
   // delay the summary output for when they complete
@@ -868,7 +913,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                pr.reduce_one(bytes_read > 0 ? rank_me() : -1, op_fast_max, 0));
 
   fut_summary = when_all(fut_summary, fut_reductions)
-                    .then([ri, bytes_read, &adapters](
+                    .then([ri, bytes_read, &adapter_seqs](
                               int64_t all_num_pairs, int64_t all_num_merged, int64_t all_num_ambiguous, int64_t all_merged_len,
                               int64_t all_overlap_len, int all_max_read_len, int64_t all_bases_trimmed, int64_t all_reads_removed,
                               int64_t all_bases_read, int64_t all_bytes_read, int64_t all_missing_read1, int64_t all_missing_read2,
@@ -879,7 +924,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
                       SLOG_VERBOSE("  missing pair1 ", all_missing_read1, " pair2 ", all_missing_read2, "\n");
                       SLOG_VERBOSE("  average merged length ", (double)all_merged_len / all_num_merged, "\n");
                       SLOG_VERBOSE("  average overlap length ", (double)all_overlap_len / all_num_merged, "\n");
-                      if (!adapters.empty()) {
+                      if (!adapter_seqs.empty()) {
                         SLOG_VERBOSE("  adapter bases trimmed ", perc_str(all_bases_trimmed, all_bases_read), "\n");
                         SLOG_VERBOSE("  adapter reads removed ", perc_str(all_reads_removed, all_num_pairs * 2), "\n");
                         SLOG_VERBOSE("  adapter SSW timings: ", sh_ssw_timings->to_string(), "\n");
@@ -929,7 +974,7 @@ void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elaps
 
   // finish all file writing and report
   auto fut_msm = pr.msm_reduce_one(read_files_t.get_elapsed());
-  fut_summary = when_all(fut_summary, fut_msm).then([](upcxx_utils::MinSumMax<double> msm) {
+  fut_summary = when_all(fut_summary, fut_msm).then([](const upcxx_utils::MinSumMax<double> &msm) {
     SLOG_VERBOSE("Total time reading fastq files: ", msm.to_string(), "\n");
   });
 

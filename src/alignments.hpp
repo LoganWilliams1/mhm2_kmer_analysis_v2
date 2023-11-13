@@ -46,8 +46,9 @@
 
 #include "contigs.hpp"
 #include "version.h"
+#include "upcxx_utils/ofstream.hpp"
 
-using upcxx::future;
+using upcxx_utils::dist_ofstream;
 
 struct Aln {
   // optimal packing of data fields (does not match constructor exactly)
@@ -58,6 +59,7 @@ struct Aln {
   int score1, score2;       // TODO can this be uint16_t (for short reads only)?
   int mismatches;           // TODO can this be uint16_t (for short reads only)?
   string sam_string;
+  string cigar;
   int16_t read_group_id;
   char orient;  // TODO can this be bool?
 
@@ -74,10 +76,12 @@ struct Aln {
   bool is_valid() const;
   std::pair<int, int> get_unaligned_overlaps() const;
   double calc_identity() const;
-};
+  bool check_quality() const;
+};  // class Aln
 
 class Alns {
-  vector<Aln> alns;
+  using alns_t = std::vector<Aln>;
+  alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
 
@@ -98,6 +102,8 @@ class Alns {
 
   size_t size() const;
 
+  bool empty() const { return alns.empty(); }
+
   void reserve(size_t capacity);
 
   void reset();
@@ -108,11 +114,14 @@ class Alns {
 
   inline auto begin() { return alns.begin(); }
   inline auto end() { return alns.end(); };
+  inline auto begin() const { return alns.begin(); }
+  inline auto end() const { return alns.end(); };
 
   template <typename OSTREAM>
   void dump_all(OSTREAM &os, bool as_sam_format, int min_ctg_len = 0) const {
     // all ranks dump their valid alignments
     for (const auto &aln : alns) {
+      DBG(aln.to_paf_string(), "\n");
       if (aln.clen < min_ctg_len) continue;
       if (!as_sam_format)
         os << aln.to_blast6_string() << "\n";
@@ -122,10 +131,13 @@ class Alns {
   }
 
   void dump_single_file(const string fname) const;
+  static upcxx::future<> _write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
+                                           int min_ctg_len);
+  upcxx::future<> _write_sam_alignments(dist_ofstream &of, int min_contig_len) const;
   void dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_contig_len = 0) const;
   void dump_rank_file(const string fname) const;
 
-  int calculate_unmerged_rlen();
+  int calculate_unmerged_rlen() const;
 
-  future<> sort_alns();
-};
+  void sort_alns();
+};  // class Alns

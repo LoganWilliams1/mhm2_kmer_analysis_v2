@@ -60,7 +60,7 @@ using namespace upcxx_utils;
 using namespace localassm_core;
 
 void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int insert_stddev, int max_kmer_len, int kmer_len,
-                 int qual_offset);
+                 int qual_offset, unsigned max_read_size);
 
 void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_list, int insert_avg, int insert_stddev,
                int qual_offset, Contigs &ctgs, const Alns &alns) {
@@ -71,11 +71,15 @@ void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_lis
   // get the read and base counts for reads_to_ctgs size hints
   int64_t num_reads = 0;
   int64_t num_read_bases = 0;
+  unsigned max_read_len = 0;
   for (auto &packed_reads : packed_reads_list) {
     auto l_reads = packed_reads->get_local_num_reads();
+    max_read_len = std::max(max_read_len, (unsigned)packed_reads->get_max_read_len());
     num_reads += l_reads;
-    num_read_bases += l_reads * packed_reads->get_max_read_len();
   }
+  max_read_len = upcxx::reduce_all(max_read_len, upcxx::op_fast_max).wait();
+  num_read_bases = num_reads * max_read_len;
+  LOG("num_reads=", num_reads, " num_read_bases=", num_read_bases, " max_read_len=", max_read_len, "\n");
   CtgsWithReadsDHT ctgs_dht(ctgs.size(), num_ctg_bases);
   add_ctgs(ctgs_dht, ctgs);
   ctgs_dht.prep_ctg_read_store(num_reads, num_read_bases);
@@ -90,5 +94,5 @@ void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_lis
   ctgs.clear();
   ctgs.set_capacity(ctgs_dht.get_local_num_ctgs());
   // extend contigs using locally mapped reads
-  extend_ctgs(ctgs_dht, ctgs, insert_avg, insert_stddev, max_kmer_len, kmer_len, qual_offset);
+  extend_ctgs(ctgs_dht, ctgs, insert_avg, insert_stddev, max_kmer_len, kmer_len, qual_offset, max_read_len);
 }

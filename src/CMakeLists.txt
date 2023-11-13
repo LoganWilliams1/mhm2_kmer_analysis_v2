@@ -176,7 +176,9 @@ endif()
 get_directory_property(dir_defs COMPILE_DEFINITIONS)
 get_directory_property(dir_compile_opts COMPILE_OPTIONS)
 string(TOUPPER "CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}" flags_var)
-set(all_defs "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ENABLE_CUDA=${ENABLE_CUDA} ENABLE_HIP=${ENABLE_HIP} COMPILE_OPTIONS='${dir_compile_opts}' CMAKE_CXX_FLAGS='${CMAKE_CXX_FLAGS}' ${flags_var}='${${flags_var}}'")
+set(all_defs
+    "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ENABLE_CUDA=${ENABLE_CUDA} ENABLE_HIP=${ENABLE_HIP} COMPILE_OPTIONS='${dir_compile_opts}' CMAKE_CXX_FLAGS='${CMAKE_CXX_FLAGS}' ${flags_var}='${${flags_var}}'"
+)
 message("Definitions:")
 foreach(d ${dir_defs})
   message("  " ${d})
@@ -303,6 +305,11 @@ elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebug")
   set(MHM2PY_RUNTIME_ENV "GASNET_BACKTRACE='1',GASNET_BACKTRACE_MT='1', ")
 elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
   set(MHM2PY_RUNTIME_ENV "GASNET_BACKTRACE='1',GASNET_BACKTRACE_MT='1', ")
+else()
+  # FIXME when UPCXX Debug builds on frontier are fixed
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
+    target_link_options(mhm2 PUBLIC "-Wl,--build-id")
+  endif()
 endif()
 configure_file(mhm2.py ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py)
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/mhm2.py

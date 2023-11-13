@@ -41,6 +41,7 @@
 */
 
 #include <sys/resource.h>
+#include <random>
 
 #include "contigging.hpp"
 #include "klign.hpp"
@@ -63,6 +64,7 @@ using namespace upcxx_utils;
 
 void init_devices();
 void done_init_devices();
+void teardown_devices();
 
 void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
                  bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
@@ -72,7 +74,8 @@ int main(int argc, char **argv) {
   total_timer.start();
   // capture the free memory and timers before upcxx::init is called
   auto starting_free_mem = get_free_mem();
-  char *proc_id = getenv("SLURM_PROCID");
+  char *proc_id = getenv("OMPI_COMM_WORLD_NODE_RANK");
+  if (!proc_id) proc_id = getenv("SLURM_PROCID");
   int my_rank = -1;
   if (proc_id) {
     my_rank = atol(proc_id);
@@ -80,15 +83,19 @@ int main(int argc, char **argv) {
   BaseTimer init_timer("upcxx::init");
   BaseTimer first_barrier("FirstBarrier");
   init_timer.start();
-  if (!my_rank)
-    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on pid=" << getpid() << " at " << get_current_time()
-              << std::endl;
+  if (!my_rank) {
+    char hnbuf[64];
+    gethostname(hnbuf, sizeof(hnbuf) - 1);
+    std::cout << "Starting Rank0 with " << get_size_str(starting_free_mem) << " on " << hnbuf << " pid=" << getpid() 
+	      << " at " << get_current_time() << std::endl;
+  }
 
   upcxx::init();
   auto init_entry_msm_fut = init_timer.reduce_start();
   init_timer.stop();
   auto init_timings_fut = init_timer.reduce_timings();
   upcxx::promise<> prom_report_init_timings(1);
+  srand(rank_me() + 10);
 
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
@@ -109,9 +116,10 @@ int main(int argc, char **argv) {
   auto fut_report_init_timings =
       when_all(prom_report_init_timings.get_future(), init_entry_msm_fut, init_timings_fut, first_barrier.reduce_timings(),
                msm_starting_free_mem_fut, msm_post_init_free_mem_fut)
-          .then([&total_timer](upcxx_utils::MinSumMax<double> entry_msm, upcxx_utils::ShTimings sh_timings,
-                               upcxx_utils::ShTimings sh_first_barrier_timings, upcxx_utils::MinSumMax<float> starting_mem_msm,
-                               upcxx_utils::MinSumMax<float> post_init_mem_msm) {
+          .then([&total_timer](const upcxx_utils::MinSumMax<double> &entry_msm, upcxx_utils::ShTimings sh_timings,
+                               upcxx_utils::ShTimings sh_first_barrier_timings,
+                               const upcxx_utils::MinSumMax<float> &starting_mem_msm,
+                               const upcxx_utils::MinSumMax<float> &post_init_mem_msm) {
             SLOG_VERBOSE("upcxx::init Before=", entry_msm.to_string(), "\n");
             SLOG_VERBOSE("upcxx::init After=", sh_timings->to_string(), "\n");
             SLOG_VERBOSE("upcxx::init FirstBarrier=", sh_first_barrier_timings->to_string(), "\n");
@@ -240,7 +248,7 @@ int main(int argc, char **argv) {
       rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
       packed_reads->report_size();
     }
-    Timings::get_pending().wait();  // report all I/O stats here
+    Timings::wait_pending();  // report all I/O stats here
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();

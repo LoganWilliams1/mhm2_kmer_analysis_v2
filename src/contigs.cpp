@@ -85,11 +85,13 @@ void Contigs::clear() {
 
 void Contigs::set_capacity(int64_t sz) { contigs.reserve(sz); }
 
-void Contigs::add_contig(Contig contig) { contigs.push_back(contig); }
+void Contigs::add_contig(const Contig &contig) { contigs.push_back(contig); }
 
-size_t Contigs::size() { return contigs.size(); }
+void Contigs::add_contig(Contig &&contig) { contigs.emplace_back(std::move(contig)); }
 
-void Contigs::print_stats(unsigned min_ctg_len) {
+size_t Contigs::size() const { return contigs.size(); }
+
+void Contigs::print_stats(unsigned min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
   int64_t tot_len = 0, max_len = 0;
   double tot_depth = 0;
@@ -170,10 +172,11 @@ void Contigs::print_stats(unsigned min_ctg_len) {
 void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len) {
   BarrierTimer timer(__FILEFUNC__);
   dist_ofstream of(fname);
+  of << std::setprecision(3);
   for (auto it = contigs.begin(); it != contigs.end(); ++it) {
     auto ctg = it;
     if (ctg->seq.length() < min_ctg_len) continue;
-    of << ">Contig" << to_string(ctg->id) << " " << to_string(ctg->depth) << "\n";
+    of << ">Contig" << to_string(ctg->id) << " " << ctg->depth << "\n";
     string rc_uutig = revcomp(ctg->seq);
     string seq = (rc_uutig < ctg->seq ? rc_uutig : ctg->seq);
     // for (int64_t i = 0; i < ctg->seq.length(); i += 50) fasta += ctg->seq.substr(i, 50) + "\n";
@@ -219,22 +222,28 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   if (rank_me() == 0) {
     file_size = upcxx_utils::get_file_size(ctgs_fname);
   }
+  file_size = upcxx::broadcast(file_size, 0).wait();
+  DBG("Got filesize=", file_size, "\n");
   ifstream ctgs_file(ctgs_fname);
   if (!ctgs_file.is_open()) DIE("Could not open ctgs file '", ctgs_fname, "': ", strerror(errno));
-  file_size = upcxx::broadcast(file_size, 0).wait();
 
   auto start_offset = get_file_offset_for_rank(ctgs_file, rank_me(), ctg_prefix, file_size);
   if (rank_me() > 0) {
     // notify previous rank of its stop offset
     rpc_ff(
         rank_me() - 1,
-        [](dist_object<promise<size_t>> &dist_stop_prom, size_t stop_offset) { dist_stop_prom->fulfill_result(stop_offset); },
+        [](dist_object<promise<size_t>> &dist_stop_prom, size_t stop_offset) {
+          dist_stop_prom->fulfill_result(stop_offset);
+          LOG("received stop_offset=", stop_offset, "\n");
+        },
         dist_stop_prom, start_offset);
+    LOG("Sent my start_offset to ", rank_me() - 1, " ", start_offset, "\n");
   }
   if (rank_me() == rank_n() - 1) {
     dist_stop_prom->fulfill_result(file_size);
   }
   auto stop_offset = dist_stop_prom->get_future().wait();
+  LOG("Got my stop_offset=", stop_offset, "\n");
 
   size_t tot_len = 0;
   ProgressBar progbar(stop_offset - start_offset, "Parsing contigs");
@@ -259,13 +268,19 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   }
   if (ctgs_file.tellg() < stop_offset)
     DIE("Did not read the entire contigs file from ", start_offset, " to ", stop_offset, " tellg=", ctgs_file.tellg());
-  progbar.done();
-  barrier();
-  SLOG_VERBOSE("Loaded ", reduce_one(contigs.size(), op_fast_add, 0).wait(), " contigs (",
-               get_size_str(reduce_one(tot_len, op_fast_add, 0).wait()), ") from ", ctgs_fname, "\n");
+  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, "\n");
+  auto &pr = Timings::get_promise_reduce();
+  auto fut_tot_contigs = pr.reduce_one(contigs.size(), op_fast_add, 0);
+  auto fut_tot_len = pr.reduce_one(tot_len, op_fast_add, 0);
+  auto fut_done = progbar.set_done();
+  auto fut_report = when_all(fut_tot_contigs, fut_tot_len, fut_done).then([ctgs_fname](uint64_t tot_contigs, uint64_t tot_len) {
+    SLOG_VERBOSE("Loaded ", tot_contigs, " contigs (", get_size_str(tot_len), ") from ", ctgs_fname, "\n");
+  });
+  Timings::set_pending(fut_report);
+  // implicit exit barrrier from BarrierTimer
 }
 
-size_t Contigs::get_num_ctg_kmers(int kmer_len) {
+size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
   size_t num_ctg_kmers = 0;
   for (auto &ctg : contigs) {
     if (ctg.seq.length() > kmer_len) num_ctg_kmers += (ctg.seq.length() - kmer_len + 1);

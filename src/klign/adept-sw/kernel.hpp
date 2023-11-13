@@ -69,9 +69,18 @@ __device__ __host__ short findMax(short array[], int length, int* ind);
 
 __device__ __host__ short findMaxFour(short first, short second, short third, short fourth);
 
-__device__ void traceBack(short current_i, short current_j, short* seqA_align_begin, short* seqB_align_begin, const char* seqA,
-                          const char* seqB, short* I_i, short* I_j, unsigned lengthSeqB, unsigned lengthSeqA,
-                          unsigned int* diagOffset);
+__device__ short findMaxFourTraceback(short first, short second, short third, short fourth, int* ind);
+
+__device__ short intToCharPlusWrite(int num, char* CIGAR, short cigar_position);
+
+__device__ void createCIGAR(char* longCIGAR, char* CIGAR, int maxCIGAR, const char* seqA, const char* seqB,
+                            unsigned lengthShorterSeq, unsigned lengthLongerSeq, bool seqBShorter, short first_j, short last_j,
+                            short first_i, short last_i);
+
+__device__ void traceBack(short current_i, short current_j, char* seqA_array, char* seqB_array, unsigned* prefix_lengthA,
+                          unsigned* prefix_lengthB, short* seqA_align_begin, short* seqA_align_end, short* seqB_align_begin,
+                          short* seqB_align_end, unsigned const maxMatrixSize, int maxCIGAR, char* longCIGAR, char* CIGAR,
+                          char* H_ptr, uint32_t* diagOffset);
 
 __global__ void dna_kernel(char* seqA_array, char* seqB_array, unsigned* prefix_lengthA, unsigned* prefix_lengthB,
                            short* seqA_align_begin, short* seqA_align_end, short* seqB_align_begin, short* seqB_align_end,
@@ -81,5 +90,17 @@ __global__ void aa_kernel(char* seqA_array, char* seqB_array, unsigned* prefix_l
                           short* seqA_align_begin, short* seqA_align_end, short* seqB_align_begin, short* seqB_align_end,
                           short* top_scores, short startGap, short extendGap, short* scoring_matrix, short* encoding_matrix,
                           bool reverse);
+__global__ void sequence_dna_kernel_traceback(char* seqA_array, char* seqB_array, unsigned* prefix_lengthA,
+                                              unsigned* prefix_lengthB, short* seqA_align_begin, short* seqA_align_end,
+                                              short* seqB_align_begin, short* seqB_align_end, short* top_scores,
+                                              char* longCIGAR_array, char* CIGAR_array, char* H_ptr_array, int maxCIGAR,
+                                              unsigned const maxMatrixSize, short matchScore, short misMatchScore, short startGap,
+                                              short extendGap);
+
+__global__ void sequence_aa_kernel_traceback(char* seqA_array, char* seqB_array, unsigned* prefix_lengthA, unsigned* prefix_lengthB,
+                                             short* seqA_align_begin, short* seqA_align_end, short* seqB_align_begin,
+                                             short* seqB_align_end, short* top_scores, char* longCIGAR_array, char* CIGAR_array,
+                                             char* H_ptr_array, int maxCIGAR, unsigned const maxMatrixSize, short startGap,
+                                             short extendGap, short* scoring_matrix, short* encoding_matrix);
 
 }  // namespace gpu_bsw

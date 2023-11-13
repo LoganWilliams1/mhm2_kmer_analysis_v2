@@ -56,16 +56,16 @@ using std::vector;
 
 #include "utils.hpp"
 
-//#define DBG_BUILD DBG
+// #define DBG_BUILD DBG
 #define DBG_BUILD(...)
 
-//#define DBG_WALK DBG
+// #define DBG_WALK DBG
 #define DBG_WALK(...)
 
-//#define DBG_WALK_CONT DBG_CONT
+// #define DBG_WALK_CONT DBG_CONT
 #define DBG_WALK_CONT(...)
 
-//#define DBG_SPANS DBG
+// #define DBG_SPANS DBG
 #define DBG_SPANS(...)
 
 using cid_t = int64_t;
@@ -195,9 +195,12 @@ struct Vertex {
 
 class CtgGraph {
  private:
-  using vertex_map_t = upcxx::dist_object<HASH_TABLE<cid_t, Vertex>>;
-  using edge_map_t = upcxx::dist_object<HASH_TABLE<CidPair, Edge>>;
-  using reads_map_t = upcxx::dist_object<HASH_TABLE<string, string>>;
+  using local_vertex_map_t = HASH_TABLE<cid_t, Vertex>;
+  using vertex_map_t = upcxx::dist_object<local_vertex_map_t>;
+  using local_edge_map_t = HASH_TABLE<CidPair, Edge>;
+  using edge_map_t = upcxx::dist_object<local_edge_map_t>;
+  using local_reads_map_t = HASH_TABLE<string, string>;
+  using reads_map_t = upcxx::dist_object<local_reads_map_t>;
   vertex_map_t vertices;
   edge_map_t edges;
   reads_map_t read_seqs;

@@ -95,14 +95,16 @@ if(CMAKE_CUDA_COMPILER)
                                                # for GPU targets
     enable_language(CUDA)
     add_definitions(-DCUDA_GPU)
-    if (NOT DEFINED MHM2_USE_QF)
+    if(NOT DEFINED MHM2_USE_QF)
       message(STATUS "CUDA detected, enabling MHM2_USE_QF by default")
       set(MHM2_USE_QF 1)
     endif()
   endif()
 else()
   message(STATUS "No CUDA environment detected")
-  set(ENABLE_CUDA OFF CACHE BOOL "Enable CUDA" FORCE)
+  set(ENABLE_CUDA
+      OFF
+      CACHE BOOL "Enable CUDA" FORCE)
 endif()
 
 if(CMAKE_HIP_COMPILER)
@@ -111,11 +113,13 @@ if(CMAKE_HIP_COMPILER)
   if(ENABLE_HIP)
     find_package(hip REQUIRED)
     add_definitions(-DHIP_GPU)
-      # set(CMAKE_HIP_FLAGS "-fgpu-rdc --hip-link")
+    # set(CMAKE_HIP_FLAGS "-fgpu-rdc --hip-link")
   endif()
 else()
   message(STATUS "No HIP environment detected")
-  set(ENABLE_HIP OFF CACHE BOOL "Enable HIP" FORCE)
+  set(ENABLE_HIP
+      OFF
+      CACHE BOOL "Enable HIP" FORCE)
 endif()
 
 if(ENABLE_CUDA)
@@ -338,11 +342,11 @@ if(ENABLE_CUDA)
 endif()
 
 install(PROGRAMS ci/check_asm_quality.py ci/ci_asm_qual_test.sh
-                 ci/ci_asm_qual_test-full.sh
+                 ci/ci_asm_qual_test-full.sh ci/ci_asm_qual_test-tiny.sh
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(FILES ci/good-arctic-sample0.txt ci/good-arctic-sample0-k63.txt
-              ci/good-arctic-sample0-k31k63.txt ci/good-arcticsynth.txt
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
+              ci/good-arctic-sample0-k31k63.txt ci/good-arctic-sample0_tiny.txt
+              ci/good-arcticsynth.txt DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
 
 option(MHM2_ENABLE_TESTING "Enable testing in MHM2" ON)
 if(MHM2_ENABLE_TESTING)

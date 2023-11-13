@@ -50,6 +50,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <string_view>
 #include <upcxx/upcxx.hpp>
 
@@ -141,9 +142,24 @@ bool Options::find_restart(string stage_type, int k) {
 
 void Options::get_restart_options() {
   // check directory for most recent contigs file dump
-  bool found = false;
-  for (auto it = scaff_kmer_lens.rbegin(); it != scaff_kmer_lens.rend(); ++it) {
-    if ((found = find_restart("scaff-contigs", *it)) == true) break;
+  bool found = file_exists("final_assembly.fasta");
+  if (found) {
+    // assembly completed check for post assembly options
+    if (post_assm_abundances || post_assm_aln) {
+      if (!post_assm_only) {
+        SLOG_VERBOSE("Running with --post-asm-only as this run has already completed\n");
+        post_assm_only = true;
+      }
+      ctgs_fname = "final_assembly.fasta";
+    } else {
+      SWARN("This run has already completed (final_assembly.fasta exists) but --restart was chosen without any --post-asm options");
+      found = false;
+    }
+  }
+  if (!found) {
+    for (auto it = scaff_kmer_lens.rbegin(); it != scaff_kmer_lens.rend(); ++it) {
+      if ((found = find_restart("scaff-contigs", *it)) == true) break;
+    }
   }
   if (!found) {
     for (auto it = kmer_lens.rbegin(); it != kmer_lens.rend(); ++it) {
@@ -181,10 +197,11 @@ double Options::setup_output_dir() {
     }
 
     // always ensure striping is set or reset wide when lustre is available
-    auto status = std::system("which lfs 2>&1 > /dev/null");
+    int status = std::system("which lfs 2>&1 > /dev/null");
     bool set_lfs_stripe = WIFEXITED(status) & (WEXITSTATUS(status) == 0);
     int num_osts = 0;
     if (set_lfs_stripe) {
+      cout << "Trying to set lfs\n";
       // detect the number of OSTs with "lfs df -l $output_dir" and count the entries with OST:
       string cmd("lfs df -l ");
       cmd += output_dir;
@@ -198,13 +215,13 @@ double Options::setup_output_dir() {
         pclose(f_osts);
       }
       // reduce to the minimum of 90% or rank_n()
-      num_osts = std::min(9 * num_osts / 10, std::min((int)72, (int)rank_n()));  // see Issue #70
+      num_osts = std::min(9 * num_osts / 10, std::min((int)144, (int)rank_n()));  // see Issue #70
     }
     set_lfs_stripe &= num_osts > 0;
     if (set_lfs_stripe) {
       // stripe with count -1 to use all the OSTs
       string cmd = "lfs setstripe --stripe-count " + std::to_string(num_osts) + " --stripe-size 16M " + output_dir;
-      auto status = std::system(cmd.c_str());
+      status = std::system(cmd.c_str());
       if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
         cout << "Set Lustre striping on the output directory: count=" << num_osts << ", size=16M\n";
       else
@@ -224,7 +241,6 @@ double Options::setup_output_dir() {
       else
         cout << "Failed to set Lustre striping on per_rank output directory: " << WEXITSTATUS(status) << endl;
     }
-
     // this should avoid contention on the filesystem when ranks start racing to creating these top levels
     char basepath[256];
     for (int i = 0; i < rank_n(); i += 1000) {
@@ -263,6 +279,10 @@ double Options::setup_output_dir() {
       }
     }
   }
+  if (!adapter_fname.empty() && adapter_fname[0] != '/') {
+    // prepend cwd to adapters file
+    adapter_fname = string(cwd_str) + "/" + adapter_fname;
+  }
   // all change to the output directory
   auto chdir_attempts = 0;
   while (chdir(output_dir.c_str()) != 0) {
@@ -298,18 +318,27 @@ double Options::setup_log_file() {
 }
 
 string Options::get_job_id() {
-  static const char *env_ids[] = {"SLURM_JOBID", "LSB_JOBID", "JOB_ID", "COBALT_JOBID", "LOAD_STEP_ID", "PBS_JOBID"};
-  for (auto env : env_ids) {
-    auto env_p = std::getenv(env);
-    if (env_p) return string(env_p);
+  static const char *env_ids[] = {"SLURM_JOB_ID", "SLURM_JOBID", "LSB_JOBID", "JOB_ID", "COBALT_JOBID", "LOAD_STEP_ID", "PBS_JOBID"};
+  static string job_id;
+  if (job_id.empty()) {
+    for (auto env : env_ids) {
+      auto env_p = std::getenv(env);
+      if (env_p) {
+        job_id = env_p;
+	break;
+      }
+    }
+    if (job_id.empty()) job_id = std::to_string(getpid());
+    auto sz = upcxx::broadcast(job_id.size(), 0, upcxx::world()).wait();
+    job_id.resize(sz, ' ');
+    upcxx::broadcast(job_id.data(), sz, 0, upcxx::world()).wait();
   }
-  // no job, broadcast the pid of rank 0
-  auto pid = upcxx::broadcast(getpid(), 0, upcxx::world()).wait();
-  return std::to_string(pid);
+  return job_id;
 }
 
 Options::Options() {
   char buf[32];
+  memset(buf, 0, sizeof(buf));
   if (!upcxx::rank_me()) {
     setup_time = get_current_time(true);
     strncpy(buf, setup_time.c_str(), sizeof(buf) - 1);
@@ -370,15 +399,12 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 100000));
   auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.");
   add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.");
-  add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
-      ->multi_option_policy();
   add_flag_def(app, "--restart", restart,
                "Restart in previous directory where a run failed (must specify the previous directory with -o).");
   add_flag_def(app, "--post-asm-align", post_assm_aln, "Align reads to final assembly");
   add_flag_def(app, "--post-asm-abd", post_assm_abundances, "Compute and output abundances for final assembly (used by MetaBAT).");
   add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly (alignment and/or abundances).");
   add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.");
-  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
   app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
       ->check(CLI::IsMember({0, 33, 64}));
   add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.");
@@ -399,14 +425,13 @@ bool Options::load(int argc, char **argv) {
       ->check(CLI::Range(0, 1000));
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
       ->check(CLI::Range(1, 100));
+  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
+      ->check(CLI::Range(10000, 10000000));
   app.add_option("--optimize", optimize_for,
                  "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
       ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
   // performance trade-offs
-  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
-  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read (can be set to all).")
-      ->check(CLI::Range(1, 100));
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
       ->check(CLI::Range(0, 5000));
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
@@ -419,9 +444,16 @@ bool Options::load(int argc, char **argv) {
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
       ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}));
+  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
+  // miscellaneous
+  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
   add_flag_def(app, "--use-qf", use_qf,
                "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
-  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
+  add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
+      ->multi_option_policy();
+  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")->check(CLI::Range(1, 100));
+
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError &e) {

@@ -240,16 +240,17 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
     , fname(fname)
     , str_ids(str_ids) {}
 
-PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads)
+PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads, const string &fname)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , packed_reads{}
     , index(0)
     , qual_offset(qual_offset)
-    , fname("")
+    , fname(fname)
     , str_ids(false) {
   max_read_len = 0;
   // assert(!packed_reads.size());
-  LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage\n");
+  LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage fname=", fname,
+      "\n");
   uint64_t num_bases = 0;
   for (auto &packed_read : new_packed_reads) num_bases += packed_read.get_read_len();
   reserve(new_packed_reads.size(), num_bases);
@@ -383,6 +384,7 @@ upcxx::future<> PackedReads::load_reads_nb() {
     progbar.update(tot_bytes_read);
     add_read(id, seq, quals);
   }
+  DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
   FastqReaders::close(fname);
   auto fut = progbar.set_done();
@@ -394,19 +396,22 @@ upcxx::future<> PackedReads::load_reads_nb() {
   auto all_estimated_records_fut = pr.reduce_one(estimated_records, upcxx::op_fast_add, 0);
   auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
   auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
-  Timings::wait_pending();
-  return when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
-      .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records, int64_t all_num_records,
-                                                int64_t all_num_bases) {
-        SLOG_VERBOSE("Loaded ", all_num_records, " reads (estimated ", all_estimated_records, " with ", all_under_estimated,
-                     " ranks underestimated) max_read=", max_read_len, " tot_bases=", all_num_bases, "\n");
-      });
+  auto fut_report =
+      when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
+          .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records,
+                                                    int64_t all_num_records, int64_t all_num_bases) {
+            SLOG_VERBOSE("Loaded ", all_num_records, " reads (estimated ", all_estimated_records, " with ", all_under_estimated,
+                         " ranks underestimated) max_read=", max_read_len, " tot_bases=", all_num_bases, "\n");
+          });
+  Timings::set_pending(fut_report);
+  return fut_report;
 }
 
 void PackedReads::load_reads() {
   BarrierTimer timer(__FILEFUNC__);
-  load_reads_nb().wait();
-  upcxx::barrier();
+  auto fut = load_reads_nb();
+  Timings::wait_pending();
+  fut.wait();
 }
 
 void PackedReads::report_size() {
@@ -419,10 +424,8 @@ void PackedReads::report_size() {
   auto all_num_names_fut = pr.reduce_one(name_bytes, upcxx::op_fast_add, 0);
   auto min_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : rank_n(), upcxx::op_fast_min, 0);
   auto max_rank_fut = pr.reduce_one(get_local_num_reads() > 0 ? rank_me() : -1, upcxx::op_fast_max, 0);
-  auto fut_pr = pr.fulfill().then([](PromiseReduce::Vals ignore) {});
   auto fut =
-      when_all(fut_pr, Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut,
-               max_rank_fut)
+      when_all(Timings::get_pending(), all_num_records_fut, all_num_bases_fut, all_num_names_fut, min_rank_fut, max_rank_fut)
           .then([&self = *this](size_t all_num_records, size_t all_num_bases, size_t all_num_names, int min_rank, int max_rank) {
             auto num_ranks = max_rank - min_rank + 1;
             auto sz = all_num_records * sizeof(PackedRead) + all_num_bases + all_num_names;
@@ -434,7 +437,14 @@ void PackedReads::report_size() {
 }
 
 int64_t PackedReads::get_local_bases() const { return bases; }
-int64_t PackedReads::get_bases() { return upcxx::reduce_one(bases, upcxx::op_fast_add, 0).wait(); }
+upcxx::future<uint64_t> PackedReads::fut_get_bases() const {
+  return upcxx_utils::Timings::get_promise_reduce().reduce_one(bases, upcxx::op_fast_add, 0);
+}
+uint64_t PackedReads::get_bases() const {
+  auto fut = fut_get_bases();
+  Timings::wait_pending();
+  return fut.wait();
+}
 
 PackedRead &PackedReads::operator[](int index) {
   if (index >= packed_reads.size()) DIE("Array index out of bound ", index, " >= ", packed_reads.size());
@@ -466,13 +476,13 @@ uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &pac
   auto fut_all_tot_num_reads = pr.reduce_one(tot_num_reads, op_fast_add, 0);
   auto fut_all_num_kmers = pr.reduce_all(num_kmers, op_fast_add);
 
-  auto fut_log = when_all(Timings::get_pending(), fut_all_num_reads, fut_all_tot_num_reads, fut_all_num_kmers)
+  auto fut_log = when_all(Timings::get_pending(), fut_all_num_reads, fut_all_tot_num_reads, fut_all_num_kmers, fut)
                      .then([](int64_t all_num_reads, int64_t all_tot_num_reads, int64_t all_num_kmers) {
                        SLOG_VERBOSE("Processed ", perc_str(all_num_reads, all_tot_num_reads), " reads, and estimated a maximum of ",
                                     (all_num_reads > 0 ? all_num_kmers * (all_tot_num_reads / all_num_reads) : 0), " kmers\n");
                      });
   Timings::set_pending(fut_log);
   Timings::wait_pending();
-  fut.wait();
+  fut_log.wait();
   return num_reads > 0 ? num_kmers * tot_num_reads / num_reads : 0;
 }

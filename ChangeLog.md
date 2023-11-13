@@ -3,6 +3,19 @@
 
 This is the ChangeLog for MetaHipMer with development at [bitbucket](https://bitbucket.org/berkeleylab/mhm2)
 
+### 2.2.0.0 2023-06-23
+   * Fixed GPU (HIP) bugs in Adept stream synch
+   * Workaround configuration on Frontier and Perlmutter with slingshot issues
+   * Improved alignment of reads and abundance reporting in post-assembly
+   * Improved performance on slingshot network hardware by aggregating small rgets
+   * Include CIGAR calculations in GPU alignments
+   * Fixed various int32 overflows in the GPU code
+   * Upgraded the CI tests and migrated to perlmutter
+   * Improved filesystem performance on frontier
+   * Updated the documentation
+   * Fixed Issues #178, #183, #188, #192, #190, #189, #195, #201, #137, #197, #196, #191
+    
+
 ### 2.1.0.2 2023-01-31
    * Added first versions of HIP code for kcount, klign and localassm
    * TCF filtering in kcount improves memory use and performance
