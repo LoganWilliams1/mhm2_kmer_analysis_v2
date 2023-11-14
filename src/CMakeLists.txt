@@ -86,8 +86,6 @@ if(ENABLE_CUDA)
       OFF
       CACHE BOOL "")
 
-  find_package(CUDA REQUIRED)
-
   if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
     cmake_policy(SET CMP0074 NEW) # use the CUDA_ROOT variable
   endif()

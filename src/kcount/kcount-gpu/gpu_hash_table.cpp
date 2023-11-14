@@ -58,14 +58,16 @@
 #ifdef USE_TCF
 #include "tcf_wrapper.hpp"
 #else
-// quotient filter calls stubbed out
+// two choice filter calls stubbed out
 namespace two_choice_filter {
 #define TCF_RESULT uint8_t
 struct TCF {
   static TCF *generate_on_device(bool *, int) { return nullptr; }
   static void free_on_device(TCF *) {}
   __device__ bool get_my_tile() { return false; }
-  __device__ bool insert_if_not_exists(bool b, uint64_t, bool, TCF_RESULT, bool) { return false; }
+  __device__ bool insert_with_delete(bool, uint64_t, uint8_t) { return false; }
+  __device__ bool query(bool, uint64_t, TCF_RESULT &) { return false; }
+  __device__ bool remove(bool, uint64_t) { return false; }
   int get_fill() { return 0; }
   int get_num_slots() { return 0; }
 };
@@ -73,6 +75,7 @@ __device__ uint8_t pack_extensions(char left, char right) { return 0; }
 __device__ bool unpack_extensions(uint8_t storage, char &left, char &right) { return false; }
 static uint64_t estimate_memory(uint64_t max_num_kmers) { return 0; }
 static bool get_tcf_sizing_from_mem(uint64_t available_bytes) { return false; }
+
 }  // namespace two_choice_filter
 #endif
 
@@ -440,30 +443,19 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
       bool update_only = (use_qf && !ctg_kmers);
       bool updated = gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count,
                                      new_inserts, dropped_inserts, ctg_kmers, use_qf, update_only);
-
       if (update_only && !updated) {
-        // not found in the hash table - look in the qf
-        //bool found = false;
-
         auto packed = two_choice_filter::pack_extensions(left_ext, right_ext);
-
         TCF_RESULT result = 0;
-
         bool success = true;
         bool found = tcf->query(tcf->get_my_tile(), hash_val, result);
-
-        if (!found){
-          success = tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed);
-        }
+        if (!found) success = tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed);
 
         if (success) {
           if (!found) {
             // inserted successfully
             num_unique_qf++;
-
             // does this need to be asserted?
             assert(prev_left_ext == '0' && prev_right_ext == '0');
-
           } else {
             // found successfully
             tcf->remove(tcf->get_my_tile(), hash_val);
@@ -471,7 +463,6 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
             gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
                             dropped_inserts, ctg_kmers, use_qf, false);
           }
-
         } else {
           // dropped
           dropped_inserts_qf++;
@@ -731,7 +722,7 @@ void HashTableGPUDriver<MAX_K>::purge_invalid(uint64_t &num_purged, uint64_t &nu
   num_entries = counts_host[1];
 #ifdef DEBUG
   auto expected_num_entries = read_kmers_stats.new_inserts - num_purged;
-  if (num_entries != (int)expected_num_entries)
+  if (num_entries != expected_num_entries)
     WARN("mismatch %lu != %lu diff %lu new inserts %lu num purged %lu", num_entries, expected_num_entries,
          (num_entries - (int)expected_num_entries), read_kmers_stats.new_inserts, num_purged);
 #endif
