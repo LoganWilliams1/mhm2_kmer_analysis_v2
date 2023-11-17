@@ -211,7 +211,8 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
   }
   if (max_ht > TOO_BIG || max_r_rds_its > TOO_BIG || max_l_rds_its > TOO_BIG || max_ctg_len_its > TOO_BIG)
     fprintf(stderr,
-            "overflow with iterations=%lu max_slice_size=%lu for tot_extensions=%lu max_ht=%lu max_r_rds_its=%lu max_l_rds_its=%lu "
+            "WARN: overflow with iterations=%lu max_slice_size=%lu for tot_extensions=%lu max_ht=%lu max_r_rds_its=%lu "
+            "max_l_rds_its=%lu "
             "max_ctg_len_its=%lu\n",
             iterations, max_slice_size, tot_extensions, max_ht, max_r_rds_its, max_l_rds_its, max_ctg_len_its);
 
@@ -219,7 +220,7 @@ void localassm_driver::localassm_driver(vector<CtgWithReads *> &data_in, uint32_
   uint64_t all_walk_size = tot_extensions * max_walk_len;
 #ifdef DEBUG
   if (!my_rank)
-    fprintf(stderr,
+    fprintf(stdout,
             "Allocating memory for iterations=%lu max_slice_size=%lu and tot_extensions=%lu of max_walk_len=%u and 2x walks %lu\n",
             iterations, max_slice_size, tot_extensions, max_walk_len, all_walk_size);
 #endif
