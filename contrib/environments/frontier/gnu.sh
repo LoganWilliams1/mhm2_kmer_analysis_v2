@@ -12,6 +12,7 @@ module load ums ums014 upcxx
 export GASNET_OFI_RECEIVE_BUFF_SIZE=recv
 export FI_MR_CACHE_MONITOR=memhooks
 export FI_CXI_RX_MATCH_MODE=software
+
 module rm craype-hugepages2M # FIXME when slingshot is fixed
 
 which upcxx

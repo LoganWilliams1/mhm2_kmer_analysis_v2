@@ -153,9 +153,9 @@ template <int MAX_K>
 class KmerCtgDHT;
 
 template <int MAX_K>
-double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
-                       Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
-                       int min_ctg_len, int rget_buf_size);
+std::pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size,
+                                          int max_rpcs_in_flight, Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit,
+                                          bool report_cigar, bool use_blastn_scores, int min_ctg_len, int rget_buf_size);
 
 template <int MAX_K>
 shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned, int, int, Contigs &, int, bool);
@@ -170,12 +170,12 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &, PackedReads *, vector<ReadRecord> &, in
 // extern template declarations are in kmer.hpp
 // template instantiations each happen in src/CMakeLists via kmer-extern-template.in.cpp
 
-#define __MACRO_KLIGN__(KMER_LEN, MODIFIER)                                                                                      \
-  MODIFIER double find_alignments<KMER_LEN>(unsigned, PackedReadsList &, int, int, Contigs &, Alns &, int, int, bool, bool, int, \
-                                            int);                                                                                \
-  MODIFIER shared_ptr<KmerCtgDHT<KMER_LEN>> build_kmer_ctg_dht<KMER_LEN>(unsigned, int, int, Contigs &, int, bool);              \
-  MODIFIER void compute_alns<KMER_LEN>(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int,          \
-                                       KlignTimers &);                                                                           \
+#define __MACRO_KLIGN__(KMER_LEN, MODIFIER)                                                                                        \
+  MODIFIER std::pair<double, double> find_alignments<KMER_LEN>(unsigned, PackedReadsList &, int, int, Contigs &, Alns &, int, int, \
+                                                               bool, bool, int, int);                                              \
+  MODIFIER shared_ptr<KmerCtgDHT<KMER_LEN>> build_kmer_ctg_dht<KMER_LEN>(unsigned, int, int, Contigs &, int, bool);                \
+  MODIFIER void compute_alns<KMER_LEN>(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int,            \
+                                       KlignTimers &);                                                                             \
   MODIFIER void fetch_ctg_maps<KMER_LEN>(KmerCtgDHT<KMER_LEN> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
 
 __MACRO_KLIGN__(32, extern template);
