@@ -84,11 +84,11 @@ class Options {
   vector<string> paired_fnames;
   vector<string> unpaired_fnames;
   string adapter_fname;
-  vector<unsigned> kmer_lens = {21, 33, 55, 77, 99};
+  vector<unsigned> kmer_lens = {21, 31, 47, 63, 95};
   int min_kmer_len = -1;
   int max_kmer_len = 0;
   int prev_kmer_len = 0;
-  vector<unsigned> scaff_kmer_lens = {99, 33};
+  vector<unsigned> scaff_kmer_lens = {95, 47, 31};
   int qual_offset = 33;
   bool verbose = false;
   int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
@@ -96,7 +96,7 @@ class Options {
   int dmin_thres = 2.0;
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
   int klign_rget_buf_size = KLIGN_RGET_BUF_SIZE;
-  bool checkpoint = true;
+  bool checkpoint = false;
   bool dump_merged = false;
   bool post_assm_aln = false;
   bool post_assm_abundances = false;
