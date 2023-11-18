@@ -843,7 +843,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
       auto &tgt_kr_buf = kmers_reads_buffers[target];
       if (tgt_kr_buf.size()) {
         auto fetch_fut = fetch_ctg_maps_for_target(target, kmer_ctg_dht, tgt_kr_buf, num_alns, num_excess_alns_reads, bytes_sent,
-                                                  bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
+                                                   bytes_received, max_bytes_sent, max_bytes_received, num_rpcs);
         upcxx_utils::limit_outstanding_futures(fetch_fut).wait();
         fetch_fut_chain = when_all(fetch_fut_chain, fetch_fut);
       }
@@ -971,9 +971,9 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
 }
 
 template <int MAX_K>
-double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size, int max_rpcs_in_flight,
-                       Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit, bool report_cigar, bool use_blastn_scores,
-                       int min_ctg_len, int rget_buf_size) {
+pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size,
+                                     int max_rpcs_in_flight, Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit,
+                                     bool report_cigar, bool use_blastn_scores, int min_ctg_len, int rget_buf_size) {
   BarrierTimer timer(__FILEFUNC__);
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
 
@@ -996,6 +996,7 @@ double find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, in
   }
   timers.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
+  double aln_comms_elapsed = timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed();
   timers.clear();
-  return aln_kernel_elapsed;
+  return {aln_kernel_elapsed, aln_comms_elapsed};
 };  // find_alignments
