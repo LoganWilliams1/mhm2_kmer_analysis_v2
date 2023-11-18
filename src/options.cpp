@@ -318,14 +318,15 @@ double Options::setup_log_file() {
 }
 
 string Options::get_job_id() {
-  static const char *env_ids[] = {"SLURM_JOB_ID", "SLURM_JOBID", "LSB_JOBID", "JOB_ID", "COBALT_JOBID", "LOAD_STEP_ID", "PBS_JOBID"};
+  static const char *env_ids[] = {"SLURM_JOB_ID", "SLURM_JOBID",  "LSB_JOBID", "JOB_ID",
+                                  "COBALT_JOBID", "LOAD_STEP_ID", "PBS_JOBID"};
   static string job_id;
   if (job_id.empty()) {
     for (auto env : env_ids) {
       auto env_p = std::getenv(env);
       if (env_p) {
         job_id = env_p;
-	break;
+        break;
       }
     }
     if (job_id.empty()) job_id = std::to_string(getpid());
@@ -544,6 +545,9 @@ bool Options::load(int argc, char **argv) {
     }
   }
 
+  if (!app.get_option("--kmer-lens")->empty()) default_kmer_lens = false;
+  if (!app.get_option("--scaff-kmer-lens")->empty()) default_scaff_kmer_lens = false;
+
   if (max_kmer_store_mb == 0) {
     // use 1% of the minimum available memory
     max_kmer_store_mb = get_free_mem(true) / 1024 / 1024 / 100;
@@ -614,4 +618,14 @@ bool Options::load(int argc, char **argv) {
   }
   upcxx::barrier();
   return true;
+}
+
+template <typename T>
+string Options::vec_to_str(const vector<T> &vec, const string &delimiter) {
+  std::ostringstream oss;
+  for (auto elem : vec) {
+    oss << elem;
+    if (elem != vec.back()) oss << delimiter;
+  }
+  return oss.str();
 }

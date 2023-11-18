@@ -57,16 +57,6 @@ using std::vector;
 class Options {
   vector<string> splitter(string in_pattern, string &content);
 
-  template <typename T>
-  string vec_to_str(const vector<T> &vec, const string &delimiter = ",") {
-    std::ostringstream oss;
-    for (auto elem : vec) {
-      oss << elem;
-      if (elem != vec.back()) oss << delimiter;
-    }
-    return oss.str();
-  }
-
   bool extract_previous_lens(vector<unsigned> &lens, unsigned k);
 
   void get_restart_options();
@@ -85,10 +75,12 @@ class Options {
   vector<string> unpaired_fnames;
   string adapter_fname;
   vector<unsigned> kmer_lens = {21, 31, 47, 63, 95};
+  bool default_kmer_lens = true;
   int min_kmer_len = -1;
   int max_kmer_len = 0;
   int prev_kmer_len = 0;
   vector<unsigned> scaff_kmer_lens = {95, 47, 31};
+  bool default_scaff_kmer_lens = true;
   int qual_offset = 33;
   bool verbose = false;
   int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
@@ -125,4 +117,7 @@ class Options {
   void cleanup();
 
   bool load(int argc, char **argv);
+
+  template <typename T>
+  static string vec_to_str(const vector<T> &vec, const string &delimiter = ",");
 };
