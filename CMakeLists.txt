@@ -346,7 +346,7 @@ install(PROGRAMS ci/check_asm_quality.py ci/ci_asm_qual_test.sh
         DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(FILES ci/good-arctic-sample0.txt ci/good-arctic-sample0-k63.txt
               ci/good-arctic-sample0-k31k63.txt ci/good-arctic-sample0_tiny.txt
-              ci/good-arcticsynth.txt DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
+              ci/good-arcticsynth.txt contrib/all_adapters.fa DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
 
 option(MHM2_ENABLE_TESTING "Enable testing in MHM2" ON)
 if(MHM2_ENABLE_TESTING)
