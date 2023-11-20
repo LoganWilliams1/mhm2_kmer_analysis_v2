@@ -20,8 +20,8 @@ Reference length             102521842
 N50                          734           
 N90                          535           
 auN                          873.3         
-L50                          1513          
-L90                          3536          
+L50                          1633
+L90                          3829
 # misassemblies              6             
 # misassembled contigs       6             
 Misassembled contigs length  9049          
@@ -41,5 +41,5 @@ Total aligned length         3115239
 NA50                         734           
 NA90                         535           
 auNA                         871.4         
-LA50                         1515          
-LA90                         3540          
+LA50                         1635
+LA90                         3832
