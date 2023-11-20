@@ -33,7 +33,7 @@ Unaligned length             0
 Genome fraction (%)          25.702        
 Duplication ratio            1.001         
 # N's per 100 kbp            0.02          
-# mismatches per 100 kbp     130.29        
+# mismatches per 100 kbp     142.59
 # indels per 100 kbp         3.14          
 # predicted rRNA genes       24 + 14 part  
 Largest alignment            66149         
