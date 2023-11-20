@@ -15,7 +15,7 @@ Total length (>= 25000 bp)   0
 Total length (>= 50000 bp)   0
 # contigs                    2845
 Largest contig               2946
-Total length                 2037864
+Total length                 1975313
 Reference length             102521842
 N50                          685
 N90                          528
