@@ -31,7 +31,7 @@ Misassembled contigs length  5204
 # unaligned mis. contigs     0
 # unaligned contigs          0 + 0 part
 Unaligned length             0
-Genome fraction (%)          2.544
+Genome fraction (%)          2.491
 Duplication ratio            1.001
 # N's per 100 kbp            1.75
 # mismatches per 100 kbp     320.54
