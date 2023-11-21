@@ -18,13 +18,13 @@ Largest contig               1462373
 Total length                 95193239      
 Reference length             102521842     
 N50                          103764        
-N90                          5987
+N90                          5922
 auN                          207291.2      
-L50                          203           
+L50                          208
 L90                          1878          
 # misassemblies              108           
 # misassembled contigs       104           
-Misassembled contigs length  5689999       
+Misassembled contigs length  7932120
 # local misassemblies        22            
 # scaffold gap ext. mis.     0             
 # scaffold gap loc. mis.     0             
@@ -39,7 +39,7 @@ Duplication ratio            1.003
 Largest alignment            1462373       
 Total aligned length         95179246      
 NA50                         100125        
-NA90                         5931          
+NA90                         5857
 auNA                         204806.5      
 LA50                         209           
 LA90                         1931          
