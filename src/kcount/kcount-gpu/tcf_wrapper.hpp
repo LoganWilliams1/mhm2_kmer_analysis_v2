@@ -68,6 +68,8 @@
 
 #include <poggers/representations/grouped_storage_sub_bits.cuh>
 
+#include <poggers/data_structs/tcf.cuh>
+
 #include "tcf_hash_wrapper.hpp"
 
 namespace two_choice_filter {
@@ -78,18 +80,20 @@ __constant__ char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
 
 #if TCF_SMALL
 
-using backing_table = poggers::tables::bucketed_table<
-    uint64_t, uint8_t,
-    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
-    1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher,
-    poggers::hashers::murmurHasher>;
-using TCF = poggers::tables::bucketed_table<
-    uint64_t, uint8_t,
-    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
-    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
-    poggers::hashers::murmurHasher, true, backing_table>;
+// using backing_table = poggers::tables::bucketed_table<
+//     uint64_t, uint8_t,
+//     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+//         poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
+//     1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher,
+//     poggers::hashers::murmurHasher>;
+// using TCF = poggers::tables::bucketed_table<
+//     uint64_t, uint8_t,
+//     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+//         poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
+//     1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
+//     poggers::hashers::murmurHasher, true, backing_table>;
+
+using TCF = poggers::data_structs::tcf_wrapper<uint64_t, uint8_t, 10, 6, 1, 8>::tcf;
 
 #define TCF_RESULT uint8_t
 
@@ -115,54 +119,6 @@ __device__ bool unpack_extensions(uint8_t storage, char& left, char& right) {
 
   // grab bits 0-2
   uint8_t right_val = (storage & 0x07);
-
-  if ((left_val < 6) && (right_val < 6)) {
-    left = kmer_ext[left_val];
-    right = kmer_ext[right_val];
-
-    return true;
-  } else {
-    return false;
-  }
-}
-
-#else
-
-using backing_table =
-    poggers::tables::bucketed_table<uint64_t, uint16_t,
-                                    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-                                        poggers::representations::key_val_pair, uint16_t>::representation>::representation,
-                                    1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20,
-                                    poggers::probing_schemes::doubleHasher, poggers::hashers::mhm_hasher>;
-using TCF =
-    poggers::tables::bucketed_table<uint64_t, uint16_t,
-                                    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-                                        poggers::representations::key_val_pair, uint16_t>::representation>::representation,
-                                    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2,
-                                    poggers::probing_schemes::doubleHasher, poggers::hashers::mhm_hasher, true, backing_table>;
-
-#define TCF_RESULT uint16_t
-
-__device__ uint16_t pack_extensions(char left, char right) {
-  uint16_t ret_val = 0;
-
-  for (uint i = 0; i < 6; i++) {
-    if (left == kmer_ext[i]) {
-      ret_val += i << 8;
-    }
-
-    if (right == kmer_ext[i]) {
-      ret_val += i;
-    }
-  }
-
-  return ret_val;
-}
-
-__device__ bool unpack_extensions(uint16_t storage, char& left, char& right) {
-  uint16_t left_val = ((storage & 0xff00) >> 8);
-
-  uint16_t right_val = (storage & 0x00ff);
 
   if ((left_val < 6) && (right_val < 6)) {
     left = kmer_ext[left_val];

@@ -89,8 +89,8 @@ struct KmerCountsMap {
   // Arrays for keys and values. They are separate because the keys get initialized with max number and the vals with zero
   KmerArray<MAX_K> *keys = nullptr;
   CountsArray *vals = nullptr;
-  int64_t capacity = 0;
-  int64_t num = 0;
+  uint64_t capacity = 0;
+  uint64_t num = 0;
 
   void init(int64_t ht_capacity);
   void clear();
