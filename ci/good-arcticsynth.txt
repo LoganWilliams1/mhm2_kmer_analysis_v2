@@ -17,7 +17,7 @@ Total length (>= 50000 bp)   61462061
 Largest contig               1462373       
 Total length                 95193239      
 Reference length             102521842     
-N50                          103764        
+N50                          101664
 N90                          5922
 auN                          207291.2      
 L50                          208
