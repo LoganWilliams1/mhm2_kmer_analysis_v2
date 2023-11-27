@@ -88,9 +88,9 @@ using namespace kcount_gpu;
   if (!upcxx_rank_me) printf(KLMAGENTA "GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
 
 #define SWARN(fmt, ...) \
-  if (!upcxx_rank_me) printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
+  if (!upcxx_rank_me) printf(KLRED "WARN GPU kcount %d: " fmt KNORM "\n", __LINE__, ##__VA_ARGS__)
 
-#define WARN(fmt, ...) printf(KLRED "WARN GPU kcount: " fmt KNORM "\n", ##__VA_ARGS__)
+#define WARN(fmt, ...) printf(KLRED "WARN GPU kcount %d:" fmt KNORM "\n", __LINE__, ##__VA_ARGS__)
 
 const uint64_t KEY_EMPTY = 0xffffffffffffffff;
 const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
