@@ -558,7 +558,8 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
                               .count = kmer_ext_counts->count,
                               .left = kmer_ext_counts->get_left_ext(),
                               .right = kmer_ext_counts->get_right_ext()};
-    if (kmer_counts.left == 'X' && kmer_counts.right == 'X') {
+    if (kmer_counts.left == 'X' || kmer_counts.right == 'X' || kmer_counts.left == 'F' || kmer_counts.right == 'F') {
+      // these are never used in the dbjg traversal, and are overwritten by ctg kmers if those have proper extensions
       num_purged++;
       continue;
     }

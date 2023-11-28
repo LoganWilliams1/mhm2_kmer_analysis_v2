@@ -383,8 +383,9 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
     if (!kmer_array) break;
     // empty slot
     if (!count_exts->count) continue;
-    if ((char)count_exts->left == 'X' && (char)count_exts->right == 'X') {
-      // these are eliminated during purging in CPU version
+    // kmers with these extensions are not used in the dbjg traversal
+    if ((char)count_exts->left == 'X' || (char)count_exts->right == 'X' || (char)count_exts->left == 'F' ||
+        (char)count_exts->right == 'F') {
       invalid++;
       continue;
     }

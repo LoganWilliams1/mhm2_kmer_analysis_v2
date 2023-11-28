@@ -446,29 +446,23 @@ __global__ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBu
       if (update_only && !updated) {
         auto packed = two_choice_filter::pack_extensions(left_ext, right_ext);
         TCF_RESULT result = 0;
-        bool success = true;
-        bool found = tcf->query(tcf->get_my_tile(), hash_val, result);
-        if (!found) success = tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed);
-
-        if (success) {
-          if (!found) {
+        if (tcf->query(tcf->get_my_tile(), hash_val, result)) {
+          // found successfully
+          tcf->remove(tcf->get_my_tile(), hash_val);
+          two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
+          gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
+                          dropped_inserts, ctg_kmers, use_qf, false);
+        } else {
+          if (tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed)) {
             // inserted successfully
             num_unique_qf++;
-            // does this need to be asserted?
-            assert(prev_left_ext == '0' && prev_right_ext == '0');
           } else {
-            // found successfully
-            tcf->remove(tcf->get_my_tile(), hash_val);
-            two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
+            // dropped
+            dropped_inserts_qf++;
+            // now insert it into the main hash table - this will be purged later if it's a singleton
             gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
-                            dropped_inserts, ctg_kmers, use_qf, false);
+                            dropped_inserts, ctg_kmers, false, false);
           }
-        } else {
-          // dropped
-          dropped_inserts_qf++;
-          // now insert it into the main hash table - this will be purged later if it's a singleton
-          gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
-                          dropped_inserts, ctg_kmers, false, false);
         }
       }
     }
