@@ -169,18 +169,18 @@ void Contigs::print_stats(unsigned min_ctg_len) const {
   }
 }
 
-void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len) {
+void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const string &prefix) {
   BarrierTimer timer(__FILEFUNC__);
   dist_ofstream of(fname);
   of << std::setprecision(3);
   for (auto it = contigs.begin(); it != contigs.end(); ++it) {
     auto ctg = it;
     if (ctg->seq.length() < min_ctg_len) continue;
-    of << ">Contig" << to_string(ctg->id) << " " << ctg->depth << "\n";
+    of << ">" << prefix << to_string(ctg->id) << " " << ctg->depth << "\n";
     string rc_uutig = revcomp(ctg->seq);
     string seq = (rc_uutig < ctg->seq ? rc_uutig : ctg->seq);
-    // for (int64_t i = 0; i < ctg->seq.length(); i += 50) fasta += ctg->seq.substr(i, 50) + "\n";
-    of << ctg->seq << "\n";
+    // for (int64_t i = 0; i < ctg->seq.length(); i += 50) of << ctg->seq.substr(i, 50) << "\n";
+    of << seq << "\n";
   }
   of.close();  // sync and output stats
 #ifdef DEBUG

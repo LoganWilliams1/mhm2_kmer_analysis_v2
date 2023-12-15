@@ -92,7 +92,7 @@ class Contigs {
 
   void print_stats(unsigned min_ctg_len) const;
 
-  void dump_contigs(const string &fname, unsigned min_ctg_len);
+  void dump_contigs(const string &fname, unsigned min_ctg_len, const string &prefix);
 
   void load_contigs(const string &ctgs_fname);
 

@@ -113,7 +113,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     stage_timers.dbjg_traversal->stop();
     if (is_debug) {
       stage_timers.dump_ctgs->start();
-      ctgs.dump_contigs(uutigs_fname, 0);
+      ctgs.dump_contigs(uutigs_fname, 0, "uutig_");
       stage_timers.dump_ctgs->stop();
     }
   }
@@ -181,7 +181,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
   if (is_debug || options->checkpoint) {
     stage_timers.dump_ctgs->start();
     string contigs_fname("contigs-" + to_string(kmer_len) + ".fasta");
-    ctgs.dump_contigs(contigs_fname, 0);
+    ctgs.dump_contigs(contigs_fname, 0, "contig_");
     stage_timers.dump_ctgs->stop();
   }
   SLOG(KBLUE "_________________________", KNORM, "\n");

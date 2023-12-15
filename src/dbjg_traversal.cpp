@@ -301,7 +301,6 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
   _num_rank_me_rpcs = 0;
   _num_node_rpcs = 0;
   _num_rpcs = 0;
-  // allocate space for biggest possible uutig in global storage
   WalkTermStats walk_term_stats = {0};
   int64_t num_walks = 0;
   barrier();
@@ -552,7 +551,10 @@ static void connect_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer_d
     if (walk_ok) {
       num_steps += walk_steps;
       max_steps = max(walk_steps, max_steps);
-      my_uutigs.add_contig({0, uutig, (double)depths / (uutig.length() - kmer_len + 2)});
+      // always take the smallest of revcomp and non-revcomp for consistency across runs
+      string rc_uutig = revcomp(uutig);
+      string seq = (rc_uutig < uutig ? rc_uutig : uutig);
+      my_uutigs.add_contig({0, seq, (double)depths / (seq.length() - kmer_len + 2)});
       // the walk is successful, so set the visited for all the local elems
       for (auto &elem : my_frag_elems_visited) elem->visited = true;
     } else {

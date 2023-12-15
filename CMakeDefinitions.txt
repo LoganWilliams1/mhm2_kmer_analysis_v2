@@ -78,7 +78,7 @@ add_definitions(-DUSE_BYTELL)
 add_definitions(-DSHUFFLE_KMER_LEN=31)
 
 # max allowed alignments per read (to reduce overhead & imbalance) - set to 0 to have no limit
-add_definitions(-DKLIGN_MAX_ALNS_PER_READ=20)
+add_definitions(-DKLIGN_MAX_ALNS_PER_READ=50)
 # decreasing this value increases the alignment computation time, and it may improve results slightly
 add_definitions(-DKLIGN_SEED_SPACE=8)
 # max number of unaligned bases to allow on either side of an alignment

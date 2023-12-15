@@ -130,7 +130,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     if ((is_debug || options->checkpoint) && scaff_i < max_scaff_i) {
       SLOG_VERBOSE("Saving scaffold contigs ", scaff_contigs_fname, "\n");
       stage_timers.dump_ctgs->start();
-      ctgs.dump_contigs(scaff_contigs_fname, 0);
+      ctgs.dump_contigs(scaff_contigs_fname, 0, "scaffold_");
       stage_timers.dump_ctgs->stop();
     }
   }

@@ -383,7 +383,7 @@ int main(int argc, char **argv) {
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
     stage_timers.dump_ctgs->start();
-    ctgs.dump_contigs("final_assembly.fasta", options->min_ctg_print_len);
+    ctgs.dump_contigs("final_assembly.fasta", options->min_ctg_print_len, "scaffold_");
     stage_timers.dump_ctgs->stop();
 
     SLOG(KBLUE "_________________________", KNORM, "\n");

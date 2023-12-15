@@ -324,8 +324,6 @@ class KmerCtgDHT {
       Kmer<MAX_K>::get_kmers(kmer_len, string_view(ctg->seq.data(), ctg->seq.size()), kmers, true);
       num_kmers += kmers.size();
       for (unsigned i = 0; i < kmers.size(); i++) {
-        // if (kmers[i].to_string() == "ACATCTACCGCTAGAGGATTA")
-        //   WARN("kmer ", kmers[i].to_string(), " found in contig ", ctg->id, " in position ", i);
         ctg_loc.pos = i;
         if (!kmers[i].is_valid()) continue;
         add_kmer(kmers[i], ctg_loc);
@@ -614,7 +612,12 @@ class Aligner {
     string tmp_ctg;
     string rseq;
     for (auto &ctg_and_read_locs : aligned_ctgs_map) {
-      for (auto &ctg_and_read_loc : ctg_and_read_locs.second) {
+      vector<CtgAndReadLoc> &locs = ctg_and_read_locs.second;
+      if (locs.empty()) continue;
+      // sort list of positions in ctg so overlaps can be filtered when processing alignments
+      sort(locs.begin(), locs.end(), [](CtgAndReadLoc c1, CtgAndReadLoc c2) { return c1.ctg_loc.pos < c2.ctg_loc.pos; });
+      int prev_cstart = -1;
+      for (auto &ctg_and_read_loc : locs) {
         progress();
         int pos_in_read = ctg_and_read_loc.pos_in_read;
         bool read_is_rc = ctg_and_read_loc.read_is_rc;
@@ -624,14 +627,19 @@ class Aligner {
           // it's revcomp in either contig or read, but not in both or neither
           orient = '-';
           pos_in_read = rlen - (kmer_len + pos_in_read);
+        }
+        auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, pos_in_read, rlen);
+        assert(cstart >= 0 && cstart + overlap_len <= ctg_loc.clen);
+        assert(overlap_len <= 2 * rlen);
+        // has this alignment already been calculated?
+        if (prev_cstart == cstart) continue;
+        prev_cstart = cstart;
+        if (ctg_loc.is_rc != read_is_rc) {
           if (rseq_rc.empty()) rseq_rc = revcomp(rseq_fw);
           rseq = rseq_rc;
         } else {
           rseq = rseq_fw;
         }
-        auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, pos_in_read, rlen);
-        assert(cstart >= 0 && cstart + overlap_len <= ctg_loc.clen);
-        assert(overlap_len <= 2 * rlen);
         bool on_node = ctg_loc.seq_gptr.is_local();
 #ifdef DEBUG
         //    test both on node and off node on a single node
@@ -730,22 +738,9 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
               auto it = read_record->aligned_ctgs_map.find(ctg_loc.cid);
               auto new_pos_in_read = (ctg_loc.is_rc == read_is_rc ? pos_in_read : rlen - (kmer_len + pos_in_read));
               auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc, new_pos_in_read, rlen);
-              bool overlaps = false;
-              if (it == read_record->aligned_ctgs_map.end()) {
-                it = read_record->aligned_ctgs_map.insert({ctg_loc.cid, {}}).first;
-              } else {
-                // check to see if alignment will overlap one from an earlier seed
-                for (auto &prev_ctg_loc : it->second) {
-                  if (cstart + rlen >= prev_ctg_loc.cstart && cstart < prev_ctg_loc.cstart + rlen) {
-                    overlaps = true;
-                    break;
-                  }
-                }
-              }
-              if (!overlaps) {
-                it->second.push_back({ctg_loc, cstart, pos_in_read, read_is_rc});
-                num_alns++;
-              }
+              if (it == read_record->aligned_ctgs_map.end()) it = read_record->aligned_ctgs_map.insert({ctg_loc.cid, {}}).first;
+              it->second.push_back({ctg_loc, cstart, pos_in_read, read_is_rc});
+              num_alns++;
             }
           })
           .then([sh_krb]() {});
@@ -959,6 +954,7 @@ template <int MAX_K>
 shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_store_size, int max_rpcs_in_flight, Contigs &ctgs,
                                                  int min_ctg_len, bool allow_multi_kmers) {
   BarrierTimer timer(__FILEFUNC__);
+  // allow_multi_kmers = true;
   Kmer<MAX_K>::set_k(kmer_len);
   uint64_t num_ctg_kmers = 0;
   for (auto &ctg : ctgs)
@@ -998,5 +994,7 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   double aln_comms_elapsed = timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed();
   timers.clear();
+  alns.dump_rank_file("alns-" + to_string(kmer_len));
+  //.dump_single_file("alns-" + to_string(kmer_len));
   return {aln_kernel_elapsed, aln_comms_elapsed};
 };  // find_alignments
