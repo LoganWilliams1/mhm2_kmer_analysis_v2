@@ -646,10 +646,10 @@ class Aligner {
           rseq = rseq_fw;
         }
         bool on_node = seq_gptr.is_local();
-        // #ifdef DEBUG
+#ifdef DEBUG
         //     test both on node and off node on a single node
         if (on_node && local_team().rank_n() == rank_n()) on_node = (seq_gptr.where() % 2) == (rank_me() % 2);
-        // #endif
+#endif
         if (on_node) {
           // on same node already
           string_view ctg_seq = string_view(seq_gptr.local(), clen);
