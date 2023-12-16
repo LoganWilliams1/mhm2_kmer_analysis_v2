@@ -160,6 +160,8 @@ class KmerDHT {
 
   bool kmer_exists(Kmer<MAX_K> kmer);
 
+  kmer_count_t get_kmer_count(Kmer<MAX_K> kmer);
+
   void add_supermer(Supermer &supermer, int target_rank);
 
   void flush_updates();

@@ -69,14 +69,17 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   IntermittentTimer count_mers_timer(__FILENAME__ + string(":") + "count_mers"),
       walk_mers_timer(__FILENAME__ + string(":") + "walk_mers");
   ProgressBar progbar(ctgs_dht.get_local_num_ctgs(), "Extending contigs");
+  ofstream ctgs_outf("ctgs-locassm-" + to_string(rank_me()) + "-k" + to_string(kmer_len));
   for (auto ctg = ctgs_dht.get_first_local_ctg(); ctg != nullptr; ctg = ctgs_dht.get_next_local_ctg()) {
     progbar.update();
+    ctgs_outf << ctg->seq << " " << ctg->depth << " " << ctg->reads_left.size() << " " << ctg->reads_right.size() << endl;
     Contig ext_contig;
     extend_ctg(ctg, wm, insert_avg, insert_stddev, max_kmer_len, kmer_len, qual_offset, walk_len_limit, count_mers_timer,
                walk_mers_timer);
     ctgs.add_contig({.id = ctg->cid, .seq = ctg->seq, .depth = ctg->depth});
   }
   progbar.done();
+  ctgs_outf.close();
   count_mers_timer.done_all();
   walk_mers_timer.done_all();
   barrier();
