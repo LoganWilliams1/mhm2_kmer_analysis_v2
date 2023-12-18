@@ -1002,6 +1002,5 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   double aln_comms_elapsed = timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed();
   timers.clear();
-  alns.dump_single_file("alns-" + to_string(kmer_len));
   return {aln_kernel_elapsed, aln_comms_elapsed};
 };  // find_alignments

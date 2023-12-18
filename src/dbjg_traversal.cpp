@@ -284,8 +284,6 @@ static global_ptr<FragElem> traverse_dirn(dist_object<KmerDHT<MAX_K>> &kmer_dht,
       traverse_rpc_timer.stop();
     }
     sum_depths += step_info.sum_depths;
-    // if (step_info.kmer.to_string() == "AATTCGCTTCAACAAAAGGCA" || step_info.kmer.to_string() == "ATTCGCTTCAACAAAAGGCAT")
-    //   SWARN("kmer ", step_info.kmer, " depth ", step_info.sum_depths);
     revisit_allowed = false;
     uutig += step_info.uutig;
     if (step_info.walk_status != WalkStatus::RUNNING) {
@@ -607,14 +605,14 @@ void traverse_debruijn_graph(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kme
   });
   fut.wait();
   barrier();
-  // #ifdef DEBUG
+#ifdef DEBUG
   ProgressBar progbar(my_uutigs.size(), "Checking kmers in uutigs");
   for (auto uutig : my_uutigs) {
     progbar.update();
     if (!check_kmers(uutig.seq, uutig.depth, kmer_dht, kmer_len)) DIE("kmer not found in uutig");
   }
   progbar.done();
-  // #endif
+#endif
 }
 
 #define TDG_K(KMER_LEN) \

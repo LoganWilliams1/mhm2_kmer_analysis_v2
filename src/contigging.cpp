@@ -163,7 +163,8 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     barrier();
     LOG_MEM("Aligned reads to contigs");
 #ifdef DEBUG
-    alns.dump_rank_file("ctg-" + to_string(kmer_len) + ".alns.gz");
+    //  alns.dump_rank_file("ctg-" + to_string(kmer_len) + ".alns.gz");
+    alns.dump_single_file("alns-" + to_string(kmer_len));
 #endif
     tie(ins_avg, ins_stddev) = calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
     // insert size should never be larger than this; if it is that signals some error in the assembly

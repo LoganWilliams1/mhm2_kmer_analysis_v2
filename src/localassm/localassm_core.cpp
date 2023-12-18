@@ -61,6 +61,14 @@ using namespace upcxx_utils;
 namespace localassm_core {
 
 enum class AlnStatus { NO_ALN, OVERLAPS_CONTIG, EXTENDS_CONTIG };
+static string aln_status_to_string(AlnStatus aln_status) {
+  switch (aln_status) {
+    case AlnStatus::NO_ALN: return "NO_ALN";
+    case AlnStatus::OVERLAPS_CONTIG: return "OVERLAPS_CONTIG";
+    case AlnStatus::EXTENDS_CONTIG: return "EXTENDS_CONTIG";
+    default: return "not found";
+  }
+}
 
 using ext_count_t = uint16_t;
 
@@ -327,7 +335,7 @@ struct MerFreqs {
         if (runner_up_rating < 3) ext = top_rated_base;
       } else if (top_rating == 6) {  // viable and fair hiQ support
         if (runner_up_rating < 4) ext = top_rated_base;
-      } else {                       // strongest rating trumps
+      } else {  // strongest rating trumps
         if (runner_up_rating < 7) {
           ext = top_rated_base;
         } else {
@@ -472,6 +480,8 @@ static void get_best_aln_for_read(const Alns &alns, int64_t &i, Aln &best_aln, A
     if (start_read_id != "" && aln.read_id != start_read_id) return;
     num_alns_found++;
     if (aln.score1 < best_aln_score) continue;
+    if (aln.score1 == best_aln_score && aln.cstart > best_aln.cstart) continue;
+    if (aln.score1 == best_aln_score && aln.rstart > best_aln.rstart) continue;
     AlnStatus start_status, end_status;
     if (aln.orient == '+') {
       start_status = classify_aln(aln.rstart - 1, aln.cstart - 1);
@@ -510,6 +520,9 @@ void process_alns(const Alns &alns, ReadsToCtgsDHT &reads_to_ctgs, int insert_av
   IntermittentTimer t_get_alns(__FILENAME__ + string(":") + "get alns reads to contigs");
   int64_t aln_i = 0;
   AlnStatus start_status, end_status;
+
+  ofstream dbg_outf("ctgs-locassm-" + to_string(rank_me()));
+
   ProgressBar progbar(alns.size(), "Getting read-to-contig mappings from alignments");
   while (aln_i < (int64_t)alns.size()) {
     progress();
@@ -519,11 +532,14 @@ void process_alns(const Alns &alns, ReadsToCtgsDHT &reads_to_ctgs, int insert_av
     t_get_alns.stop();
     progbar.update(aln_i);
     if (aln.read_id.empty()) continue;
+    dbg_outf << aln.to_paf_string() << " start_status " << aln_status_to_string(start_status) << " end_status "
+             << aln_status_to_string(end_status) << endl;
     // add a direct extension to the contig, start or end
     if (start_status == AlnStatus::EXTENDS_CONTIG) {
       reads_to_ctgs.add(aln.read_id, aln.cid, aln.orient, aln.orient == '+' ? 'L' : 'R');
       num_direct++;
-    } else if (end_status == AlnStatus::EXTENDS_CONTIG) {
+    }
+    if (end_status == AlnStatus::EXTENDS_CONTIG) {
       reads_to_ctgs.add(aln.read_id, aln.cid, aln.orient, aln.orient == '+' ? 'R' : 'L');
       num_direct++;
     }
@@ -539,11 +555,16 @@ void process_alns(const Alns &alns, ReadsToCtgsDHT &reads_to_ctgs, int insert_av
         aln.read_id[len - 1] = '1';
       else
         DIE("Bad pair number ", (int)aln.read_id[len - 1], " in read: ", aln.read_id);
+      dbg_outf << aln.to_paf_string() << " start_status " << aln_status_to_string(start_status) << " end_status "
+               << aln_status_to_string(end_status) << endl;
       reads_to_ctgs.add(aln.read_id, aln.cid, aln.orient == '+' ? '-' : '+', aln.orient == '+' ? 'R' : 'L');
       num_proj++;
     }
   }
   reads_to_ctgs.flush_updates();
+
+  dbg_outf.close();
+
   progbar.done();
   barrier();
   t_get_alns.done_all();
