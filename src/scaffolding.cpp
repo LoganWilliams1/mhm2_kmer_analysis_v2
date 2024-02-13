@@ -101,6 +101,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     stage_timers.aln_comms->inc_elapsed(aln_comms_elapsed);
     stage_timers.alignments->stop();
     LOG_MEM("Found alignments");
+    alns.dump_single_file("alns-scaff");
 #ifdef DEBUG
     alns.dump_rank_file("scaff-" + to_string(scaff_kmer_len) + ".alns.gz");
 #endif

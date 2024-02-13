@@ -181,8 +181,6 @@ static bool get_best_span_aln(int insert_avg, int insert_stddev, vector<Aln> &al
   if (alns.size() == 0) return false;
   int min_rstart = -1;
   read_status = "";
-  // sort in order of highest to lowest aln scores
-  sort(alns.begin(), alns.end(), [](auto &aln1, auto &aln2) { return aln1.score1 > aln2.score1; });
   for (const auto &aln : alns) {
     // Assess alignment for completeness (do this before scaffold coordinate conversion!)
     // Important: Truncations are performed before reverse complementation
@@ -374,6 +372,7 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
         auto prev_read_id_len = prev_best_aln.read_id.length();
         if (best_read_id_len == prev_read_id_len &&
             best_aln.read_id.compare(0, best_read_id_len - 1, prev_best_aln.read_id, 0, prev_read_id_len - 1) == 0) {
+          assert(prev_best_aln.read_id.back() == '1' || best_aln.read_id.back() == '2');
           if (best_aln.cid == prev_best_aln.cid) {
             result_counts[(int)ProcessPairResult::FAIL_SELF_LINK]++;
           } else {

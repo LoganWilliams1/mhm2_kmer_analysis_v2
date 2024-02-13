@@ -97,7 +97,7 @@ static void get_alns_for_read(Alns &alns, int64_t &i, vector<Aln> &alns_for_read
   }
 }
 
-static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats) {
+static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats, ofstream &dbg_ofs) {
   struct AlnCoords {
     int start, stop;
   };
@@ -145,7 +145,7 @@ static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats) {
     stats.short_alns++;
     return false;
   }
-  if (gap < -aln1->rlen) DIE("Gap is too small: ", gap, ", read length ", aln1->rlen, "\n");
+  assert(gap >= -aln1->rlen);
   // check for bad overlaps
   if (gap < 0 && (aln1->clen < -gap || aln2->clen < -gap)) {
     stats.bad_overlaps++;
@@ -173,10 +173,13 @@ static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats) {
                .short_aln = false,
                .gap_reads = {}};
   if (edge.gap > 0) {
+    assert(aln1->read_id == aln2->read_id);
     edge.gap_reads = vector<GapRead>{GapRead(aln1->read_id, gap_start, orient1, cids.cid1)};
     _graph->add_pos_gap_read(aln1->read_id);
   }
   _graph->add_or_update_edge(edge);
+  dbg_ofs << edge.cids << " " << edge.end1 << " " << edge.end2 << " " << edge.gap << " " << edge.support << " " << edge.aln_len
+          << " " << edge.aln_score << " ";
   return true;
 }
 
@@ -188,6 +191,7 @@ void get_splints_from_alns(Alns &alns, CtgGraph *graph) {
   ProgressBar progbar(alns.size(), "Adding edges to graph from splints");
   int64_t aln_i = 0;
   int64_t num_splints = 0;
+  ofstream dbg_ofs("splints-alns-" + to_string(rank_me()));
   while (aln_i < (int64_t)alns.size()) {
     vector<Aln> alns_for_read;
     t_get_alns.start();
@@ -196,14 +200,19 @@ void get_splints_from_alns(Alns &alns, CtgGraph *graph) {
     progbar.update(aln_i);
     for (int i = 0; i < (int)alns_for_read.size(); i++) {
       auto aln = &alns_for_read[i];
+      // dbg_ofs << aln->to_paf_string() << endl;
       for (int j = i + 1; j < (int)alns_for_read.size(); j++) {
         progress();
         auto other_aln = &alns_for_read[j];
-        if (other_aln->read_id != aln->read_id) DIE("Mismatched read ids: ", other_aln->read_id, " != ", aln->read_id, "\n");
-        if (add_splint(other_aln, aln, stats)) num_splints++;
+        assert(other_aln->read_id == aln->read_id);
+        if (add_splint(other_aln, aln, stats, dbg_ofs)) {
+          dbg_ofs << aln->to_paf_string() << "\t" << other_aln->to_paf_string() << endl;
+          num_splints++;
+        }
       }
     }
   }
+  dbg_ofs.close();
   progbar.done();
   barrier();
   t_get_alns.done_all();

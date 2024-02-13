@@ -725,9 +725,14 @@ void CtgGraph::print_gfa2(const string &gfa_fname, int min_ctg_print_len) {
       int end_pos1 = (edge->end1 == 5 ? clen1 : overlap);
       int begin_pos2 = (edge->end1 == 3 ? clen2 - overlap : 0);
       int end_pos2 = (edge->end1 == 3 ? clen2 : overlap);
-      of << to_string(begin_pos1) << "\t" << to_string(end_pos1);
-      if (end_pos1 == clen1) of << "$";
-      if (end_pos2 == clen2) of << "$";
+      // of << to_string(begin_pos1) << "\t" << to_string(end_pos1);
+      if (begin_pos1 < begin_pos2)
+        of << to_string(begin_pos1) << "\t" << to_string(end_pos1) << "\t" << to_string(begin_pos2) << "\t" << to_string(end_pos2);
+      else
+        of << to_string(begin_pos2) << "\t" << to_string(end_pos2) << "\t" << to_string(begin_pos1) << "\t" << to_string(end_pos1);
+
+      // if (end_pos1 == clen1) of << "$";
+      // if (end_pos2 == clen2) of << "$";
     }
     // add MHM specific tags
     of << "\tsp: " << to_string(edge->support) << "\ttp: " << edge_type_str(edge->edge_type) << "\n";

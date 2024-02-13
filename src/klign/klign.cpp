@@ -619,7 +619,10 @@ class Aligner {
       auto depth = ctg_and_read_locs.second.depth;
       if (locs.empty()) continue;
       // sort list of positions in ctg so overlaps can be filtered when processing alignments
-      sort(locs.begin(), locs.end(), [](CtgAndReadLoc c1, CtgAndReadLoc c2) { return c1.pos_in_ctg < c2.pos_in_ctg; });
+      sort(locs.begin(), locs.end(), [](CtgAndReadLoc c1, CtgAndReadLoc c2) {
+        if (c1.pos_in_ctg == c2.pos_in_ctg) return c1.pos_in_read < c2.pos_in_read;
+        return c1.pos_in_ctg < c2.pos_in_ctg;
+      });
       int prev_cstart = -1;
       for (auto &ctg_and_read_loc : locs) {
         progress();

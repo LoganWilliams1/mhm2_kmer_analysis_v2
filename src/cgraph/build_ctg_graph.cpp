@@ -647,8 +647,19 @@ void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kme
   compute_tnfs(ctgs);
 #endif
   add_vertices_from_ctgs(ctgs);
+  ofstream dbg_ofs("graph-vertices-" + to_string(rank_me()));
+  for (auto v = graph->get_first_local_vertex(); v != nullptr; v = graph->get_next_local_vertex()) {
+    dbg_ofs << v->cid << " " << v->clen << " " << v->depth << endl;
+  }
+  dbg_ofs.close();
+
   get_splints_from_alns(alns, graph);
-  get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
+  // get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
+  dbg_ofs.open("graph-edges-" + to_string(rank_me()));
+  for (auto edge = graph->get_first_local_edge(); edge != nullptr; edge = graph->get_next_local_edge()) {
+    dbg_ofs << edge->cids << " " << edge->end1 << " " << edge->end2 << " " << edge->gap << " " << edge->support << " "
+            << edge->aln_len << " " << edge->aln_score << " " << (edge->edge_type == EdgeType::SPAN ? "SPAN" : "SPLINT") << endl;
+  }
 #ifdef TNF_PATH_RESOLUTION
   _graph->compute_edge_tnfs();
 #endif

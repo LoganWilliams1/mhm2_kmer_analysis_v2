@@ -77,6 +77,9 @@ struct Aln {
   std::pair<int, int> get_unaligned_overlaps() const;
   double calc_identity() const;
   bool check_quality() const;
+  static bool cmp(const Aln &aln1, const Aln &aln2);
+  friend bool operator==(const Aln &aln1, const Aln &aln2);
+  friend bool operator!=(const Aln &aln1, const Aln &aln2);
 };  // class Aln
 
 class Alns {

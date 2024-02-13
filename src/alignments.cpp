@@ -179,7 +179,8 @@ string Aln::to_paf_string() const {
   ostringstream os;
   os << read_id << "\t" << rstart + 1 << "\t" << rstop << "\t" << rlen << "\t"
      << "Contig" << cid << "\t" << cstart + 1 << "\t" << cstop << "\t" << clen << "\t" << (orient == '+' ? "Plus" : "Minus") << "\t"
-     << score1 << "\t" << score2;
+     << score1 << "\t"
+     << "0";  // score2;
   return os.str();
 }
 
@@ -252,6 +253,46 @@ bool Aln::check_quality() const {
   DBG_VERBOSE(cigar, " ", aln_len, " ", mismatches, " [", cigar_aln_len, " ", cigar_mismatches, "]\n");
   return true;
 }
+
+bool Aln::cmp(const Aln &aln1, const Aln &aln2) {
+  if (aln1.read_id == aln2.read_id) {
+    // sort by score, then cstart, then rstart, to get the same ordering across runs (can't use cid since that can change
+    // between runs
+    if (aln1.score1 != aln2.score1) return aln1.score1 > aln2.score1;
+    if (aln1.clen != aln2.clen) return aln1.clen > aln2.clen;
+    if (aln1.cstart != aln2.cstart) return aln1.cstart < aln2.cstart;
+    if (aln1.rstart != aln2.rstart) return aln1.rstart < aln2.rstart;
+    if (aln1.cstop != aln2.cstop) return aln1.cstop < aln2.cstop;
+    if (aln1.rstop != aln2.rstop) return aln1.rstop < aln2.rstop;
+    if (aln1.orient != aln2.orient) return aln1.orient < aln2.orient;
+    if (aln1.cid != aln2.cid) return aln1.cid < aln2.cid;
+    // WARN("Duplicate alns: ", aln1.to_paf_string(), " ", aln2.to_paf_string());
+    // if (aln1 != aln2) WARN("BUT NOT EQUAL!");
+  }
+  if (aln1.read_id.length() == aln2.read_id.length()) {
+    auto id_len = aln1.read_id.length();
+    auto id_cmp = aln1.read_id.compare(0, id_len - 2, aln2.read_id, 0, id_len - 2);
+    if (id_cmp == 0) return (aln1.read_id[id_len - 1] == '1');
+    return id_cmp > 0;
+  }
+  return aln1.read_id > aln2.read_id;
+}
+
+bool operator==(const Aln &aln1, const Aln &aln2) {
+  if (aln1.read_id != aln2.read_id) return false;
+  if (aln1.cid != aln2.cid) return false;
+  if (aln1.cstart != aln2.cstart) return false;
+  if (aln1.cstop != aln2.cstop) return false;
+  if (aln1.clen != aln2.clen) return false;
+  if (aln1.rstart != aln2.rstart) return false;
+  if (aln1.rstop != aln2.rstop) return false;
+  if (aln1.rlen != aln2.rlen) return false;
+  if (aln1.score1 != aln2.score1) return false;
+  if (aln1.orient != aln2.orient) return false;
+  return true;
+}
+
+bool operator!=(const Aln &aln1, const Aln &aln2) { return (!(aln1 == aln2)); }
 
 //
 // class Alns
@@ -430,23 +471,12 @@ void Alns::sort_alns() {
   BaseTimer timer(__FILEFUNC__);
   timer.start();
   // sort the alns by name and then for the read from best score to worst - this is needed in later stages
-  std::sort(begin(), end(), [](const Aln &elem1, const Aln &elem2) {
-    if (elem1.read_id == elem2.read_id) {
-      // sort by score, then contig len then last by cid to get a deterministic ordering
-      if (elem1.score1 == elem2.score1) {
-        if (elem1.clen == elem2.clen) return elem1.cid > elem2.cid;
-        return elem1.clen > elem2.clen;
-      }
-      return elem1.score1 > elem2.score1;
-    }
-    if (elem1.read_id.length() == elem2.read_id.length()) {
-      auto rlen = elem1.read_id.length();
-      auto cmp = elem1.read_id.compare(0, rlen - 2, elem2.read_id, 0, rlen - 2);
-      if (cmp == 0) return (elem1.read_id[rlen - 1] == '1');
-      return cmp > 0;
-    }
-    return elem1.read_id > elem2.read_id;
-  });
+  std::sort(alns.begin(), alns.end(), Aln::cmp);
+  // now purge any duplicates
+  auto start_size = alns.size();
+  auto ip = unique(alns.begin(), alns.end());
+  alns.resize(distance(alns.begin(), ip));
   timer.stop();
-  LOG("sort_alns took ", timer.get_elapsed(), " s\n");
+  auto num_dups = start_size - alns.size();
+  LOG("Sorted alns and removed ", num_dups, " duplicates in ", timer.get_elapsed(), " s\n");
 }

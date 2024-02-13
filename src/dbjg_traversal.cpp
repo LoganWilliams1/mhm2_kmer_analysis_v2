@@ -601,7 +601,11 @@ void traverse_debruijn_graph(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kme
   auto num_ctgs = my_uutigs.size();
   auto fut = upcxx_utils::reduce_prefix(num_ctgs, upcxx::op_fast_add).then([num_ctgs, &my_uutigs](size_t my_prefix) {
     auto my_counter = my_prefix - num_ctgs;  // get my start
-    for (auto it = my_uutigs.begin(); it != my_uutigs.end(); it++) it->id = my_counter++;
+    std::hash<string> id_hash;
+    for (auto it = my_uutigs.begin(); it != my_uutigs.end(); it++) {
+      // it->id = my_counter++;
+      it->id = id_hash(it->seq) % INT64_MAX;
+    }
   });
   fut.wait();
   barrier();
