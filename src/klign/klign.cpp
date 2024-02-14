@@ -637,7 +637,7 @@ class Aligner {
           pos_in_read = rlen - (kmer_len + pos_in_read);
         }
         auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, clen, pos_in_ctg, pos_in_read, rlen);
-        assert(cstart >= 0 && cstart + overlap_len <= ctg_and_read_loc.clen);
+        assert(cstart >= 0 && cstart + overlap_len <= clen);
         assert(overlap_len <= 2 * rlen);
         // has this alignment already been calculated?
         if (prev_cstart == cstart) continue;
