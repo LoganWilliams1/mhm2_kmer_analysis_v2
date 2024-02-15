@@ -655,16 +655,16 @@ void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kme
 
   get_splints_from_alns(alns, graph);
   // get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
-  dbg_ofs.open("graph-edges-" + to_string(rank_me()));
-  for (auto edge = graph->get_first_local_edge(); edge != nullptr; edge = graph->get_next_local_edge()) {
-    dbg_ofs << edge->cids << " " << edge->end1 << " " << edge->end2 << " " << edge->gap << " " << edge->support << " "
-            << edge->aln_len << " " << edge->aln_score << " " << (edge->edge_type == EdgeType::SPAN ? "SPAN" : "SPLINT") << endl;
-  }
 #ifdef TNF_PATH_RESOLUTION
   _graph->compute_edge_tnfs();
 #endif
   int64_t mismatched = 0, conflicts = 0, empty_spans = 0;
   _graph->purge_error_edges(&mismatched, &conflicts, &empty_spans);
+  dbg_ofs.open("graph-edges-" + to_string(rank_me()));
+  for (auto edge = graph->get_first_local_edge(); edge != nullptr; edge = graph->get_next_local_edge()) {
+    dbg_ofs << edge->cids << " " << edge->end1 << " " << edge->end2 << " " << edge->gap << " " << edge->support << " "
+            << edge->aln_len << " " << edge->aln_score << " " << (edge->edge_type == EdgeType::SPAN ? "SPAN" : "SPLINT") << endl;
+  }
   auto num_edges = _graph->get_num_edges();
   SLOG_VERBOSE("Purged edges:\n");
   SLOG_VERBOSE("  mismatched:  ", perc_str(reduce_one(mismatched, op_fast_add, 0).wait(), num_edges), "\n");

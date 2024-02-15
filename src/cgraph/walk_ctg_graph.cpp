@@ -289,13 +289,20 @@ static void get_ctgs_from_walks(int max_kmer_len, int kmer_len, int break_scaff_
   }
   barrier();
   gap_stats.print();
-  // now get unique ids for all the contigs
+// now get unique ids for all the contigs
+#ifdef CIDS_FROM_HASH
+  // compute the cid from the hash of the seq. This is for reproducibility, and will likely fail for very large collections of
+  // ctgs
+  std::hash<string> id_hash;
+  for (auto it = ctgs.begin(); it != ctgs.end(); it++) it->id = id_hash(it->seq) % INT64_MAX;
+#else
   size_t num_ctgs = ctgs.size();
   auto fut = upcxx_utils::reduce_prefix(num_ctgs, upcxx::op_fast_add).then([num_ctgs, &ctgs](size_t my_prefix) {
     auto my_counter = my_prefix - num_ctgs;  // get my start
     for (auto it = ctgs.begin(); it != ctgs.end(); it++) it->id = my_counter++;
   });
   fut.wait();
+#endif
   barrier();
 }
 

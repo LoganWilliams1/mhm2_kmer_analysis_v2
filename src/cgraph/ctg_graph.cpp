@@ -401,11 +401,16 @@ void CtgGraph::add_or_update_edge(Edge &edge) {
         } else {
           auto edge = &it->second;
           // always a failure
-          if (edge->mismatch_error) return;
+          if (edge->mismatch_error || edge->conflict_error) return;
           if (edge->edge_type == EdgeType::SPLINT && new_edge.edge_type == EdgeType::SPAN) {
             DBG_BUILD("span confirms splint: ", edge->cids, "\n");
             edge->support++;
           } else {
+            if (edge->end1 != new_edge.end1 || edge->end2 != new_edge.end2) {
+              /// check for conflicting ends first
+              edge->conflict_error = true;
+              return;
+            }
             if (edge->edge_type == EdgeType::SPLINT && new_edge.edge_type == EdgeType::SPLINT) {
               // check for mismatches in gap size if they're both splints
               if (abs(new_edge.gap - edge->gap) > 2) {
@@ -420,8 +425,6 @@ void CtgGraph::add_or_update_edge(Edge &edge) {
             edge->support++;
             edge->aln_len = max(edge->aln_len, new_edge.aln_len);
             edge->aln_score = max(edge->aln_score, new_edge.aln_score);
-            // count conflicts
-            if (edge->end1 != new_edge.end1 || edge->end2 != new_edge.end2) edge->conflict_error = true;
             if (new_edge.gap > 0) {
               // add reads to positive gap for splints
               edge->gap_reads.insert(edge->gap_reads.end(), new_edge.gap_reads.begin(), new_edge.gap_reads.end());
@@ -439,13 +442,14 @@ void CtgGraph::purge_error_edges(int64_t *mismatched, int64_t *conflicts, int64_
     if (edge->mismatch_error) {
       (*mismatched)++;
       it = edges->erase(it);
+    } else if (edge->conflict_error) {
+      (*conflicts)++;
+      it = edges->erase(it);
     } else if (edge->edge_type == EdgeType::SPAN && edge->gap > 0 && !edge->gap_reads.size()) {
       // don't use positive span gaps without filler
       (*empty_spans)++;
       it = edges->erase(it);
     } else {
-      // retain the conflicts to prevent falsely choosing a path when it should be a fork
-      if (edge->conflict_error) (*conflicts)++;
       it++;
     }
   }

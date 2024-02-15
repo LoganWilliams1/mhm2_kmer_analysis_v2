@@ -38,6 +38,9 @@
  # sublicense such enhancements or derivative works thereof, in binary and source code
  # form.
 
+
+add_definitions(-DCIDS_FROM_HASH)
+
 # use SSW for trimming reads - better quality, but maybe slower
 add_definitions(-DMERGE_READS_TRIM_WITH_SSW)
 

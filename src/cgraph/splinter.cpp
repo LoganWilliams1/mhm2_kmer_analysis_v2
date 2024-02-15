@@ -179,7 +179,7 @@ static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats, ofstre
   }
   _graph->add_or_update_edge(edge);
   dbg_ofs << edge.cids << " " << edge.end1 << " " << edge.end2 << " " << edge.gap << " " << edge.support << " " << edge.aln_len
-          << " " << edge.aln_score << " ";
+          << " " << edge.aln_score << "\n";
   return true;
 }
 
@@ -206,7 +206,7 @@ void get_splints_from_alns(Alns &alns, CtgGraph *graph) {
         auto other_aln = &alns_for_read[j];
         assert(other_aln->read_id == aln->read_id);
         if (add_splint(other_aln, aln, stats, dbg_ofs)) {
-          dbg_ofs << aln->to_paf_string() << "\t" << other_aln->to_paf_string() << endl;
+          // dbg_ofs << aln->to_paf_string() << "\t" << other_aln->to_paf_string() << endl;
           num_splints++;
         }
       }
