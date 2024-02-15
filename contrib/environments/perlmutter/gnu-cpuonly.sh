@@ -1,14 +1,18 @@
-module load PrgEnv-gnu
+module rm PrgEnv-cray
+module rm PrgEnv-intel
+module rm PrgEnv-gnu
+module load PrgEnv-gnu/8.5.0
 module rm gpu
 module load cmake
-#module swap PrgEnv-gnu/8.2.0
-module swap gcc/11.2.0
+module rm gcc
+module load gcc-native
+module swap gcc-native/12.3
 module remove darshan
-module load craype-hugepages2M
+module remove craype-hugepages2M # FIXME when slingshot is fixed
 
 module use /global/common/software/m2878/perlmutter/modulefiles
 module rm upcxx
-module load upcxx/2023.3.0
+module load upcxx/2023.9.0
 export GASNET_OFI_RECEIVE_BUFF_SIZE=recv ; export GASNET_OFI_NUM_RECEIVE_BUFFS=400 # FIXME when slingshot is fixed
 export FI_OFI_RXM_RX_SIZE=8192 # FIXME when slingshot is fixed
 #export FI_CXI_DEFAULT_CQ_SIZE=13107200 # FIXME when slingshot is fixed
