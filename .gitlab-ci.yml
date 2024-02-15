@@ -55,6 +55,7 @@ Perlmutter:build:
     - export MHM2_SOURCE=${MHM2_NEW_SOURCE}
     - cd ${CI_SCRATCH}/repo
     - export OUT=perlmutter.build.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
+    - echo "Submitting batch build script ci/perlmutter.build.sh output will be in $OUT"
     - sbatch --output=$OUT --account=m2865 --qos=debug --time=30:00 --nodes=1 -C gpu --wait --wrap="${MHM2_SOURCE}/ci/perlmutter.build.sh"
     - cat $OUT
     - echo "Perlmutter build done"
