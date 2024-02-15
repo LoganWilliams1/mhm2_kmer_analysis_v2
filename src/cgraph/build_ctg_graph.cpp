@@ -654,7 +654,7 @@ void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kme
   dbg_ofs.close();
 
   get_splints_from_alns(alns, graph);
-  // get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
+  get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
 #ifdef TNF_PATH_RESOLUTION
   _graph->compute_edge_tnfs();
 #endif

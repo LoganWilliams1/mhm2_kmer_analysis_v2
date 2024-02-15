@@ -207,6 +207,8 @@ class CtgGraph {
   HASH_TABLE<cid_t, shared_ptr<Vertex>> vertex_cache;
   HASH_TABLE<CidPair, shared_ptr<Edge>> edge_cache;
 
+  ofstream dbg_ofs;
+
   struct VertexDepthInfo {
     cid_t cid;
     double depth;

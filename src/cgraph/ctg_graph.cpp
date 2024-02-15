@@ -173,6 +173,7 @@ CtgGraph::CtgGraph()
     , edge_cache({}) {
   vertex_cache.reserve(CGRAPH_MAX_CACHE_SIZE);
   edge_cache.reserve(CGRAPH_MAX_CACHE_SIZE);
+  dbg_ofs.open("cgraph-" + to_string(rank_me()));
 }
 
 void CtgGraph::clear() {
@@ -184,7 +185,10 @@ void CtgGraph::clear() {
   }
 }
 
-CtgGraph::~CtgGraph() { clear(); }
+CtgGraph::~CtgGraph() {
+  clear();
+  dbg_ofs.close();
+}
 
 int64_t CtgGraph::get_num_vertices(bool all) {
   if (!all)
@@ -391,6 +395,8 @@ Edge *CtgGraph::get_next_local_edge() {
 }
 
 void CtgGraph::add_or_update_edge(Edge &edge) {
+  dbg_ofs << edge.cids << " " << edge.end1 << " " << edge.end2 << " " << edge.gap << " " << edge.support << " " << edge.aln_len
+          << " " << edge.aln_score << (edge.edge_type == EdgeType::SPLINT ? " SPLINT\n" : " SPAN\n");
   upcxx::rpc(
       get_edge_target_rank(edge.cids),
       [](edge_map_t &edges, const Edge &new_edge) {

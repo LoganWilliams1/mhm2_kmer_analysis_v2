@@ -357,7 +357,6 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
   int read_len = 0;
   Aln prev_best_aln;
   string read_status = "", type_status = "", prev_read_status = "", prev_type_status = "";
-  ofstream dbg_ofs("spans-alns-" + to_string(rank_me()));
   while (aln_i < (int64_t)alns.size()) {
     vector<Aln> alns_for_read;
     t_get_alns.start();
