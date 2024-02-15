@@ -4,8 +4,9 @@ module rm PrgEnv-gnu
 module load PrgEnv-gnu/8.5.0
 module load gpu
 module load cmake
-module load gcc
-module swap gcc/12.2.0
+module rm gcc
+module load gcc-native
+module swap gcc-native/12.3
 module remove darshan
 module rm craype-hugepages2M # FIXME when slingshot is fixed
 
