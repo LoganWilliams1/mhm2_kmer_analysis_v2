@@ -148,14 +148,14 @@ double mean_spanning_clone(double g, double k, double l, double c1, double c2, d
   }
 }
 
-double estimate_gap_size(double meanAnchor, double k, double l, double c1, double c2, double mu, double sigma) {
-  double gMax = mu + 3 * sigma - 2 * k;
-  double gMin = -(k - 2);
+double estimate_gap_size(double meanAnchor, double kmer_len, double rlen, double clen1, double clen2, double mu, double sigma) {
+  double gMax = mu + 3 * sigma - 2 * kmer_len;
+  double gMin = -(kmer_len - 2);
   double gMid = mu - meanAnchor;
   // Negative gap size padding disabled for metagenomes
   // if (gMid < gMin) gMid = gMin + 1;
   if (gMid > gMax) gMid = gMax - 1;
-  double aMid = mean_spanning_clone(gMid, k, l, c1, c2, mu, sigma) - gMid;
+  double aMid = mean_spanning_clone(gMid, kmer_len, rlen, clen1, clen2, mu, sigma) - gMid;
   double deltaG = gMax - gMin;
   double iterations = 0;
   while (deltaG > 10) {
@@ -163,11 +163,11 @@ double estimate_gap_size(double meanAnchor, double k, double l, double c1, doubl
     if (meanAnchor > aMid) {
       gMax = gMid;
       gMid = (gMid + gMin) / 2;
-      aMid = mean_spanning_clone(gMid, k, l, c1, c2, mu, sigma) - gMid;
+      aMid = mean_spanning_clone(gMid, kmer_len, rlen, clen1, clen2, mu, sigma) - gMid;
     } else if (meanAnchor < aMid) {
       gMin = gMid;
       gMid = (gMid + gMax) / 2;
-      aMid = mean_spanning_clone(gMid, k, l, c1, c2, mu, sigma) - gMid;
+      aMid = mean_spanning_clone(gMid, kmer_len, rlen, clen1, clen2, mu, sigma) - gMid;
     } else {
       break;
     }
@@ -367,7 +367,6 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
     if (get_best_span_aln(insert_avg, insert_stddev, alns_for_read, best_aln, read_status, type_status, &reject_5_trunc,
                           &reject_3_trunc, &reject_uninf)) {
       if (!prev_best_aln.read_id.empty()) {
-        read_len = best_aln.rlen;
         auto best_read_id_len = best_aln.read_id.length();
         auto prev_read_id_len = prev_best_aln.read_id.length();
         if (best_read_id_len == prev_read_id_len &&
@@ -376,6 +375,7 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
           if (best_aln.cid == prev_best_aln.cid) {
             result_counts[(int)ProcessPairResult::FAIL_SELF_LINK]++;
           } else {
+            read_len = best_aln.rlen;
             num_pairs++;
             auto res = process_pair(insert_avg, insert_stddev, prev_best_aln, best_aln, prev_type_status, type_status,
                                     prev_read_status, read_status);
@@ -413,6 +413,8 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
 #endif
   int64_t num_spans_only = 0;
   int64_t num_pos_spans = 0;
+  assert(read_len > 0);
+  ofstream dbg_ofs("span-gap-diffs-" + to_string(rank_me()));
   for (auto edge = _graph->get_first_local_edge(); edge != nullptr; edge = _graph->get_next_local_edge()) {
     if (edge->edge_type == EdgeType::SPAN) {
       num_spans_only++;
@@ -423,8 +425,13 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
       if (clen1 >= clen2) swap(clen1, clen2);
       // it appears that the full complex calculation (taken from meraculous) doesn't actually improve anything
       // compared to a simple setting based on the insert average
-      edge->gap = estimate_gap_size(mean_offset, kmer_len, read_len, clen1, clen2, insert_avg, insert_stddev);
-      //      edge->gap = mean_gap_estimate;
+      auto gap_est = estimate_gap_size(mean_offset, kmer_len, read_len, clen1, clen2, insert_avg, insert_stddev);
+      // if (edge->cids.cid1 == 1494613493253140094 && edge->cids.cid2 == 408126440734532345)
+      //   dbg_ofs << mean_offset << " " << kmer_len << " " << read_len << " " << clen1 << " " << clen2 << " " << insert_avg << " "
+      //           << insert_stddev << endl;
+      dbg_ofs << *edge << " " << gap_est << " " << mean_gap_estimate << " " << (gap_est - mean_gap_estimate) << " " << read_len
+              << endl;
+      edge->gap = gap_est;
       if (edge->gap > 0) num_pos_spans++;
       // debug print in form comparable to mhm
       string ctg1 = "Contig" + to_string(edge->cids.cid1) + "." + to_string(edge->end1);

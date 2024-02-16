@@ -96,6 +96,12 @@ string edge_type_str(EdgeType edge_type) {
   }
 }
 
+ostream &operator<<(ostream &os, const Edge &edge) {
+  os << edge.cids << " " << edge.end1 << " " << edge.end2 << " " << edge.gap << " " << edge.support << " " << edge.aln_len << " "
+     << edge.aln_score << " " << edge_type_str(edge.edge_type);
+  return os;
+}
+
 size_t CtgGraph::get_vertex_target_rank(cid_t cid) { return std::hash<cid_t>{}(cid) % upcxx::rank_n(); }
 
 size_t CtgGraph::get_edge_target_rank(CidPair &cids) { return std::hash<CidPair>{}(cids) % upcxx::rank_n(); }
@@ -395,8 +401,7 @@ Edge *CtgGraph::get_next_local_edge() {
 }
 
 void CtgGraph::add_or_update_edge(Edge &edge) {
-  dbg_ofs << edge.cids << " " << edge.end1 << " " << edge.end2 << " " << edge.gap << " " << edge.support << " " << edge.aln_len
-          << " " << edge.aln_score << (edge.edge_type == EdgeType::SPLINT ? " SPLINT\n" : " SPAN\n");
+  dbg_ofs << edge << endl;
   upcxx::rpc(
       get_edge_target_rank(edge.cids),
       [](edge_map_t &edges, const Edge &new_edge) {
@@ -408,15 +413,15 @@ void CtgGraph::add_or_update_edge(Edge &edge) {
           auto edge = &it->second;
           // always a failure
           if (edge->mismatch_error || edge->conflict_error) return;
+          if (edge->end1 != new_edge.end1 || edge->end2 != new_edge.end2) {
+            /// check for conflicting ends first
+            edge->conflict_error = true;
+            return;
+          }
           if (edge->edge_type == EdgeType::SPLINT && new_edge.edge_type == EdgeType::SPAN) {
             DBG_BUILD("span confirms splint: ", edge->cids, "\n");
             edge->support++;
           } else {
-            if (edge->end1 != new_edge.end1 || edge->end2 != new_edge.end2) {
-              /// check for conflicting ends first
-              edge->conflict_error = true;
-              return;
-            }
             if (edge->edge_type == EdgeType::SPLINT && new_edge.edge_type == EdgeType::SPLINT) {
               // check for mismatches in gap size if they're both splints
               if (abs(new_edge.gap - edge->gap) > 2) {
@@ -426,13 +431,14 @@ void CtgGraph::add_or_update_edge(Edge &edge) {
                 return;
               }
               edge->gap = min(new_edge.gap, edge->gap);
+            } else if (edge->edge_type == EdgeType::SPAN && new_edge.edge_type == EdgeType::SPAN) {
+              edge->gap += new_edge.gap;
             }
-            if (edge->edge_type == EdgeType::SPAN && new_edge.edge_type == EdgeType::SPAN) edge->gap += new_edge.gap;
             edge->support++;
             edge->aln_len = max(edge->aln_len, new_edge.aln_len);
             edge->aln_score = max(edge->aln_score, new_edge.aln_score);
             if (new_edge.gap > 0) {
-              // add reads to positive gap for splints
+              // add reads to positive gap
               edge->gap_reads.insert(edge->gap_reads.end(), new_edge.gap_reads.begin(), new_edge.gap_reads.end());
             }
           }

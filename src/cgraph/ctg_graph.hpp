@@ -159,6 +159,8 @@ struct Edge {
                           tnf_prob
 #endif
   );
+
+  friend ostream &operator<<(ostream &os, const Edge &edge);
 };
 
 struct Vertex {
