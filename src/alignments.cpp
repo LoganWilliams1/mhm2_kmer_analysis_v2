@@ -179,8 +179,8 @@ string Aln::to_paf_string() const {
   ostringstream os;
   os << read_id << "\t" << rstart + 1 << "\t" << rstop << "\t" << rlen << "\t"
      << "Contig" << cid << "\t" << cstart + 1 << "\t" << cstop << "\t" << clen << "\t" << (orient == '+' ? "Plus" : "Minus") << "\t"
-     << score1 << "\t"
-     << "0";  // score2;
+     << score1 << "\t" << score2;
+  //<< "0";
   return os.str();
 }
 
