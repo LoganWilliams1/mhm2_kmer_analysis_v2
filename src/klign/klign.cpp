@@ -325,6 +325,7 @@ class KmerCtgDHT {
       num_kmers += kmers.size();
       for (unsigned i = 0; i < kmers.size(); i++) {
         ctg_loc.pos = i;
+        if (ctg_loc.pos >= ctg_loc.clen) DIE("ctg_loc.pos ", ctg_loc.pos, " ctg_loc.clen ", ctg_loc.clen);
         if (!kmers[i].is_valid()) continue;
         add_kmer(kmers[i], ctg_loc);
       }
@@ -454,6 +455,9 @@ class Aligner {
     num_alns++;
     size_t clen = ctg_seq.length();
     size_t rlen = rseq.length();
+    assert(clen > cstart);
+    assert(rlen > rstart);
+    assert(overlap_len <= clen && overlap_len <= rlen);
     string_view cseq = string_view(ctg_seq.data() + cstart, overlap_len);
     if (cseq.compare(0, overlap_len, rseq, rstart, overlap_len) == 0) {
       num_perfect_alns++;
@@ -630,6 +634,9 @@ class Aligner {
         bool ctg_is_rc = ctg_and_read_loc.ctg_is_rc;
         int pos_in_read = ctg_and_read_loc.pos_in_read;
         bool read_is_rc = ctg_and_read_loc.read_is_rc;
+        if (pos_in_ctg >= clen || pos_in_read >= rlen)
+          DIE("pos_in_ctg ", pos_in_ctg, " ", clen, " pos_in_read ", pos_in_read, " rlen ", rlen);
+
         char orient = '+';
         if (ctg_is_rc != read_is_rc) {
           // it's revcomp in either contig or read, but not in both or neither
@@ -660,6 +667,7 @@ class Aligner {
           local_ctg_fetches++;
         } else {
           auto target = seq_gptr.where();
+          if (pos_in_ctg >= clen) DIE(" pos_in_ctg ", pos_in_ctg, " clen ", clen);
           CtgLoc ctg_loc({cid, seq_gptr, clen, depth, pos_in_ctg, ctg_is_rc});
           rget_requests[target].push_back({ctg_loc, rname, rseq, rstart, cstart, orient, overlap_len, read_group_id});
           if (rget_requests[target].size() == rget_buf_size) do_rget_irregular(target, timers);
@@ -746,6 +754,7 @@ static upcxx::future<> fetch_ctg_maps_for_target(int target_rank, KmerCtgDHT<MAX
               }
               auto it = read_record->aligned_ctgs_map.find(ctg_loc.cid);
               auto new_pos_in_read = (ctg_loc.is_rc == read_is_rc ? pos_in_read : rlen - (kmer_len + pos_in_read));
+              if (ctg_loc.pos >= ctg_loc.clen) DIE("ctg_loc.pos ", ctg_loc.pos, " ctg_loc.clen ", ctg_loc.clen);
               auto [cstart, rstart, overlap_len] = get_start_positions(kmer_len, ctg_loc.clen, ctg_loc.pos, new_pos_in_read, rlen);
               if (it == read_record->aligned_ctgs_map.end())
                 it = read_record->aligned_ctgs_map

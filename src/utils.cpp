@@ -292,7 +292,7 @@ void pin_proc(vector<int> cpus) {
 void pin_cpu() {
   auto pinned_cpus = get_pinned_cpus();
   pin_proc({pinned_cpus[upcxx::rank_me() % pinned_cpus.size()]});
-  SLOG("Pinning to logical cpus: process 0 on node 0 pinned to cpu ", get_proc_pin(), "\n");
+  SLOG_VERBOSE("Pinning to logical cpus: process 0 on node 0 pinned to cpu ", get_proc_pin(), "\n");
 }
 
 void pin_core() {
@@ -323,7 +323,7 @@ void pin_core() {
   }
   if (!my_thread_siblings.empty()) {
     pin_proc(my_thread_siblings);
-    SLOG("Pinning to cores: process 0 on node 0 pinned to cpus ", get_proc_pin(), "\n");
+    SLOG_VERBOSE("Pinning to cores: process 0 on node 0 pinned to cpus ", get_proc_pin(), "\n");
   }
 }
 
@@ -367,8 +367,8 @@ void pin_numa(bool round_robin) {
   vector<int> my_cpu_list = numa_node_list[my_numa_node].second;
   sort(my_cpu_list.begin(), my_cpu_list.end());
   pin_proc(my_cpu_list);
-  SLOG("Pinning to ", numa_nodes_to_use, " NUMA domains each with ", cores_per_numa_node, " cores, ", hdw_threads_per_numa_node,
-       " cpus: process 0 on node 0 is pinned to cpus ", get_proc_pin(), "\n");
+  SLOG_VERBOSE("Pinning to ", numa_nodes_to_use, " NUMA domains each with ", cores_per_numa_node, " cores, ",
+               hdw_threads_per_numa_node, " cpus: process 0 on node 0 is pinned to cpus ", get_proc_pin(), "\n");
   DBGLOG("Pinned to numa domain ", my_numa_node, ": ", get_proc_pin(), "\n");
 }
 
@@ -454,21 +454,21 @@ void log_env() {
 
 #ifndef DEBUG
     // skip cruft unless debugging
-    pos = env.find("PATH");   // skip path
+    pos = env.find("PATH");  // skip path
     if (pos != string::npos) continue;
-    pos = env.find("_DIR");   // skip dir
+    pos = env.find("_DIR");  // skip dir
     if (pos != string::npos) continue;
-    pos = env.find("CRAY");   // skip cray
+    pos = env.find("CRAY");  // skip cray
     if (pos != string::npos) continue;
-    pos = env.find("PE_");    // skip cray programming envs
+    pos = env.find("PE_");  // skip cray programming envs
     if (pos != string::npos) continue;
-    pos = env.find("LANG");   // skip language
+    pos = env.find("LANG");  // skip language
     if (pos != string::npos) continue;
-    pos = env.find("SSH");    // skip ssh
+    pos = env.find("SSH");  // skip ssh
     if (pos != string::npos) continue;
-    pos = env.find("TERM");   // skip terminal
+    pos = env.find("TERM");  // skip terminal
     if (pos != string::npos) continue;
-    pos = env.find("TTY");    // skip tty
+    pos = env.find("TTY");  // skip tty
     if (pos != string::npos) continue;
     pos = env.find("COLOR");  // skip color
     if (pos != string::npos) continue;
