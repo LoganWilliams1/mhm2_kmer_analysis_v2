@@ -205,7 +205,7 @@ struct CtgBaseDepths {
     free_base_counts(read_group_id);
   }  // calc_stats
 
-};   // struct CtgBaseDepths
+};  // struct CtgBaseDepths
 
 class CtgsDepths {
  private:
@@ -505,10 +505,10 @@ class CtgsDepths {
     Timings::set_pending(when_all(fut_progbar, fut_report));
   }
 
-  void write_aln_depths(string fname, const vector<string> &read_group_names) {
+  void set_aln_depths(string fname, const vector<string> &read_group_names) {
     DBG(__FILEFUNC__, "\n");
     if (read_group_names.size() != num_read_groups)
-      SDIE("Wong size if read_group_names.  Expecting ", num_read_groups, " got ", read_group_names.size());
+      SDIE("Wrong size if read_group_names.  Expecting ", num_read_groups, " got ", read_group_names.size());
     finish_all();
     shared_ptr<upcxx_utils::dist_ofstream> ctg_ofstream;
     if (fname != "") ctg_ofstream = make_shared<upcxx_utils::dist_ofstream>(fname);
@@ -559,9 +559,9 @@ class CtgsDepths {
       ctg_ofstream->close();  // sync and print stats
     }
 
-  }  // write_aln_depths
+  }  // set_aln_depths
 
-};   // class CtgsDepths
+};  // class CtgsDepths
 
 // wrapper method for scaffolding to just calculate depths
 // so squash all read_groups into the total
@@ -571,7 +571,7 @@ void compute_aln_depths_scaffolding(Contigs &ctgs, const Alns &alns, int max_kme
   sh_ctgs_depths->compute_aln_depths_by_read_group(alns, double_count_merged_region, -1);
   vector<string> names;
   names.push_back("");
-  sh_ctgs_depths->write_aln_depths("", names);
+  sh_ctgs_depths->set_aln_depths("", names);
 }
 
 // methods for post-asm
@@ -585,5 +585,5 @@ void compute_aln_depths_post_asm(CtgsDepths &ctg_depths, const Alns &alns, bool 
 }
 
 void write_aln_depths(CtgsDepths &ctg_depths, string fname, const vector<string> &read_group_names) {
-  ctg_depths.write_aln_depths(fname, read_group_names);
+  ctg_depths.set_aln_depths(fname, read_group_names);
 }
