@@ -14,12 +14,12 @@ Total length (>= 10000 bp)   81561222
 Total length (>= 25000 bp)   71294433      
 Total length (>= 50000 bp)   61462061      
 # contigs                    7210          
-Largest contig               1462373       
+Largest contig               1244687
 Total length                 95193239      
 Reference length             102521842     
 N50                          101664
 N90                          5922
-auN                          207291.2      
+auN                          201623.4
 L50                          208
 L90                          1878          
 # misassemblies              108           
@@ -34,12 +34,12 @@ Unaligned length             1227
 Genome fraction (%)          93.539        
 Duplication ratio            1.003         
 # N's per 100 kbp            0.00          
-# mismatches per 100 kbp     19.99         
+# mismatches per 100 kbp     22.25
 # indels per 100 kbp         1.40          
-Largest alignment            1462373       
+Largest alignment            1244687
 Total aligned length         95179246      
 NA50                         100125        
 NA90                         5857
-auNA                         204806.5      
-LA50                         209           
+auNA                         194639.3
+LA50                         217
 LA90                         1931          
