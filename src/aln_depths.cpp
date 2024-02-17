@@ -529,20 +529,6 @@ class CtgsDepths {
     for (auto it = ctgs.begin(); it != ctgs.end(); it++) {
       auto &ctg = *it;
       if ((int)ctg.seq.length() < min_ctg_len) continue;
-      auto rg_avg_vars = fut_get_depth(ctg.id).wait();
-      assert(rg_avg_vars.size() == num_read_groups);
-      double tot_depth = 0.0;
-      for (int rg = 0; rg < num_read_groups; rg++) tot_depth += rg_avg_vars[rg].avg;
-      ctg.depth = tot_depth;
-      if (ctg_ofstream) {
-        *ctg_ofstream << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << tot_depth;
-        for (int rg = 0; rg < num_read_groups; rg++) {
-          *ctg_ofstream << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
-        }
-        *ctg_ofstream << "\n";
-      }
-
-      /*
       auto fut_rg_avg_vars = fut_get_depth(ctg.id);
       auto fut_ready = when_all(fut_chain, fut_rg_avg_vars);
       fut_chain =
@@ -563,10 +549,9 @@ class CtgsDepths {
           });
       limit_outstanding_futures(fut_chain).wait();
       upcxx::progress();
-      */
     }
-    // flush_outstanding_futures();
-    // fut_chain.wait();
+    flush_outstanding_futures();
+    fut_chain.wait();
     barrier();
     if (fname != "") {
       assert(ctg_ofstream);
