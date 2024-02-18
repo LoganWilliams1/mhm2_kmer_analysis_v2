@@ -384,6 +384,7 @@ bool Options::load(int argc, char **argv) {
   app.add_option("-u, --unpaired-reads", unpaired_fnames, "Unpaired or single reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
       ->check(CLI::ExistingFile);
+  add_flag_def(app, "--adapter-trim", adapter_trim, "Trim adapters using reference given by --adapter-refs");
   app.add_option("--adapter-refs", adapter_fname, "File containing adapter sequences for trimming in FASTA format.")
       ->check(CLI::ExistingFile);
   app.add_option("-i, --insert", insert_size, "Insert size (average:stddev) (autodetected by default).")
@@ -486,6 +487,8 @@ bool Options::load(int argc, char **argv) {
     }
     unpaired_fnames.clear();
   }
+
+  if (!adapter_trim) adapter_fname.clear();
 
   // we can get restart incorrectly set in the config file from restarted runs
   if (*cfg_opt) {
