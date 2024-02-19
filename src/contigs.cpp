@@ -184,17 +184,15 @@ void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const stri
   }
   of.close();  // sync and output stats
 #ifdef DEBUG
-  /*
   // two important things here.
   // 1: touch and test the load_contigs code when debugging
   // 2: ensure restarts keep identical contigs in the ranks when debugging after load_contigs balances the input
   SLOG_VERBOSE("Reloading contigs from file to rebalance\n");
-  load_contigs(fname);
-  */
+  load_contigs(fname, prefix);
 #endif
 }
 
-void Contigs::load_contigs(const string &ctgs_fname) {
+void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
   auto get_file_offset_for_rank = [](ifstream &f, int rank, string &ctg_prefix, size_t file_size) -> size_t {
     if (rank == 0) return 0;
     if (rank == rank_n()) return file_size;
@@ -215,7 +213,7 @@ void Contigs::load_contigs(const string &ctgs_fname) {
   contigs.clear();
   dist_object<upcxx::promise<size_t>> dist_stop_prom(world());
   string line;
-  string ctg_prefix = ">Contig";
+  string ctg_prefix = ">" + prefix;
   string cname, seq, buf;
   size_t bytes_read = 0;
   size_t file_size = 0;

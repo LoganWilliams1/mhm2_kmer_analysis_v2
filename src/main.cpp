@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
-      ctgs.load_contigs(options->ctgs_fname);
+      ctgs.load_contigs(options->ctgs_fname, "contig_");
       stage_timers.load_ctgs->stop();
     }
 
@@ -424,7 +424,7 @@ int main(int argc, char **argv) {
     memory_tracker.start();
     BarrierTimer("Post Processing");
     LOG_MEM("Before Post-Processing");
-    if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname);
+    if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname, "contig_");
     post_assembly(ctgs, options, max_expected_ins_size);
     FastqReaders::close_all();
     memory_tracker.stop();

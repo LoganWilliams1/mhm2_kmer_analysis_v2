@@ -84,7 +84,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
   string scaff_contigs_fname("scaff-contigs-" + to_string(scaff_kmer_len) + ".fasta");
   if ((options->restart || is_debug) && file_exists(scaff_contigs_fname)) {
     SLOG_VERBOSE("(Re)loading scaffold contigs ", scaff_contigs_fname, "\n");
-    ctgs.load_contigs(scaff_contigs_fname);
+    ctgs.load_contigs(scaff_contigs_fname, "scaffold_");
     LOG_MEM("Loaded contigs");
   } else {
     Alns alns;
