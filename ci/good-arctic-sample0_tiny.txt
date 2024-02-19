@@ -14,7 +14,7 @@ Total length (>= 10000 bp)   0
 Total length (>= 25000 bp)   0
 Total length (>= 50000 bp)   0
 # contigs                    2221
-Largest contig               2937
+Largest contig               2873
 Total length                 1790030
 Reference length             102521842
 N50                          808
@@ -22,12 +22,12 @@ N75                          622
 N90                          549
 auN                          936.3
 L50                          792
-L75                          1316
+L75                          1430
 L90                          1880
-# misassemblies              1
-# misassembled contigs       1
-Misassembled contigs length  1267
-# local misassemblies        0
+# misassemblies              2
+# misassembled contigs       2
+Misassembled contigs length  1880
+# local misassemblies        29
 # scaffold gap ext. mis.     0
 # scaffold gap loc. mis.     0
 # unaligned mis. contigs     0
@@ -38,12 +38,12 @@ Duplication ratio            0.999
 # N's per 100 kbp            0.00
 # mismatches per 100 kbp     159.99
 # indels per 100 kbp         8.39
-Largest alignment            2920
+Largest alignment            2873
 Total aligned length         1788844
 NA50                         807
 NA75                         622
 NA90                         548
 auNA                         934.7
 LA50                         793
-LA75                         1317
+LA75                         1431
 LA90                         1882

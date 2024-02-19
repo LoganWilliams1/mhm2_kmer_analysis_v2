@@ -456,7 +456,8 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   if (mem_ratio > 3.0) mem_ratio = 3.0;
   if (mem_ratio < 0.9)
     SWARN("Insufficent memory for ", fixed, setprecision(3), target_load_factor,
-          " load factor across all data structures; reducing by a factor of ", mem_ratio, ". This may result in an OOM\n");
+          " load factor across all data structures; reducing to ", (mem_ratio * target_load_factor),
+          ". This may result in an OOM or dropped kmers\n");
   max_read_kmers *= mem_ratio;
   max_compact_kmers *= mem_ratio;
   SLOG_CPU_HT("Adjusted element counts by ", fixed, setprecision(3), mem_ratio, ": read kmers ", max_read_kmers, " compact ht ",
