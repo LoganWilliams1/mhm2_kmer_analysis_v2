@@ -173,6 +173,7 @@ void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const stri
   BarrierTimer timer(__FILEFUNC__);
   dist_ofstream of(fname);
   of << std::setprecision(3);
+  size_t my_num_ctgs = 0;
   for (auto it = contigs.begin(); it != contigs.end(); ++it) {
     auto ctg = it;
     if (ctg->seq.length() < min_ctg_len) continue;
@@ -181,6 +182,7 @@ void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const stri
     string seq = (rc_uutig < ctg->seq ? rc_uutig : ctg->seq);
     // for (int64_t i = 0; i < ctg->seq.length(); i += 50) of << ctg->seq.substr(i, 50) << "\n";
     of << seq << "\n";
+    my_num_ctgs++;
   }
   of.close();  // sync and output stats
 #ifdef DEBUG
@@ -188,24 +190,30 @@ void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const stri
   // 1: touch and test the load_contigs code when debugging
   // 2: ensure restarts keep identical contigs in the ranks when debugging after load_contigs balances the input
   SLOG_VERBOSE("Reloading contigs from file to rebalance\n");
+  auto num_prev_ctgs = reduce_one(my_num_ctgs, op_fast_add, 0).wait();
   load_contigs(fname, prefix);
+  // check the correct number of contigs was loaded again
+  auto num_ctgs = reduce_one(contigs.size(), op_fast_add, 0).wait();
+  if (rank_me() == 0 && num_prev_ctgs != num_ctgs) SDIE("Saved ", num_prev_ctgs, " but only loaded ", num_ctgs, " contigs");
 #endif
 }
 
 void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
-  auto get_file_offset_for_rank = [](ifstream &f, int rank, string &ctg_prefix, size_t file_size) -> size_t {
+  auto get_file_offset_for_rank = [ctgs_fname](ifstream &f, int rank, string &ctg_prefix, size_t file_size) -> size_t {
     if (rank == 0) return 0;
-    if (rank == rank_n()) return file_size;
+    assert(rank < rank_n());
     size_t offset = file_size / rank_n() * rank;
     f.seekg(offset);
     string line;
     while (getline(f, line)) {
       if (substr_view(line, 0, ctg_prefix.size()) == ctg_prefix) {
+        LOG("in file ", ctgs_fname, " found ctg_prefix ", ctg_prefix, " line ", line);
         getline(f, line);
-        break;
+        return f.tellg();
       }
     }
-    return f.tellg();
+    DIE("Could not find prefix ", ctg_prefix, " in file ", ctgs_fname);
+    return 0;
   };
 
   SLOG_VERBOSE("Loading contigs from fasta file ", ctgs_fname, "\n");
@@ -219,9 +227,7 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
   size_t file_size = 0;
 
   // broadcast the file size
-  if (rank_me() == 0) {
-    file_size = upcxx_utils::get_file_size(ctgs_fname);
-  }
+  if (rank_me() == 0) file_size = upcxx_utils::get_file_size(ctgs_fname);
   file_size = upcxx::broadcast(file_size, 0).wait();
   DBG("Got filesize=", file_size, "\n");
   ifstream ctgs_file(ctgs_fname);
@@ -249,6 +255,7 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
   ProgressBar progbar(stop_offset - start_offset, "Parsing contigs");
   // these can be equal if the contigs are very long and there are many ranks so this one doesn't get even a full contig
   ctgs_file.seekg(start_offset);
+  int64_t prev_id = -1;
   while (!ctgs_file.eof()) {
     if ((size_t)ctgs_file.tellg() >= stop_offset) break;
     getline(ctgs_file, cname);
@@ -260,7 +267,9 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
     progbar.update(bytes_read);
     // extract the id
     char *endptr;
-    int64_t id = strtol(cname.c_str() + 7, &endptr, 10);
+    int64_t id = strtol(cname.c_str() + ctg_prefix.length(), &endptr, 10);
+    if (id == prev_id) DIE("DUplicate ids ", prev_id, " in file ", ctgs_fname);
+    prev_id = id;
     // depth is the last field in the cname
     double depth = strtod(endptr, NULL);
     Contig contig = {.id = id, .seq = seq, .depth = depth};
