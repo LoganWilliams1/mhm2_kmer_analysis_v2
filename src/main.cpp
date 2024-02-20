@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
-      ctgs.load_contigs(options->ctgs_fname, "contig_");
+      ctgs.load_contigs(options->ctgs_fname, options->ctgs_fname.substr(0, 5) == "scaff" ? "scaffold_" : "contig_");
       stage_timers.load_ctgs->stop();
     }
 
