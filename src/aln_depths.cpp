@@ -390,6 +390,7 @@ class CtgsDepths {
   future<vector<AvgVar<float>>> fut_get_depth(cid_t cid) {
     auto it = ctgs_depths->find(cid);
     if (it != ctgs_depths->end()) {
+      if (it->second.rg_stats.size() == 0) DIE("empty rg stats for cid ", cid);
       return make_future(it->second.rg_stats);
     }
     LOG("Falling back to rpc for cid=", cid, "\n");
@@ -406,6 +407,7 @@ class CtgsDepths {
             DBG("Testing ", rg_base_counts_ptr, "\n");
             assert(rg_base_counts_ptr == nullptr);
           }
+          if (ctg_base_depths.rg_stats.size() == 0) DIE("empty rg stats for cid ", cid);
           return ctg_base_depths.rg_stats;
         },
         ctgs_depths, cid, edge_base_len);
@@ -507,8 +509,7 @@ class CtgsDepths {
 
   void set_aln_depths(string fname, const vector<string> &read_group_names) {
     DBG(__FILEFUNC__, "\n");
-    if (read_group_names.size() != num_read_groups)
-      SDIE("Wrong size if read_group_names.  Expecting ", num_read_groups, " got ", read_group_names.size());
+    assert(read_group_names.size() == num_read_groups);
     finish_all();
     shared_ptr<upcxx_utils::dist_ofstream> ctg_ofstream;
     if (fname != "") ctg_ofstream = make_shared<upcxx_utils::dist_ofstream>(fname);
