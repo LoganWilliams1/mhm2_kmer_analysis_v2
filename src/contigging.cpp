@@ -162,9 +162,9 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     stage_timers.alignments->stop();
     barrier();
     LOG_MEM("Aligned reads to contigs");
-    // #ifdef DEBUG
-    alns.dump_single_file("alns-" + to_string(kmer_len));
-    // #endif
+#ifdef DEBUG
+    alns.dump_single_file("ctg-alns-" + to_string(kmer_len) + ".blast");
+#endif
     tie(ins_avg, ins_stddev) = calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
     // insert size should never be larger than this; if it is that signals some error in the assembly
     max_expected_ins_size = ins_avg + 8 * ins_stddev;

@@ -58,8 +58,6 @@ using namespace std;
 using namespace upcxx;
 using namespace upcxx_utils;
 
-// #define DUMP_LINKS
-
 static CtgGraph *_graph = nullptr;
 
 // functions for evaluating the gap correction analytically assuming Gaussian insert size distribution
@@ -406,15 +404,11 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
   SLOG_VERBOSE("  edist:     ", reduce_one(result_counts[(int)ProcessPairResult::FAIL_EDIST], op_fast_add, 0).wait(), "\n");
   SLOG_VERBOSE("  min gap:   ", reduce_one(result_counts[(int)ProcessPairResult::FAIL_MIN_GAP], op_fast_add, 0).wait(), "\n");
   SLOG_VERBOSE("  uninf.:    ", reduce_one(reject_uninf, op_fast_add, 0).wait(), "\n");
-#ifdef DUMP_LINKS
-  string links_fname = "links-" + to_string(kmer_len) + ".spans.gz";
-  get_rank_path(links_fname, rank_me());
-  zstr::ofstream links_file(links_fname);
-#endif
+
   int64_t num_spans_only = 0;
   int64_t num_pos_spans = 0;
   assert(read_len > 0);
-  ofstream dbg_ofs("span-gap-diffs-" + to_string(rank_me()));
+  // ofstream dbg_ofs("span-gap-diffs-" + to_string(rank_me()));
   for (auto edge = _graph->get_first_local_edge(); edge != nullptr; edge = _graph->get_next_local_edge()) {
     if (edge->edge_type == EdgeType::SPAN) {
       num_spans_only++;
@@ -426,25 +420,16 @@ void get_spans_from_alns(int insert_avg, int insert_stddev, int kmer_len, Alns &
       // it appears that the full complex calculation (taken from meraculous) doesn't actually improve anything
       // compared to a simple setting based on the insert average
       auto gap_est = estimate_gap_size(mean_offset, kmer_len, read_len, clen1, clen2, insert_avg, insert_stddev);
-      // if (edge->cids.cid1 == 1494613493253140094 && edge->cids.cid2 == 408126440734532345)
-      //   dbg_ofs << mean_offset << " " << kmer_len << " " << read_len << " " << clen1 << " " << clen2 << " " << insert_avg << " "
-      //           << insert_stddev << endl;
-      dbg_ofs << *edge << " " << gap_est << " " << mean_gap_estimate << " " << (gap_est - mean_gap_estimate) << " " << read_len
-              << endl;
+      // dbg_ofs << *edge << " " << gap_est << " " << mean_gap_estimate << " " << (gap_est - mean_gap_estimate) << " " << read_len
+      //         << endl;
       edge->gap = gap_est;
       if (edge->gap > 0) num_pos_spans++;
       // debug print in form comparable to mhm
       string ctg1 = "Contig" + to_string(edge->cids.cid1) + "." + to_string(edge->end1);
       string ctg2 = "Contig" + to_string(edge->cids.cid2) + "." + to_string(edge->end2);
       string link = (ctg1 < ctg2 ? ctg1 + "<=>" + ctg2 : ctg2 + "<=>" + ctg1);
-#ifdef DUMP_LINKS
-      links_file << "SPAN\t" << link << "\t0|" << edge->support << "\t" << edge->gap << "\t" << mean_gap_estimate << "\n";
-#endif
     }
   }
-#ifdef DUMP_LINKS
-  links_file.close();
-#endif
   barrier();
   auto tot_num_spans_only = reduce_one(num_spans_only, op_fast_add, 0).wait();
   SLOG_VERBOSE("Found ", perc_str(tot_num_spans_only, _graph->get_num_edges()), " spans\n");

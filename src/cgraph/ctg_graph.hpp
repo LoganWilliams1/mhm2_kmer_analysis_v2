@@ -193,6 +193,8 @@ struct Vertex {
                           tnf,
 #endif
                           walk_score, walk_rank, walk_i);
+
+  friend ostream &operator<<(ostream &os, const Vertex &vertex);
 };
 
 class CtgGraph {
@@ -209,7 +211,7 @@ class CtgGraph {
   HASH_TABLE<cid_t, shared_ptr<Vertex>> vertex_cache;
   HASH_TABLE<CidPair, shared_ptr<Edge>> edge_cache;
 
-  ofstream dbg_ofs;
+  // ofstream dbg_ofs;
 
   struct VertexDepthInfo {
     cid_t cid;
@@ -307,4 +309,5 @@ class CtgGraph {
 #endif
 
   void print_gfa2(const string &gfa_fname, int min_ctg_print_len);
+  void print_graph(const string &fname);
 };

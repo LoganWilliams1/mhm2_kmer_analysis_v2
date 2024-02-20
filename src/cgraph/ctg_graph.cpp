@@ -102,6 +102,11 @@ ostream &operator<<(ostream &os, const Edge &edge) {
   return os;
 }
 
+ostream &operator<<(ostream &os, const Vertex &vertex) {
+  os << vertex.cid << " " << vertex.clen << " " << vertex.depth;
+  return os;
+}
+
 size_t CtgGraph::get_vertex_target_rank(cid_t cid) { return std::hash<cid_t>{}(cid) % upcxx::rank_n(); }
 
 size_t CtgGraph::get_edge_target_rank(CidPair &cids) { return std::hash<CidPair>{}(cids) % upcxx::rank_n(); }
@@ -179,7 +184,7 @@ CtgGraph::CtgGraph()
     , edge_cache({}) {
   vertex_cache.reserve(CGRAPH_MAX_CACHE_SIZE);
   edge_cache.reserve(CGRAPH_MAX_CACHE_SIZE);
-  dbg_ofs.open("cgraph-" + to_string(rank_me()));
+  // dbg_ofs.open("cgraph-" + to_string(rank_me()));
 }
 
 void CtgGraph::clear() {
@@ -193,7 +198,7 @@ void CtgGraph::clear() {
 
 CtgGraph::~CtgGraph() {
   clear();
-  dbg_ofs.close();
+  // dbg_ofs.close();
 }
 
 int64_t CtgGraph::get_num_vertices(bool all) {
@@ -401,7 +406,7 @@ Edge *CtgGraph::get_next_local_edge() {
 }
 
 void CtgGraph::add_or_update_edge(Edge &edge) {
-  dbg_ofs << edge << endl;
+  // dbg_ofs << edge << endl;
   upcxx::rpc(
       get_edge_target_rank(edge.cids),
       [](edge_map_t &edges, const Edge &new_edge) {
@@ -754,4 +759,17 @@ void CtgGraph::print_gfa2(const string &gfa_fname, int min_ctg_print_len) {
     of << "\tsp: " << to_string(edge->support) << "\ttp: " << edge_type_str(edge->edge_type) << "\n";
   }
   of.close();  // sync and prints stats
+}
+
+void CtgGraph::print_graph(const string &fname) {
+  dist_ofstream cgraph_ofs(fname);
+  ostringstream os;
+  for (auto v = get_first_local_vertex(); v != nullptr; v = get_next_local_vertex()) {
+    os << "vertex " << *v << endl;
+  }
+  for (auto edge = get_first_local_edge(); edge != nullptr; edge = get_next_local_edge()) {
+    os << "edge " << *edge << endl;
+  }
+  cgraph_ofs << os.str();
+  cgraph_ofs.close();
 }
