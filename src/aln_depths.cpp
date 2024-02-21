@@ -75,6 +75,9 @@ struct AvgVar {
   AvgVar()
       : avg(0)
       , var(0) {}
+  AvgVar(float avg, float var)
+      : avg(avg)
+      , var(var) {}
 };  // template struct AvgVar
 
 struct CtgLen {
@@ -363,8 +366,14 @@ class CtgsDepths {
   future<vector<AvgVar<float>>> fut_get_depth(cid_t cid) {
     auto it = ctgs_depths->find(cid);
     if (it != ctgs_depths->end()) {
-      if (it->second.rg_stats.size() == 0) DIE("empty rg stats for cid ", cid);
-      return make_future(it->second.rg_stats);
+      auto &ctg_base_depths = it->second;
+      if (ctg_base_depths.rg_stats.size() == 0) {
+        // this can happen when using hash CIDs and we have duplicate contigs. This is a hack to keep going
+        WARN("empty rg stats for cid ", cid, "; likely duplicate contig");
+        ctg_base_depths.rg_stats.push_back({1.0, 1.0});
+      }
+      assert(ctg_base_depths.rg_stats.size() > 0);
+      return make_future(ctg_base_depths.rg_stats);
     }
     LOG("Falling back to rpc for cid=", cid, "\n");
     auto target_rank = get_target_rank(cid);
@@ -372,15 +381,20 @@ class CtgsDepths {
     return upcxx::rpc(
         target_rank,
         [](ctgs_depths_map_t &ctgs_depths, cid_t cid, int edge_base_len) -> vector<AvgVar<float>> {
-          const auto it = ctgs_depths->find(cid);
+          auto it = ctgs_depths->find(cid);
           if (it == ctgs_depths->end()) DIE("could not fetch contig ", cid, "\n");
-          const auto &ctg_base_depths = it->second;
+          auto &ctg_base_depths = it->second;
           auto &read_group_base_counts = ctg_base_depths.read_group_base_counts;
           for (auto &rg_base_counts_ptr : read_group_base_counts) {
             DBG("Testing ", rg_base_counts_ptr, "\n");
             assert(rg_base_counts_ptr == nullptr);
           }
-          if (ctg_base_depths.rg_stats.size() == 0) DIE("empty rg stats for cid ", cid);
+          if (ctg_base_depths.rg_stats.size() == 0) {
+            // this can happen when using hash CIDs and we have duplicate contigs. This is a hack to keep going
+            WARN("empty rg stats for cid ", cid, "; likely duplicate contig");
+            ctg_base_depths.rg_stats.push_back({1.0, 1.0});
+          }
+          assert(ctg_base_depths.rg_stats.size() > 0);
           return ctg_base_depths.rg_stats;
         },
         ctgs_depths, cid, edge_base_len);
