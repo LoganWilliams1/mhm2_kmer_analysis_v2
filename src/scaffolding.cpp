@@ -105,11 +105,9 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     alns.dump_single_file("scaff-alns-" + to_string(scaff_kmer_len) + ".blast");
 #endif
     begin_gasnet_stats("alignment_depths sk = " + to_string(scaff_kmer_len));
-    vector<string> read_group_names;
-    for (auto pr : packed_reads_list) {
-      read_group_names.push_back(pr->get_fname());
-    }
-    compute_aln_depths_scaffolding(ctgs, alns, max_kmer_len, 0, true);
+    AlnDepths aln_depths(ctgs, 0, 1);
+    aln_depths.compute(alns);
+    aln_depths.done_computing();
     end_gasnet_stats();
     LOG_MEM("Compute alignments");
     // always recalculate the insert size because we may need it for resumes of failed runs
@@ -127,7 +125,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     LOG_MEM("Traverse ctg graph");
     ctgs.print_stats(options->min_ctg_print_len);
     int max_scaff_i = (options->dump_gfa ? options->scaff_kmer_lens.size() - 2 : options->scaff_kmer_lens.size() - 1);
-    if ((is_debug || options->checkpoint) && scaff_i < max_scaff_i) {
+    if (is_debug || options->checkpoint) {
       SLOG_VERBOSE("Saving scaffold contigs ", scaff_contigs_fname, "\n");
       stage_timers.dump_ctgs->start();
       ctgs.dump_contigs(scaff_contigs_fname, 0, "scaffold_");
