@@ -49,21 +49,12 @@
 using std::string;
 using std::vector;
 
-#ifdef TNF_PATH_RESOLUTION
-#define nTNF 136
-using tnf_t = std::array<double, nTNF>;
-#endif
-
 using cid_t = int64_t;
 
 struct Contig {
   cid_t id;
   string seq;
   double depth;
-#ifdef TNF_PATH_RESOLUTION
-  // histogram of teranucleotide frequencies for contig similarity check in cgraph walks
-  tnf_t tnf;
-#endif
   uint16_t get_uint16_t_depth() { return (depth > UINT16_MAX ? UINT16_MAX : depth); }
 };
 

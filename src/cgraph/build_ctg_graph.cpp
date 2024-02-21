@@ -231,9 +231,6 @@ static void add_vertices_from_ctgs(Contigs &ctgs) {
   ProgressBar progbar(ctgs.size(), "Adding contig vertices to graph");
   for (auto &ctg : ctgs) {
     Vertex v = {.cid = ctg.id, .clen = (int)ctg.seq.length(), .depth = ctg.depth};
-#ifdef TNF_PATH_RESOLUTION
-    v.tnf = ctg.tnf;
-#endif
     _graph->add_vertex(v, ctg.seq);
     progbar.update();
   }
@@ -643,15 +640,9 @@ void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kme
                      Contigs &ctgs, Alns &alns) {
   BarrierTimer timer(__FILEFUNC__);
   _graph = graph;
-#ifdef TNF_PATH_RESOLUTION
-  compute_tnfs(ctgs);
-#endif
   add_vertices_from_ctgs(ctgs);
   get_splints_from_alns(alns, graph);
   get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
-#ifdef TNF_PATH_RESOLUTION
-  _graph->compute_edge_tnfs();
-#endif
   int64_t mismatched = 0, conflicts = 0, empty_spans = 0;
   _graph->purge_error_edges(&mismatched, &conflicts, &empty_spans);
 #ifdef DEBUG

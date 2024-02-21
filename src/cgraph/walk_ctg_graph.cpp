@@ -486,23 +486,6 @@ static vector<shared_ptr<Vertex>> search_for_next_nbs(int max_kmer_len, int kmer
         }
       }
     }
-#ifdef TNF_PATH_RESOLUTION
-    if (branch_chosen == -1) {
-      // if one branch has much higher TNF than another, choose it
-      vector<pair<int, int>> nbs_tnf;
-      for (auto candidate : candidate_branches) {
-        auto edge = nb_edges[candidate.first];
-        nbs_tnf.push_back({edge->tnf_prob, candidate.first});
-      }
-      sort(nbs_tnf.begin(), nbs_tnf.end(), [](auto &a, auto &b) { return a.first > b.first; });
-      DBG_WALK("    -> highest TNF branch is ", nbs_tnf[0].second, " (", nbs_tnf[0].first, "), next best is ", nbs_tnf[1].second,
-               " (", nbs_tnf[1].first, ")\n");
-      if (nbs_tnf[0].first >= CGRAPH_MIN_TNF_CLEN && nbs_tnf[1].first < CGRAPH_MIN_TNF_CLEN) {
-        branch_chosen = nbs_tnf[0].second;
-        DBG_WALK("    -> resolve highest TNF ", branch_chosen, "\n");
-      }
-    }
-#endif
     if (branch_chosen == -1) {
       // if one branch has much higher edge support than the others, choose it
       vector<pair<int, int>> nbs_support;
