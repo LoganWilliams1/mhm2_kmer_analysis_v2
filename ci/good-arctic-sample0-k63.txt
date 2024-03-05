@@ -7,7 +7,7 @@ Assembly                     final_assembly
 # contigs (>= 10000 bp)      0             
 # contigs (>= 25000 bp)      0             
 # contigs (>= 50000 bp)      0             
-Total length (>= 0 bp)       3115915       
+Total length (>= 0 bp)       3083604
 Total length (>= 1000 bp)    763770        
 Total length (>= 5000 bp)    0             
 Total length (>= 10000 bp)   0             
@@ -15,7 +15,7 @@ Total length (>= 25000 bp)   0
 Total length (>= 50000 bp)   0             
 # contigs                    4139          
 Largest contig               3655          
-Total length                 3115915       
+Total length                 3083604       
 Reference length             102521842     
 N50                          734           
 N90                          535           
@@ -37,7 +37,7 @@ Duplication ratio            1.000
 # mismatches per 100 kbp     334.23        
 # indels per 100 kbp         10.84
 Largest alignment            3655          
-Total aligned length         3115239       
+Total aligned length         3083604
 NA50                         734           
 NA90                         535           
 auNA                         871.4         
