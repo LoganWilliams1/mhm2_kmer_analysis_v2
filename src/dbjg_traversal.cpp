@@ -170,7 +170,7 @@ StepInfo<MAX_K> get_next_step(dist_object<KmerDHT<MAX_K>> &kmer_dht, const Kmer<
   StepInfo<MAX_K> step_info(start_kmer, start_prev_ext, start_next_ext);
   while (true) {
     KmerCounts *kmer_counts = kmer_dht->get_local_kmer_counts(step_info.kmer);
-    // this kmer doesn't exist, abort
+    // this kmer doesn't exist, abort. Could happen if the next kmer was purged because it was below the count threshold
     if (!kmer_counts) {
       step_info.walk_status = WalkStatus::DEADEND;
       break;
@@ -278,6 +278,7 @@ static global_ptr<FragElem> traverse_dirn(dist_object<KmerDHT<MAX_K>> &kmer_dht,
                       .wait();
       traverse_rpc_timer.stop();
     }
+
     revisit_allowed = false;
     sum_depths += step_info.sum_depths;
     uutig += step_info.uutig;

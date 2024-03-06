@@ -1,44 +1,44 @@
 #!/usr/bin/env python3
 
- # HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
- # through Lawrence Berkeley National Laboratory (subject to receipt of any required
- # approvals from the U.S. Dept. of Energy).  All rights reserved."
+# HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
+# through Lawrence Berkeley National Laboratory (subject to receipt of any required
+# approvals from the U.S. Dept. of Energy).  All rights reserved."
 
- # Redistribution and use in source and binary forms, with or without modification,
- # are permitted provided that the following conditions are met:
+# Redistribution and use in source and binary forms, with or without modification,
+# are permitted provided that the following conditions are met:
 
- # (1) Redistributions of source code must retain the above copyright notice, this
- # list of conditions and the following disclaimer.
+# (1) Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
 
- # (2) Redistributions in binary form must reproduce the above copyright notice,
- # this list of conditions and the following disclaimer in the documentation and/or
- # other materials provided with the distribution.
+# (2) Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation and/or
+# other materials provided with the distribution.
 
- # (3) Neither the name of the University of California, Lawrence Berkeley National
- # Laboratory, U.S. Dept. of Energy nor the names of its contributors may be used to
- # endorse or promote products derived from this software without specific prior
- # written permission.
+# (3) Neither the name of the University of California, Lawrence Berkeley National
+# Laboratory, U.S. Dept. of Energy nor the names of its contributors may be used to
+# endorse or promote products derived from this software without specific prior
+# written permission.
 
- # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
- # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- # OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
- # SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- # INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
- # TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- # BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
- # DAMAGE.
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+# SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+# TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+# BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+# DAMAGE.
 
- # You are under no obligation whatsoever to provide any bug fixes, patches, or upgrades
- # to the features, functionality or performance of the source code ("Enhancements") to
- # anyone; however, if you choose to make your Enhancements available either publicly,
- # or directly to Lawrence Berkeley National Laboratory, without imposing a separate
- # written license agreement for such Enhancements, then you hereby grant the following
- # license: a  non-exclusive, royalty-free perpetual license to install, use, modify,
- # prepare derivative works, incorporate into other computer software, distribute, and
- # sublicense such enhancements or derivative works thereof, in binary and source code
- # form.
+# You are under no obligation whatsoever to provide any bug fixes, patches, or upgrades
+# to the features, functionality or performance of the source code ("Enhancements") to
+# anyone; however, if you choose to make your Enhancements available either publicly,
+# or directly to Lawrence Berkeley National Laboratory, without imposing a separate
+# written license agreement for such Enhancements, then you hereby grant the following
+# license: a  non-exclusive, royalty-free perpetual license to install, use, modify,
+# prepare derivative works, incorporate into other computer software, distribute, and
+# sublicense such enhancements or derivative works thereof, in binary and source code
+# form.
 
 from __future__ import print_function
 
@@ -58,22 +58,56 @@ import collections
 import shutil
 import glob
 
-SIGNAMES = ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT', 'SIGBUS', 'SIGFPE', 'SIGKILL', 'SIGUSR1',
-            'SIGSEGV', 'SIGUSR2', 'SIGPIPE', 'SIGALRM', 'SIGTERM', 'SIGSTKFLT', 'SIGCHLD', 'SIGCONT', 'SIGSTOP', 'SIGTSTP',
-            'SIGTTIN', 'SIGTTOU', 'SIGURG', 'SIGXCPU', 'SIGXFSZ', 'SIGVTALRM', 'SIGPROF', 'SIGWINCH', 'SIGIO', 'SIGPWR', 'SIGSYS']
+SIGNAMES = [
+    "SIGHUP",
+    "SIGINT",
+    "SIGQUIT",
+    "SIGILL",
+    "SIGTRAP",
+    "SIGABRT",
+    "SIGBUS",
+    "SIGFPE",
+    "SIGKILL",
+    "SIGUSR1",
+    "SIGSEGV",
+    "SIGUSR2",
+    "SIGPIPE",
+    "SIGALRM",
+    "SIGTERM",
+    "SIGSTKFLT",
+    "SIGCHLD",
+    "SIGCONT",
+    "SIGSTOP",
+    "SIGTSTP",
+    "SIGTTIN",
+    "SIGTTOU",
+    "SIGURG",
+    "SIGXCPU",
+    "SIGXFSZ",
+    "SIGVTALRM",
+    "SIGPROF",
+    "SIGWINCH",
+    "SIGIO",
+    "SIGPWR",
+    "SIGSYS",
+]
 
 _orig_sighdlr = None
 _proc = None
-_output_dir = ''
+_output_dir = ""
 _err_thread = None
 _stop_thread = False
 _start_time = None
 _show_help = False
 
+
 def print_red(*args):
-    print("\033[91m", *args, end="\033[00m\n", sep='',  file=sys.stderr)
+    print("\033[91m", *args, end="\033[00m\n", sep="", file=sys.stderr)
+
 
 _defaultCores = None
+
+
 def get_hdw_cores_per_node():
     """Query the hardware for physical cores"""
     global _defaultCores
@@ -81,102 +115,148 @@ def get_hdw_cores_per_node():
         return _defaultCores
     try:
         import psutil
+
         cores = psutil.cpu_count(logical=False)
         print("Found %d cpus from psutil" % cores)
     except (NameError, ImportError, TypeError):
-        #print("Could not get cpus from psutil")
+        # print("Could not get cpus from psutil")
         pass
     # always trust lscpu, not psutil
     # NOTE some versions of psutil has bugs and comes up with the *WRONG* physical cores
     if True:
         import platform
+
         cpus = multiprocessing.cpu_count()
         hyperthreads = 1
-        if platform.system() == 'Darwin':
-            for line in os.popen('sysctl -n hw.physicalcpu').readlines():
+        if platform.system() == "Darwin":
+            for line in os.popen("sysctl -n hw.physicalcpu").readlines():
                 hyperthreads = cpus / int(line)
-            print("Found %d cpus and %d hyperthreads from sysctl" % (cpus, hyperthreads))
+            print(
+                "Found %d cpus and %d hyperthreads from sysctl" % (cpus, hyperthreads)
+            )
         else:
-            for line in os.popen('lscpu').readlines():
-                if line.startswith('Thread(s) per core'):
+            for line in os.popen("lscpu").readlines():
+                if line.startswith("Thread(s) per core"):
                     hyperthreads = int(line.split()[3])
             print("Found %d cpus and %d hyperthreads from lscpu" % (cpus, hyperthreads))
         cores = int(cpus / hyperthreads)
     _defaultCores = cores
     return cores
 
+
 def get_job_id():
     """Query the environment for a job"""
-    for key in ['PBS_JOBID', 'SLURM_JOBID', 'LSB_JOBID', 'JOB_ID', 'COBALT_JOBID', 'LOAD_STEP_ID', 'LBS_JOBID']:
+    for key in [
+        "PBS_JOBID",
+        "SLURM_JOBID",
+        "LSB_JOBID",
+        "JOB_ID",
+        "COBALT_JOBID",
+        "LOAD_STEP_ID",
+        "LBS_JOBID",
+    ]:
         if key in os.environ:
             return os.environ.get(key)
     return str(os.getpid())
 
+
 def get_job_name():
     """Query the env for the name of a job"""
-    for key in ['PBS_JOBNAME', 'JOBNAME', 'SLURM_JOB_NAME', 'LSB_JOBNAME', 'JOB_NAME', 'LSB_JOBNAME']:
+    for key in [
+        "PBS_JOBNAME",
+        "JOBNAME",
+        "SLURM_JOB_NAME",
+        "LSB_JOBNAME",
+        "JOB_NAME",
+        "LSB_JOBNAME",
+    ]:
         if key in os.environ:
             return os.environ.get(key)
     return ""
 
+
 def is_cobalt_job():
-    return os.environ.get('COBALT_JOBID') is not None
+    return os.environ.get("COBALT_JOBID") is not None
+
 
 def is_slurm_job():
-    return os.environ.get('SLURM_JOB_ID') is not None
+    return os.environ.get("SLURM_JOB_ID") is not None
+
 
 def is_pbs_job():
-    return os.environ.get('PBS_JOBID') is not None
+    return os.environ.get("PBS_JOBID") is not None
+
 
 def is_lsb_job():
-    return os.environ.get('LSB_JOBID') is not None
+    return os.environ.get("LSB_JOBID") is not None
+
 
 def is_ge_job():
-    return os.environ.get('JOB_ID') is not None
+    return os.environ.get("JOB_ID") is not None
+
 
 def is_ll_job():
-    return os.environ.get('LOAD_STEP_ID') is not None
+    return os.environ.get("LOAD_STEP_ID") is not None
 
 
-def get_slurm_cores_per_node(defaultCores = 0):
+def get_slurm_cores_per_node(defaultCores=0):
     # Only trust this environment variable from slurm, otherwise trust the hardware
     if defaultCores == 0:
         defaultCores = get_hdw_cores_per_node()
-    ntasks_per_node = os.environ.get('SLURM_NTASKS_PER_NODE')
+    ntasks_per_node = os.environ.get("SLURM_NTASKS_PER_NODE")
     if ntasks_per_node:
         print("Found tasks per node from SLURM_NTASKS_PER_NODE=", ntasks_per_node)
         return int(ntasks_per_node)
     # This SLURM variable defaults to all the hyperthreads if not overriden by the sbatch option --ntasks-per-node
-    ntasks_per_node = os.environ.get('SLURM_TASKS_PER_NODE') # SLURM_TASKS_PER_NODE=32(x4)
+    ntasks_per_node = os.environ.get(
+        "SLURM_TASKS_PER_NODE"
+    )  # SLURM_TASKS_PER_NODE=32(x4)
     if ntasks_per_node:
-        if ntasks_per_node.find('(') > 0:
-            ntasks_per_node = int(ntasks_per_node[:ntasks_per_node.find('(')])
+        if ntasks_per_node.find("(") > 0:
+            ntasks_per_node = int(ntasks_per_node[: ntasks_per_node.find("(")])
         else:
             ntasks_per_node = int(ntasks_per_node)
         if ntasks_per_node <= defaultCores:
-            print("Detected slurm job restricts cores to ", ntasks_per_node, " because of SLURM_TASKS_PER_NODE=", os.environ.get('SLURM_TASKS_PER_NODE'))
+            print(
+                "Detected slurm job restricts cores to ",
+                ntasks_per_node,
+                " because of SLURM_TASKS_PER_NODE=",
+                os.environ.get("SLURM_TASKS_PER_NODE"),
+            )
             return ntasks_per_node
-        print("Using default cores of ", defaultCores, ". Ignoring tasks per node ", ntasks_per_node, " from SLURM_TASKS_PER_NODE=", os.environ.get('SLURM_TASKS_PER_NODE'))
+        print(
+            "Using default cores of ",
+            defaultCores,
+            ". Ignoring tasks per node ",
+            ntasks_per_node,
+            " from SLURM_TASKS_PER_NODE=",
+            os.environ.get("SLURM_TASKS_PER_NODE"),
+        )
     return defaultCores
 
+
 def get_cobalt_cores_per_node():
-    ntasks_per_node = os.environ.get('COBALT_PARTCORES')
+    ntasks_per_node = os.environ.get("COBALT_PARTCORES")
     return int(ntasks_per_node)
+
 
 def get_lsb_cores_per_node():
     # LSB_MCPU_HOSTS=batch2 1 h22n07 42 h22n08 42
-    lsb_mcpu = os.environ.get('LSB_MCPU_HOSTS')
+    lsb_mcpu = os.environ.get("LSB_MCPU_HOSTS")
     host_core = lsb_mcpu.split()
     return int(host_core[-1])
 
 
-def get_job_cores_per_node(defaultCores = 0):
+def get_job_cores_per_node(defaultCores=0):
     """Query the job environment for the number of cores per node to use, if available"""
     if defaultCores == 0:
         defaultCores = get_hdw_cores_per_node()
-    if 'GASNET_PSHM_NODES' in os.environ:
-        print("Detected procs_per_node from GASNET_PSHM_NODES=",os.getenv('GASNET_PSHM_NODES'))
-        return int(os.getenv('GASNET_PSHM_NODES'))
+    if "GASNET_PSHM_NODES" in os.environ:
+        print(
+            "Detected procs_per_node from GASNET_PSHM_NODES=",
+            os.getenv("GASNET_PSHM_NODES"),
+        )
+        return int(os.getenv("GASNET_PSHM_NODES"))
     ntasks_per_node = None
     if is_slurm_job():
         ntasks_per_node = get_slurm_cores_per_node(defaultCores)
@@ -188,52 +268,73 @@ def get_job_cores_per_node(defaultCores = 0):
         return ntasks_per_node
     return defaultCores
 
+
 def get_slurm_job_nodes():
     """Query the SLURM job environment for the number of nodes"""
-    nodes = os.environ.get('SLURM_JOB_NUM_NODES')
+    nodes = os.environ.get("SLURM_JOB_NUM_NODES")
     if nodes is None:
-        nodes = os.environ.get('SLURM_NNODES')
+        nodes = os.environ.get("SLURM_NNODES")
     if nodes:
         return int(nodes)
-    print("Warning: could not determine the number of nodes in this SLURM job (%d). Only using 1" % (get_job_id()))
+    print(
+        "Warning: could not determine the number of nodes in this SLURM job (%d). Only using 1"
+        % (get_job_id())
+    )
     return 1
+
 
 def get_lsb_job_nodes():
     """Query the LFS job environment for the number of nodes"""
     # LSB_MCPU_HOSTS=batch2 1 h22n07 42 h22n08 42
-    nodes = os.environ.get('LSB_MCPU_HOSTS')
+    nodes = os.environ.get("LSB_MCPU_HOSTS")
     if nodes:
-        return int( (len(nodes.split()) - 2) / 2)
-    print("Warning: could not determine the number of nodes in this LSF job (%s). Only using 1" % (get_job_id()))
+        return int((len(nodes.split()) - 2) / 2)
+    print(
+        "Warning: could not determine the number of nodes in this LSF job (%s). Only using 1"
+        % (get_job_id())
+    )
     return 1
+
 
 def get_pbs_job_nodes():
     """Query the PBS job environment for the number of nodes"""
-    nodesfile = os.environ.get('PBS_NODEFILE')
+    nodesfile = os.environ.get("PBS_NODEFILE")
     if nodesfile is not None:
         nodes = dict()
-        with open(nodesfile, 'r') as f:
+        with open(nodesfile, "r") as f:
             for line in f:
                 nodes[line] = 1
         return len(nodes)
-    print("Warning: could not determine the number of nodes in this PBS job (%d). Only using 1" % (get_job_id()))
+    print(
+        "Warning: could not determine the number of nodes in this PBS job (%d). Only using 1"
+        % (get_job_id())
+    )
     return 1
+
 
 def get_ge_job_nodes():
     """Query the Grid Engine job environment for the number of nodes"""
     nodes = os.environ.get("NHOSTS")
     if nodes is not None:
         return int(nodes)
-    print("Warning: could not determine the number of nodes in this SGE job (%d). Only using 1" % (get_job_id()))
+    print(
+        "Warning: could not determine the number of nodes in this SGE job (%d). Only using 1"
+        % (get_job_id())
+    )
     return 1
+
 
 def get_cobalt_job_nodes():
     """Query the COBALT job environment for the number of nodes"""
     nodes = os.environ.get("COBALT_JOBSIZE")
     if nodes is not None:
         return int(nodes)
-    print("Warning: could not determine the number of nodes in this COBALT job (%s). Only using 1" % (get_job_id()))
+    print(
+        "Warning: could not determine the number of nodes in this COBALT job (%s). Only using 1"
+        % (get_job_id())
+    )
     return 1
+
 
 def get_job_nodes():
     """Query the job environment for the number of nodes"""
@@ -247,8 +348,12 @@ def get_job_nodes():
         return get_ge_job_nodes()
     if is_cobalt_job():
         return get_cobalt_job_nodes()
-    print("Warning: could not determine the number of nodes in this unsupported scheduler job (%s). Only using 1" % (get_job_id()))
+    print(
+        "Warning: could not determine the number of nodes in this unsupported scheduler job (%s). Only using 1"
+        % (get_job_id())
+    )
     return 1
+
 
 def get_job_desc():
     job_name = get_job_name()
@@ -266,31 +371,34 @@ def which(file_name):
             return full_path
     return None
 
+
 def handle_interrupt(signum, frame):
     global _orig_sighdlr
     global _stop_thread
-    print_red('\n\nmhm2.py: Interrupt received, signal', signum)
+    print_red("\n\nmhm2.py: Interrupt received, signal", signum)
     _stop_thread = True
     signal.signal(signal.SIGINT, _orig_sighdlr)
     exit_all(1)
 
+
 def log_signal(signum, frame):
-    print_red('\n\nmhm2.py: Received and ignoring signal', signum)
+    print_red("\n\nmhm2.py: Received and ignoring signal", signum)
+
 
 def exit_all(status):
     global _proc
     if _proc:
-        #os.kill(_proc.pid, signal.SIGINT)
+        # os.kill(_proc.pid, signal.SIGINT)
         try:
             _proc.terminate()
         except OSError:
             pass
-            #print("Process ", _proc, " is already terminated\n")
+            # print("Process ", _proc, " is already terminated\n")
     sys.exit(status)
 
 
 def die(*args):
-    print_red('\nmhm2.py: FATAL ERROR: ', *args)
+    print_red("\nmhm2.py: FATAL ERROR: ", *args)
     sys.stdout.flush()
     sys.stderr.flush()
     exit_all(1)
@@ -299,70 +407,77 @@ def die(*args):
 def check_exec(cmd, args, expected):
     test_exec = which(cmd)
     if not test_exec:
-        die('Cannot find ', cmd)
+        die("Cannot find ", cmd)
     try:
         result = subprocess.check_output([test_exec, args]).decode()
         if expected not in result:
-            die(test_exec, ' failed to execute')
+            die(test_exec, " failed to execute")
     except subprocess.CalledProcessError as err:
-        die('Could not execute ', test_exec +': ', err)
+        die("Could not execute ", test_exec + ": ", err)
+
 
 def capture_err(err_msgs):
     global _proc
     global _stop_thread
-    for line in iter(_proc.stderr.readline, b''):
+    for line in iter(_proc.stderr.readline, b""):
         try:
-            line = line.decode('ascii', 'namereplace')
+            line = line.decode("ascii", "namereplace")
         except:
             print("WARNING: mhm2.py could not decode binary output:\n", line)
             continue
         # filter out all but warnings
         # errors causing crashes will come to light later
-        if 'WARNING' in line:
-            if 'GASNet was configured without multi-rail support' not in line and 'GASNET_AM_CREDITS_SLACK reduced to GASNET_AM_CREDITS_PP' not in line:
+        if "WARNING" in line:
+            if (
+                "GASNet was configured without multi-rail support" not in line
+                and "GASNET_AM_CREDITS_SLACK reduced to GASNET_AM_CREDITS_PP"
+                not in line
+            ):
                 sys.stderr.write(line)
                 sys.stderr.flush()
         # FIXME: check for messages about memory failures
-        if 'UPC++ could not allocate' in line:
-            print_red('mhm2.py: ERROR: UPC++ memory allocation failure')
+        if "UPC++ could not allocate" in line:
+            print_red("mhm2.py: ERROR: UPC++ memory allocation failure")
         err_msgs.append(line)
         if _stop_thread:
             return
     _proc.wait()
+
 
 def check_err_msgs(err_msgs):
     warnings = []
     errors = []
     for msg in err_msgs:
         msg = msg.strip()
-        if 'WARNING' in msg:
+        if "WARNING" in msg:
             warnings.append(msg)
-        elif msg[:2] == '+ ':
+        elif msg[:2] == "+ ":
             # this is 'set -x' console echo of a command
             pass
-        elif 'GASNet reporting enabled' in msg:
+        elif "GASNet reporting enabled" in msg:
             # this is just info
             pass
-        elif msg != '':
+        elif msg != "":
             errors.append(msg)
     if len(warnings) > 0:
-        print('There were', len(warnings), 'warnings:', file=sys.stderr)
+        print("There were", len(warnings), "warnings:", file=sys.stderr)
         for warning in list(collections.OrderedDict.fromkeys(warnings)):
-            sys.stderr.write(warning + '\n')
+            sys.stderr.write(warning + "\n")
     if len(errors) > 0:
-        print('There were', len(errors), 'errors:', file=sys.stderr)
+        print("There were", len(errors), "errors:", file=sys.stderr)
         print_sigint = False
         for err in errors:
-            if 'SIGINT(2)' in err and print_sigint:
+            if "SIGINT(2)" in err and print_sigint:
                 continue
             print_sigint = True
-            sys.stderr.write(err + '\n')
+            sys.stderr.write(err + "\n")
     return len(errors) + len(warnings)
+
 
 def print_err_msgs(err_msgs, return_status):
     global _output_dir
     num_problems = check_err_msgs(err_msgs)
-    err_msgs.append('==============================================')
+    err_msgs.append("==============================================")
     if len(_output_dir) == 0:
         _output_dir = os.getcwd() + "/"
         # we have not yet entered the output directory, so this is a failure of the command line
@@ -372,34 +487,47 @@ def print_err_msgs(err_msgs, return_status):
             print(msg)
             sys.exit(return_status)
     else:
-        if _output_dir[0] != '/':
+        if _output_dir[0] != "/":
             _output_dir = os.getcwd() + "/" + _output_dir
         suspect_oom = None
         if return_status != 0:
-            if return_status == 9: # SIGKILL
+            if return_status == 9:  # SIGKILL
                 suspect_oom = "Got SIGKILLed"
             err_msgs.append("Return status: %d\n" % (return_status))
-            print_red("mhm2.py: MHM2 failed, elapsed %.2f s" % (time.time() - _start_time))
+            print_red(
+                "mhm2.py: MHM2 failed, elapsed %.2f s" % (time.time() - _start_time)
+            )
         # keep track of all msg copies so we don't print duplicates
         seen_msgs = {}
-        per_rank_dir = _output_dir + 'per_rank/'
+        per_rank_dir = _output_dir + "per_rank/"
         if not os.path.exists(per_rank_dir):
             per_rank_dir = _output_dir
-        err_log = per_rank_dir + 'err.log'
-        with open(err_log, 'a') as f:
+        err_log = per_rank_dir + "err.log"
+        with open(err_log, "a") as f:
             for msg in err_msgs:
                 clean_msg = msg.strip()
-                #clean_msg = re.sub('\(proc .+\)', '(proc XX)', msg.strip())
+                # clean_msg = re.sub('\(proc .+\)', '(proc XX)', msg.strip())
                 if clean_msg not in seen_msgs:
-                    f.write(clean_msg + '\n')
+                    f.write(clean_msg + "\n")
                     f.flush()
                     seen_msgs[clean_msg] = True
-                    if 'SIGBUS' in clean_msg or 'bound CqGetEvent GNI_RC_TRANSACTION_ERROR' in clean_msg or 'oom-kill' in clean_msg or 'bad_alloc' in clean_msg or 'SIGKILL' in clean_msg \
-                        or 'Cannot allocate memory' in clean_msg or 'mmap failed' in clean_msg:
+                    if (
+                        "SIGBUS" in clean_msg
+                        or "bound CqGetEvent GNI_RC_TRANSACTION_ERROR" in clean_msg
+                        or "oom-kill" in clean_msg
+                        or "bad_alloc" in clean_msg
+                        or "SIGKILL" in clean_msg
+                        or "Cannot allocate memory" in clean_msg
+                        or "mmap failed" in clean_msg
+                    ):
                         suspect_oom = clean_msg
             if suspect_oom is not None:
-                f.write("Out of memory is suspected because of: %s\n" %(suspect_oom))
-                print_red("mhm2.py: Out of memory is suspected based on the errors in err.log such as: ", suspect_oom, "\n")
+                f.write("Out of memory is suspected because of: %s\n" % (suspect_oom))
+                print_red(
+                    "mhm2.py: Out of memory is suspected based on the errors in err.log such as: ",
+                    suspect_oom,
+                    "\n",
+                )
         if per_rank_dir != _output_dir:
             new_err_log = _output_dir + "err.log"
             if os.path.exists(new_err_log):
@@ -408,6 +536,7 @@ def print_err_msgs(err_msgs, return_status):
             err_log = new_err_log
         if num_problems > 0:
             print_red("mhm2.py: Check " + err_log + " for details")
+
 
 def main():
     global _orig_sighdlr
@@ -420,23 +549,52 @@ def main():
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    argparser = argparse.ArgumentParser(add_help=False,
-                                        description="mhm2.py is a wrapper script that launches the mhm2 binary. " +\
-                                            "There are several optional parameters to mhm2.py:",
-                                        epilog="The options for the mhm2 binary are listed below.")
-    argparser.add_argument("--auto-resume", action="store_true", help="Automatically resume after a failure")
-    argparser.add_argument("--shared-heap", default="10%", help="Shared heap as a percentage of memory")
-    #argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
-    argparser.add_argument("--procs", default=0, type=int, help="Total numer of processes")
-    argparser.add_argument("--nodes", default=0, type=int, help="Override the default number of nodes as detected in job or scheduler")
-    argparser.add_argument("--gasnet-stats", action="store_true", help="Collect GASNet communication statistics")
-    argparser.add_argument("--gasnet-trace", action="store_true", help="Collect GASNet trace in separate files")
-    argparser.add_argument("--preproc", default=None, help="Comma separated preprocesses and options like (valgrind,--leak-check=full) or options to upcxx-run before binary")
-    argparser.add_argument("--binary", default="mhm2", help="File name for UPC++ binary (default mhm2)")
+    argparser = argparse.ArgumentParser(
+        add_help=False,
+        description="mhm2.py is a wrapper script that launches the mhm2 binary. "
+        + "There are several optional parameters to mhm2.py:",
+        epilog="The options for the mhm2 binary are listed below.",
+    )
+    argparser.add_argument(
+        "--auto-resume",
+        action="store_true",
+        help="Automatically resume after a failure",
+    )
+    argparser.add_argument(
+        "--shared-heap", default="10%", help="Shared heap as a percentage of memory"
+    )
+    # argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
+    argparser.add_argument(
+        "--procs", default=0, type=int, help="Total numer of processes"
+    )
+    argparser.add_argument(
+        "--nodes",
+        default=0,
+        type=int,
+        help="Override the default number of nodes as detected in job or scheduler",
+    )
+    argparser.add_argument(
+        "--gasnet-stats",
+        action="store_true",
+        help="Collect GASNet communication statistics",
+    )
+    argparser.add_argument(
+        "--gasnet-trace",
+        action="store_true",
+        help="Collect GASNet trace in separate files",
+    )
+    argparser.add_argument(
+        "--preproc",
+        default=None,
+        help="Comma separated preprocesses and options like (valgrind,--leak-check=full) or options to upcxx-run before binary",
+    )
+    argparser.add_argument(
+        "--binary", default="mhm2", help="File name for UPC++ binary (default mhm2)"
+    )
 
     options, unknown_options = argparser.parse_known_args()
 
-    if '-h' in unknown_options or '--help' in unknown_options:
+    if "-h" in unknown_options or "--help" in unknown_options:
         _show_help = True
         argparser.print_help()
         print()
@@ -444,121 +602,191 @@ def main():
     if options.auto_resume:
         print("--auto-resume is enabled: will try to restart if run fails")
 
-    check_exec('upcxx-run', '-h', 'UPC++')
+    check_exec("upcxx-run", "-h", "UPC++")
     # expect mhm2 to be in same directory as mhm2.py
-    mhm2_binary_path = os.path.split(sys.argv[0])[0] + '/' + options.binary
+    mhm2_binary_path = os.path.split(sys.argv[0])[0] + "/" + options.binary
     if not (os.path.exists(mhm2_binary_path) or which(mhm2_binary_path)):
         die("Cannot find binary ", options.binary + " in '", mhm2_binary_path, "'")
 
-    #cores_per_node = int(options.procs_per_node)
-    #if cores_per_node == 0:
+    # cores_per_node = int(options.procs_per_node)
+    # if cores_per_node == 0:
     #    cores_per_node = get_job_cores_per_node()
     num_nodes = get_job_nodes()
     if options.procs == 0:
         options.procs = num_nodes * get_job_cores_per_node()
 
     if options.nodes != 0 and options.nodes != num_nodes:
-        print("Overriding to use", options.nodes, "nodes, instead of the detected", num_nodes)
+        print(
+            "Overriding to use",
+            options.nodes,
+            "nodes, instead of the detected",
+            num_nodes,
+        )
         num_nodes = options.nodes
 
-    cmd = ['upcxx-run', '-n', str(options.procs), '-N', str(num_nodes)]
+    cmd = ["upcxx-run", "-n", str(options.procs), "-N", str(num_nodes)]
 
     # special spawner for summit that auto-detects the job size and calls jsrun to properly bind cpus, gpus and hca network devices
-    if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "summit":
-        cmd = ['upcxx-jsrun']
-        if 'UPCXX_RUN_SUMMIT_OPTS' in os.environ:
+    if "LMOD_SYSTEM_NAME" in os.environ and os.environ["LMOD_SYSTEM_NAME"] == "summit":
+        cmd = ["upcxx-jsrun"]
+        if "UPCXX_RUN_SUMMIT_OPTS" in os.environ:
             # use environmental variable override
-            if os.environ['UPCXX_RUN_SUMMIT_OPTS'] != '':
-                cmd.extend(os.environ['UPCXX_RUN_SUMMIT_OPTS'].split())
+            if os.environ["UPCXX_RUN_SUMMIT_OPTS"] != "":
+                cmd.extend(os.environ["UPCXX_RUN_SUMMIT_OPTS"].split())
         else:
             # default to split ranks by gpu
-            cmd.extend(['--by-gpu'])
-            os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal for summit
-        print("This is Summit - executing custom script upcxx-jsrun to spawn the job", cmd)
+            cmd.extend(["--by-gpu"])
+            os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal for summit
+        print(
+            "This is Summit - executing custom script upcxx-jsrun to spawn the job", cmd
+        )
 
-    if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
-        cmd.extend(['-shared-heap', options.shared_heap])
-        #os.environ['UPCXX_SHARED_HEAP_SIZE'] = options.shared_heap
+    if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
+        cmd.extend(["-shared-heap", options.shared_heap])
+        # os.environ['UPCXX_SHARED_HEAP_SIZE'] = options.shared_heap
 
     # special spawning for perlmutter GPU nodes that requires srun, not upcxx-run for now
-    if 'NERSC_HOST' in os.environ and os.environ['NERSC_HOST'] == 'perlmutter' and 'SLURM_JOB_PARTITION' in os.environ and 'gpu' in os.environ['SLURM_JOB_PARTITION']:
-        cmd = ['upcxx-srun', '-n', str(options.procs), '-N', str(num_nodes), '--gpus-per-node=4', '--', os.path.split(sys.argv[0])[0] + '/mhm2-mps-wrapper-perlmutter.sh']
-        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
-            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '450 MB'
-        os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on perlmutter gpu
-        print("This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+    if (
+        "NERSC_HOST" in os.environ
+        and os.environ["NERSC_HOST"] == "perlmutter"
+        and "SLURM_JOB_PARTITION" in os.environ
+        and "gpu" in os.environ["SLURM_JOB_PARTITION"]
+    ):
+        cmd = [
+            "upcxx-srun",
+            "-n",
+            str(options.procs),
+            "-N",
+            str(num_nodes),
+            "--gpus-per-node=4",
+            "--",
+            os.path.split(sys.argv[0])[0] + "/mhm2-mps-wrapper-perlmutter.sh",
+        ]
+        if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB"
+        os.environ[
+            "MHM2_PIN"
+        ] = "none"  # default of numa is suboptimal on perlmutter gpu
+        print(
+            "This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=",
+            os.environ["UPCXX_SHARED_HEAP_SIZE"],
+            ":",
+            cmd,
+        )
 
-    if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "crusher":
+    if "LMOD_SYSTEM_NAME" in os.environ and os.environ["LMOD_SYSTEM_NAME"] == "crusher":
         gpus_per_node = 8
         tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
-        cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
-               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
-        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
-            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
-        os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
-        print("This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        cmd = [
+            "srun",
+            "-N",
+            str(num_nodes),
+            "-n",
+            str(options.procs),
+            "--gpus-per-node=" + str(gpus_per_node),
+            "--gpu-bind=closest",
+            "--ntasks-per-gpu=" + str(tasks_per_gpu),
+            "--cpu-bind=ldoms",
+            "--bcast=/tmp/",
+        ]
+        if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB"
+        os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal on crusher
+        print(
+            "This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
+            os.environ["UPCXX_SHARED_HEAP_SIZE"],
+            ":",
+            cmd,
+        )
 
-    if 'LMOD_SYSTEM_NAME' in os.environ and os.environ['LMOD_SYSTEM_NAME'] == "frontier":
+    if (
+        "LMOD_SYSTEM_NAME" in os.environ
+        and os.environ["LMOD_SYSTEM_NAME"] == "frontier"
+    ):
         gpus_per_node = 8
         tasks_per_gpu = int(options.procs / num_nodes / gpus_per_node)
-        cmd = ['srun', '-N', str(num_nodes), '-n', str(options.procs), '--gpus-per-node=' + str(gpus_per_node), '--gpu-bind=closest',
-               '--ntasks-per-gpu=' + str(tasks_per_gpu), '--cpu-bind=ldoms', '--bcast=/tmp/']
-        if 'UPCXX_SHARED_HEAP_SIZE' not in os.environ:
-            os.environ['UPCXX_SHARED_HEAP_SIZE'] = '800 MB'
-        os.environ['MHM2_PIN'] = 'none' # default of numa is suboptimal on crusher
-        print("This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=", os.environ['UPCXX_SHARED_HEAP_SIZE'], ":", cmd)
+        cmd = [
+            "srun",
+            "-N",
+            str(num_nodes),
+            "-n",
+            str(options.procs),
+            "--gpus-per-node=" + str(gpus_per_node),
+            "--gpu-bind=closest",
+            "--ntasks-per-gpu=" + str(tasks_per_gpu),
+            "--cpu-bind=ldoms",
+            "--bcast=/tmp/",
+        ]
+        if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB"
+        os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal on crusher
+        print(
+            "This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
+            os.environ["UPCXX_SHARED_HEAP_SIZE"],
+            ":",
+            cmd,
+        )
 
-    if 'UPCXX_SHARED_HEAP_SIZE' in os.environ and 'GASNET_MAX_SEGSIZE' not in os.environ:
-        print("Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ", os.environ['UPCXX_SHARED_HEAP_SIZE'], " to avoid gasnet memory probe")
-        os.environ['GASNET_MAX_SEGSIZE'] = os.environ['UPCXX_SHARED_HEAP_SIZE']
+    if (
+        "UPCXX_SHARED_HEAP_SIZE" in os.environ
+        and "GASNET_MAX_SEGSIZE" not in os.environ
+    ):
+        print(
+            "Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ",
+            os.environ["UPCXX_SHARED_HEAP_SIZE"],
+            " to avoid gasnet memory probe",
+        )
+        os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
-        pplist = options.preproc.split(',')
+        pplist = options.preproc.split(",")
         cmd.extend(pplist)
-    cmd.extend(['--', mhm2_binary_path])
+    cmd.extend(["--", mhm2_binary_path])
 
     cmd.extend(unknown_options)
+    adapters_path = os.path.split(sys.argv[0])[0] + "/../share/all_adapters.fa"
+    cmd.extend(["--adapter-refs", adapters_path])
 
     print("Executing mhm2 with " + get_job_desc() + " on " + str(num_nodes) + " nodes.")
     print("Executing as: " + " ".join(sys.argv))
 
     cores = get_job_cores_per_node()
-    noderanks = '0'
-    halfnoderanks = '0,%d' % (cores/2)
+    noderanks = "0"
+    halfnoderanks = "0,%d" % (cores / 2)
     for n in range(1, num_nodes):
-        noderanks += ',' + str(n*cores)
-        halfnoderanks += ',' + str(n*cores) + ',' + str(n*cores+cores/2)
+        noderanks += "," + str(n * cores)
+        halfnoderanks += "," + str(n * cores) + "," + str(n * cores + cores / 2)
 
     # set extra GASNET environments from build and/or options to mhm2.py
     runtime_vars = """@MHM2PY_RUNTIME_ENV@"""
-    if runtime_vars == '@MHM2PY_RUNTIME' + '_ENV@':
-        runtime_vars = ''
-    runtime_output_vars = ''
+    if runtime_vars == "@MHM2PY_RUNTIME" + "_ENV@":
+        runtime_vars = ""
+    runtime_output_vars = ""
 
     if options.gasnet_stats:
         # collect in /dev/shm so that each rank can access its own data
         runtime_vars += ' GASNET_STATSFILE="/dev/shm/gasnet_stats.%", '
-        #runtime_vars += ' GASNET_STATSNODES="0-%d", ' % (cores * num_nodes)
+        # runtime_vars += ' GASNET_STATSNODES="0-%d", ' % (cores * num_nodes)
         runtime_vars += runtime_output_vars
 
     if options.gasnet_trace:
         runtime_vars += ' GASNET_TRACEFILE="./trace_%.txt", GASNET_BACKTRACE_SIGNAL="12", GASNET_STATSMASK=""'
         if not "GASNET_TRACEMASK" in os.environ:
             runtime_vars += ', GASNET_TRACEMASK="GPWBNIH"'
-        runtime_vars += ', '
+        runtime_vars += ", "
         print("Ignoring SIGUSR2 as gasnet traces will be generated when that is sent")
         signal.signal(signal.SIGUSR2, log_signal)
 
     runenv = eval('dict(os.environ, %s MHM2_RUNTIME_PLACEHOLDER="")' % (runtime_vars))
-    #print("Runtime environment: ", runenv)
+    # print("Runtime environment: ", runenv)
 
-    mhm2_lib_path = os.path.split(sys.argv[0])[0] + '/../lib'
+    mhm2_lib_path = os.path.split(sys.argv[0])[0] + "/../lib"
     if not os.path.exists(mhm2_lib_path):
         die("Cannot find mhm2 lib install in '", mhm2_lib_path, "'")
 
     # This should no longer be necessary with the static GPU build fixes of df8cc23, leaving here in case problems reoccur
-    #if which('nvcc'):
+    # if which('nvcc'):
     #    # FIXME: this ugly hack is because we need to load a shared library on Cori GPU nodes,
     #    # which can't be done with the craype environment. Not needed anywhere else :(
     #    # The intel library path is only needed for the intel compiler. Sigh.
@@ -568,17 +796,24 @@ def main():
     restarting = False
     err_msgs = []
     while True:
-        print(str(datetime.datetime.now()) + ' ' + 'executing:\n', ' '.join(cmd))
+        print(str(datetime.datetime.now()) + " " + "executing:\n", " ".join(cmd))
         started_exec = False
         completed_round = False
         try:
-            _proc = subprocess.Popen(cmd, env=runenv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            _proc = subprocess.Popen(
+                cmd, env=runenv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             # thread captures the error stream
             _err_thread = threading.Thread(target=capture_err, args=(err_msgs,))
             _err_thread.start()
-            for line in iter(_proc.stdout.readline, b''):
+            for line in iter(_proc.stdout.readline, b""):
                 if not started_exec:
-                    print('Started executing at ' + str(datetime.datetime.now()) + ' with PID ' + str(_proc.pid))
+                    print(
+                        "Started executing at "
+                        + str(datetime.datetime.now())
+                        + " with PID "
+                        + str(_proc.pid)
+                    )
                     started_exec = True
                 try:
                     line = line.decode()
@@ -587,35 +822,50 @@ def main():
                     continue
                 sys.stdout.write(line)
                 sys.stdout.flush()
-                if len(_output_dir) == 0 and ('  output = ' in line or 'Using output dir: ' in line):
+                if len(_output_dir) == 0 and (
+                    "  output = " in line or "Using output dir: " in line
+                ):
                     _output_dir = line.split()[3]
-                    onlyascii = ''.join([s for s in _output_dir if ord(s) < 127 and ord(s) >= 32])
+                    onlyascii = "".join(
+                        [s for s in _output_dir if ord(s) < 127 and ord(s) >= 32]
+                    )
                     _output_dir = onlyascii
-                    if _output_dir.endswith('[0m'):
+                    if _output_dir.endswith("[0m"):
                         _output_dir = _output_dir[:-3]
-                    if _output_dir[-1] != '/':
-                        _output_dir += '/'
+                    if _output_dir[-1] != "/":
+                        _output_dir += "/"
                     # try renaming the trace files so they do not pollute the cwd or get corrupted by other runs
                     moved_traces = 0
-                    for trace in os.listdir('.'):
-                        if 'trace_' in trace:
+                    for trace in os.listdir("."):
+                        if "trace_" in trace:
                             try:
                                 os.rename(trace, _output_dir + "/" + trace)
                                 moved_traces += 1
                             except:
                                 pass
-                    print("mhm2.py: Renamed ", moved_traces, " per_rank traces from ", os.getcwd(), " to ", _output_dir)
+                    print(
+                        "mhm2.py: Renamed ",
+                        moved_traces,
+                        " per_rank traces from ",
+                        os.getcwd(),
+                        " to ",
+                        _output_dir,
+                    )
                     # get rid of any leftover error logs if not restarting
                     try:
                         # always rename the error log if it already exists
-                        new_err_log = _output_dir + 'err.log-' + str(datetime.datetime.now().isoformat())
-                        os.rename(_output_dir + 'err.log', new_err_log)
+                        new_err_log = (
+                            _output_dir
+                            + "err.log-"
+                            + str(datetime.datetime.now().isoformat())
+                        )
+                        os.rename(_output_dir + "err.log", new_err_log)
                         print("mhm2.py: Renamed old err.log to ", new_err_log)
-                        os.unlink(_output_dir + '/per_rank/err.log')
+                        os.unlink(_output_dir + "/per_rank/err.log")
                     except:
                         pass
 
-                if 'Completed ' in line and 'initialization' not in line:
+                if "Completed " in line and "initialization" not in line:
                     completed_round = True
 
             _err_thread.join()
@@ -624,26 +874,37 @@ def main():
             if _proc.returncode < 0:
                 _proc.returncode *= -1
             if _proc.returncode not in [0, 15] or not status:
-                signame = ''
+                signame = ""
                 if _proc.returncode <= len(SIGNAMES) and _proc.returncode > 0:
-                    signame = ' (' + SIGNAMES[_proc.returncode - 1] + ')'
+                    signame = " (" + SIGNAMES[_proc.returncode - 1] + ")"
                 if _proc.returncode == 127:
                     # 127 is the return code from the CLI parser, so we don't want to print this
                     found_error = False
                     for msg in err_msgs:
-                        if msg.startswith('Error'):
-                            print(msg, end='')
+                        if msg.startswith("Error"):
+                            print(msg, end="")
                             found_error = True
-                        elif msg.startswith('INI was not able to parse'):
-                            print("  Unable to parse entry '" + msg.split()[-1] + "' in the config file")
+                        elif msg.startswith("INI was not able to parse"):
+                            print(
+                                "  Unable to parse entry '"
+                                + msg.split()[-1]
+                                + "' in the config file"
+                            )
                         else:
-                            print(" ", msg, end='')
+                            print(" ", msg, end="")
                     if found_error:
                         return 127
                     else:
                         return 0
-                print_red("\nERROR: subprocess terminated with return code ", _proc.returncode,
-                          (" (possibly OOM or other abortion)" if _proc.returncode == 137 else ""))
+                print_red(
+                    "\nERROR: subprocess terminated with return code ",
+                    _proc.returncode,
+                    (
+                        " (possibly OOM or other abortion)"
+                        if _proc.returncode == 137
+                        else ""
+                    ),
+                )
                 signals_found = {}
                 for err_msg in err_msgs:
                     for signame in SIGNAMES:
@@ -653,34 +914,50 @@ def main():
                             signals_found[signame] += 1
                 for signame in SIGNAMES:
                     if signame in signals_found:
-                        print_red("  Found ", signals_found[signame], " occurences of ", signame)
+                        print_red(
+                            "  Found ",
+                            signals_found[signame],
+                            " occurences of ",
+                            signame,
+                        )
                         got_signal = signame
-                #err_msgs.append("ERROR: subprocess terminated with return code " + str(_proc.returncode) + " " + signame)
+                # err_msgs.append("ERROR: subprocess terminated with return code " + str(_proc.returncode) + " " + signame)
                 print_err_msgs(err_msgs, _proc.returncode)
-                for trace in os.listdir('.'):
-                    if 'trace_' in trace:
+                for trace in os.listdir("."):
+                    if "trace_" in trace:
                         os.rename(trace, _output_dir + "/" + trace)
 
                 if completed_round and options.auto_resume:
-                    print_red('Trying to restart with output directory ', _output_dir)
+                    print_red("Trying to restart with output directory ", _output_dir)
                     restarting = True
                     err_msgs = []
-                    cmd.append('--restart')
+                    cmd.append("--restart")
                     if _output_dir[:-1] not in cmd:
-                        cmd.extend(['-o', _output_dir])
+                        cmd.extend(["-o", _output_dir])
                     time.sleep(5)
                 else:
                     if options.auto_resume:
-                        print_red("No additional completed round. Could not restart, exiting...")
+                        print_red(
+                            "No additional completed round. Could not restart, exiting..."
+                        )
                     return signal.SIGABRT
             else:
                 final_assembly = _output_dir + "final_assembly.fasta"
                 if os.path.exists(final_assembly):
-                    print("Final assembly can be found at", os.path.abspath(final_assembly))
+                    print(
+                        "Final assembly can be found at",
+                        os.path.abspath(final_assembly),
+                    )
                 else:
-                    err_msgs.append("Could not find the final assembly!  It should be at %s\n" % (final_assembly))
+                    err_msgs.append(
+                        "Could not find the final assembly!  It should be at %s\n"
+                        % (final_assembly)
+                    )
                 print_err_msgs(err_msgs, _proc.returncode)
-                print('Overall time taken (including any restarts): %.2f s' % (time.time() - _start_time))
+                print(
+                    "Overall time taken (including any restarts): %.2f s"
+                    % (time.time() - _start_time)
+                )
                 break
         except:
             print_red("Got an exception")
@@ -688,17 +965,25 @@ def main():
             print_err_msgs(err_msgs, -1)
             if _proc:
                 try:
-                    print_red("\nTerminating subprocess after exception: ", sys.exc_info(), "\n")
+                    print_red(
+                        "\nTerminating subprocess after exception: ",
+                        sys.exc_info(),
+                        "\n",
+                    )
                     traceback.print_tb(sys.exc_info()[2], limit=100)
                     _proc.terminate()
                 except OSError:
                     pass
                 except:
-                    print_red("\nUnexpected error in forced termination of subprocess: ", sys.exc_info())
+                    print_red(
+                        "\nUnexpected error in forced termination of subprocess: ",
+                        sys.exc_info(),
+                    )
                     traceback.print_tb(sys.exc_info()[2], limit=100)
                     raise
             raise
     return 0
+
 
 if __name__ == "__main__":
     status = 1

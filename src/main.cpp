@@ -66,8 +66,8 @@ void init_devices();
 void done_init_devices();
 void teardown_devices();
 
-void merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
-                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
+int merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
+                bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
 
 int main(int argc, char **argv) {
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
@@ -235,13 +235,26 @@ int main(int argc, char **argv) {
     // merge the reads and insert into the packed reads memory cache (always do this even for restarts)
     begin_gasnet_stats("merge_reads");
     stage_timers.merge_reads->start();
-    merge_reads(options->reads_fnames, options->qual_offset, elapsed_write_io_t, packed_reads_list, options->dump_merged,
-                options->adapter_fname, options->min_kmer_len, options->subsample_fastq_pct, options->optimize_for == "contiguity");
+    auto avg_read_len = merge_reads(options->reads_fnames, options->qual_offset, elapsed_write_io_t, packed_reads_list,
+                                    options->dump_merged, options->adapter_fname, options->min_kmer_len,
+                                    options->subsample_fastq_pct, options->optimize_for == "contiguity");
     stage_timers.merge_reads->stop();
     end_gasnet_stats();
     auto after_merge_mem = get_free_mem(true);
     SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(before_merge_mem - after_merge_mem),
                  " memory on node 0 for reads", KNORM, "\n");
+
+    if (options->default_kmer_lens) {
+      if (avg_read_len < 130) {
+        SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
+        options->kmer_lens.pop_back();
+        SOUT("  kmer-lens = ", Options::vec_to_str(options->kmer_lens), "\n");
+        if (options->default_scaff_kmer_lens) {
+          options->scaff_kmer_lens.front() = options->kmer_lens.back();
+          SOUT("  scaff-kmer_lens = ", Options::vec_to_str(options->scaff_kmer_lens), "\n");
+        }
+      }
+    }
 
     int rlen_limit = 0;
     for (auto packed_reads : packed_reads_list) {
