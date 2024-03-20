@@ -79,6 +79,45 @@ inline string orient_str(Orient orient) { return (orient == Orient::NORMAL ? "+"
 
 inline Orient flip_orient(Orient orient) { return (orient == Orient::NORMAL ? Orient::REVCOMP : Orient::NORMAL); }
 
+class GraphCounts {
+ public:
+  static GraphCounts &get() {
+    static GraphCounts _ = {};
+    return _;
+  }
+  uint64_t get_vertex = 0, get_vertex_clen = 0, set_vertex_visited = 0, update_vertex_walk = 0, add_vertex = 0, add_vertex_nb = 0,
+           get_edge = 0, add_or_update_edge = 0, remove_nb = 0, add_pos_gap_read = 0, update_read_seq = 0, get_read_seq = 0;
+  void reset() {
+    GraphCounts gc{};
+    std::swap(*this, gc);
+  }
+  void log_rpc_counts() {
+    auto &pr = upcxx_utils::Timings::get_promise_reduce();
+    auto fut_all =
+        when_all(pr.msm_reduce_one(get_vertex), pr.msm_reduce_one(get_vertex_clen), pr.msm_reduce_one(set_vertex_visited),
+                 pr.msm_reduce_one(update_vertex_walk), pr.msm_reduce_one(add_vertex), pr.msm_reduce_one(add_vertex_nb),
+                 pr.msm_reduce_one(get_edge), pr.msm_reduce_one(add_or_update_edge), pr.msm_reduce_one(remove_nb),
+                 pr.msm_reduce_one(add_pos_gap_read), pr.msm_reduce_one(update_read_seq), pr.msm_reduce_one(get_read_seq));
+
+    auto fut_report = fut_all.then([](auto msm_get_vertex, auto msm_get_vertex_clen, auto msm_set_vertex_visited,
+                                      auto msm_update_vertex_walk, auto msm_add_vertex, auto msm_add_vertex_nb, auto msm_get_edge,
+                                      auto msm_add_or_update_edge, auto msm_remove_nb, auto msm_add_pos_gap_read,
+                                      auto msm_update_read_seq, auto msm_get_read_seq) {
+      SLOG_VERBOSE(
+          "GraphCounts rpc stats:", "\n\tget_vertex: ", msm_get_vertex.to_string(),
+          "\n\tget_vertex_clen: ", msm_get_vertex_clen.to_string(), "\n\tset_vertex_visited: ", msm_set_vertex_visited.to_string(),
+          "\n\tupdate_vertex_walk: ", msm_update_vertex_walk.to_string(), "\n\tadd_vertex: ", msm_add_vertex.to_string(),
+          "\n\tmsm_add_vertex_nb: ", msm_add_vertex_nb.to_string(), "\n\tget_edge :", msm_get_edge.to_string(),
+          "\n\tadd_or_update_edge: ", msm_add_or_update_edge.to_string(),
+          "\n\tmsm_add_or_update_edge :", msm_add_or_update_edge.to_string(), "\n\tremove_nb :", msm_remove_nb.to_string(),
+          "\n\tadd_pos_gap_read :", msm_add_pos_gap_read.to_string(), "\n\tupdate_read_seq :", msm_update_read_seq.to_string(),
+          "\n\tget_read_seq :", msm_get_read_seq.to_string(), "\n");
+    });
+    upcxx_utils::Timings::set_pending(fut_report);
+    reset();
+  }
+};
+
 struct GapRead {
   string read_name;
   // used for resolving positive splints

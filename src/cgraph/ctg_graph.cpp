@@ -215,6 +215,7 @@ shared_ptr<Vertex> CtgGraph::get_vertex(cid_t cid) {
   return upcxx::rpc(
              target_rank,
              [](vertex_map_t &vertices, cid_t cid) {
+               GraphCounts::get().get_vertex++;
                const auto it = vertices->find(cid);
                if (it == vertices->end()) return Vertex({.cid = -1});
                return it->second;
@@ -231,6 +232,7 @@ int CtgGraph::get_vertex_clen(cid_t cid) {
   return upcxx::rpc(
              get_vertex_target_rank(cid),
              [](vertex_map_t &vertices, cid_t cid) {
+               GraphCounts::get().get_vertex_clen++;
                const auto it = vertices->find(cid);
                if (it == vertices->end()) return -1;
                return it->second.clen;
@@ -249,6 +251,7 @@ void CtgGraph::set_vertex_visited(cid_t cid) {
   upcxx::rpc(
       get_vertex_target_rank(cid),
       [](vertex_map_t &vertices, cid_t cid) {
+        GraphCounts::get().set_vertex_visited++;
         const auto it = vertices->find(cid);
         if (it == vertices->end()) DIE("could not fetch vertex ", cid, "\n");
         auto v = &it->second;
@@ -262,6 +265,7 @@ void CtgGraph::update_vertex_walk(cid_t cid, int walk_score, int walk_i) {
   upcxx::rpc(
       get_vertex_target_rank(cid),
       [](vertex_map_t &vertices, cid_t cid, int walk_score, int walk_i, int myrank) {
+        GraphCounts::get().update_vertex_walk++;
         const auto it = vertices->find(cid);
         if (it == vertices->end()) DIE("could not fetch vertex ", cid, "\n");
         auto v = &it->second;
@@ -306,6 +310,7 @@ void CtgGraph::add_vertex(Vertex &v, const string &seq) {
   upcxx::rpc(
       get_vertex_target_rank(v.cid),
       [](vertex_map_t &vertices, Vertex v) {
+        GraphCounts::get().add_vertex++;
         v.visited = false;
         vertices->insert({v.cid, v});
       },
@@ -317,6 +322,7 @@ void CtgGraph::add_vertex_nb(cid_t cid, cid_t nb, char end) {
   upcxx::rpc(
       get_vertex_target_rank(cid),
       [](vertex_map_t &vertices, cid_t cid, cid_t nb, int end) {
+        GraphCounts::get().add_vertex_nb++;
         const auto it = vertices->find(cid);
         if (it == vertices->end()) DIE("could not fetch vertex ", cid, "\n");
         auto v = &it->second;
@@ -363,6 +369,7 @@ shared_ptr<Edge> CtgGraph::get_edge(cid_t cid1, cid_t cid2) {
   return upcxx::rpc(
              target_rank,
              [](edge_map_t &edges, const CidPair &cids) -> Edge {
+               GraphCounts::get().get_edge++;
                const auto it = edges->find(cids);
                if (it == edges->end()) return Edge({.cids = {-1, -1}});
                return it->second;
@@ -394,6 +401,7 @@ void CtgGraph::add_or_update_edge(Edge &edge) {
   upcxx::rpc(
       get_edge_target_rank(edge.cids),
       [](edge_map_t &edges, const Edge &new_edge) {
+        GraphCounts::get().add_or_update_edge++;
         const auto it = edges->find(new_edge.cids);
         if (it == edges->end()) {
           // not found, always insert
@@ -469,6 +477,7 @@ void CtgGraph::remove_nb(cid_t cid, int end, cid_t nb) {
   upcxx::rpc(
       get_vertex_target_rank(cid),
       [](vertex_map_t &vertices, cid_t cid, int end, cid_t nb) {
+        GraphCounts::get().remove_nb++;
         const auto it = vertices->find(cid);
         if (it == vertices->end()) DIE("could not fetch vertex ", cid, "\n");
         auto v = &it->second;
@@ -513,6 +522,7 @@ void CtgGraph::add_pos_gap_read(const string &read_name) {
   upcxx::rpc(
       get_read_target_rank(read_name),
       [](reads_map_t &read_seqs, const string &read_name) {
+        GraphCounts::get().add_pos_gap_read++;
         read_seqs->insert({read_name, ""});
       },
       read_seqs, read_name)
@@ -523,6 +533,7 @@ bool CtgGraph::update_read_seq(const string &read_name, const string &seq) {
   return upcxx::rpc(
              get_read_target_rank(read_name),
              [](reads_map_t &read_seqs, const string &read_name, const string &seq) {
+               GraphCounts::get().update_read_seq++;
                auto it = read_seqs->find(read_name);
                if (it == read_seqs->end()) return false;
                (*read_seqs)[read_name] = seq;
@@ -536,6 +547,7 @@ string CtgGraph::get_read_seq(const string &read_name) {
   return upcxx::rpc(
              get_read_target_rank(read_name),
              [](reads_map_t &read_seqs, const string &read_name) -> string {
+               GraphCounts::get().get_read_seq++;
                const auto it = read_seqs->find(read_name);
                if (it == read_seqs->end()) return string("");
                return it->second;
@@ -643,6 +655,8 @@ void CtgGraph::print_stats(int min_ctg_print_len, string graph_fname) {
     }
     progbar.done();
   }
+
+  GraphCounts::get().log_rpc_counts();
 
   auto num_vertices = get_num_vertices();
   auto num_edges = get_num_edges();
