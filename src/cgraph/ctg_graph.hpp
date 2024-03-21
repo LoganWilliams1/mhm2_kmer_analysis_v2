@@ -55,6 +55,8 @@ using std::to_string;
 using std::vector;
 
 #include "utils.hpp"
+#include "upcxx_utils/timers.hpp"
+#include "upcxx_utils/promise_collectives.hpp"
 
 // #define DBG_BUILD DBG
 #define DBG_BUILD(...)
