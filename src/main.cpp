@@ -245,7 +245,7 @@ int main(int argc, char **argv) {
                  " memory on node 0 for reads", KNORM, "\n");
 
     if (options->default_kmer_lens) {
-      if (avg_read_len < 130) {
+      if (avg_read_len < 110) {
         SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
         options->kmer_lens.pop_back();
         SOUT("  kmer-lens = ", Options::vec_to_str(options->kmer_lens), "\n");
