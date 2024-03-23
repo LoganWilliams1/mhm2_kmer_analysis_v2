@@ -546,7 +546,8 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   LOG_MEM("After reserving for local hashtable");
   int64_t num_purged = 0, num_inserted = 0;
   auto msm_max_kmer_count = fut_msm_max_kmer_count.wait();
-  SLOG("Max count distribution for kmers: ", msm_max_kmer_count.to_string(), "\n");
+  if (!rank_me() LOG("High count (max) for kmers: ", msm_max_kmer_count.to_string(), "\n");
+  int64_t high_count_threshold = msm_max_kmer_count.avg;
   state->kmers->begin_iterate();
   uint64_t sum_kmer_counts = 0;
   while (true) {
@@ -556,7 +557,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
       num_purged++;
       continue;
     }
-    if (kmer_ext_counts->count >= msm_max_kmer_count.avg) {
+    if (kmer_ext_counts->count >= high_count_threshold) {
       NET_LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
     }
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
