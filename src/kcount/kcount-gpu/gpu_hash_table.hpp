@@ -165,6 +165,8 @@ class HashTableGPUDriver {
 
   void done_all_inserts(uint64_t &num_dropped, uint64_t &num_unique, uint64_t &num_purged);
 
+  void begin_iterate();
+  
   std::pair<KmerArray<MAX_K> *, CountExts *> get_next_entry();
 
   void get_elapsed_time(double &insert_time, double &kernel_time);
