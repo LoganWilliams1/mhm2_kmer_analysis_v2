@@ -371,6 +371,16 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
            prepurge_num_entries, "\n");
   SLOG_GPU("GPU hash table final size is ", (all_num_entries / rank_n()), " entries and final load factor is ",
            ((double)all_num_entries / all_capacity), "\n");
+  int64_t max_kmer_count = 0;
+  state->ht_gpu_driver.begin_iterate();
+  while (true) {
+    auto [kmer_array, count_exts] = state->ht_gpu_driver.get_next_entry();
+    if (!kmer_array) break;
+    if (count_exts->count > max_kmer_count) max_kmer_count = count_exts->count;
+  }
+  
+  auto msm_max_kmer_count = upcxx_utils::min_sum_max_reduce_all(max_kmer_counts).wait();
+  SLOG("Max count distribution for kmers: ", msm_max_kmer_count.to_string(), "\n");
   barrier();
 
   // add some space for the ctg kmers
@@ -378,6 +388,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   LOG_MEM("After insert_into_local_hashtable reserve");
   uint64_t invalid = 0;
   uint64_t sum_kmer_counts = 0;
+  state->ht_gpu_driver.begin_iterate();
   while (true) {
     auto [kmer_array, count_exts] = state->ht_gpu_driver.get_next_entry();
     if (!kmer_array) break;
@@ -394,7 +405,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
       invalid++;
       continue;
     }
-    if (count_exts->count >= KCOUNT_HIGH_KMER_COUNT) {
+    if (count_exts->count >= msm_max_kmer_count.avg) {
       Kmer<MAX_K> kmer(kmer_array->longs);
       NET_LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", count_exts->count, " kmer = ", kmer.to_string(), "\n");
     }
