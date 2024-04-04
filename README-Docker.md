@@ -1,14 +1,13 @@
-Docker support is (very) experimental and will ONLY work on a single machine.
+Docker support is limited to a single machine and CPUs only (no GPUs).
 
-To build docker, from git:
-git submodule init
-git submodule update
-docker build -t local/mhm2:latest -f Docker/Dockerfile-build .
+A MetaHipMer image can be built directly from the bitbucket repository without needing to clone it as follows:
 
-To run in docker, you must set the --memory and --shm-size parameters to your specific machine and mount volumes for your inputs and outputs
+`docker build -t local/mhm2:latest https://bitbucket.org/berkeleylab/mhm2.git#master`
 
-Example:
+If doing a rebuild, to enure that the latest version is built, use the `--no-cache` option to docker.
 
-docker run --memory 50g --shm-size=32g --volume $datadir:/scratch local/mhm2:latest mhm2.py -r /scratch/arctic_sample_0.fq -o /scratch/test-docker
+To run the docker image, you must set the `--shm-size` parameter; usually 1g to 2g per process will suffice. In addition, you will need to set the mount volume for your inputs and outputs. For example, for a machine with 32 processors:
 
-Where $datadir is the directory on the host containing the input files and where the output will be written to.
+`docker run --shm-size=32g --volume $datadir:/scratch local/mhm2:latest mhm2.py -r /scratch/arctic_sample_0.fq`
+
+Where `$datadir` is the directory on the host containing the input files and where the output will be written to.
