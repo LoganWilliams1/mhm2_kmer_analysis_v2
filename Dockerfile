@@ -7,15 +7,12 @@ LABEL Maintainer "Rob Egan"
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update  && \
-    apt-get install  --no-install-recommends -y python3 libcurl4 binutils build-essential perl cmake git zlib1g zlib1g-dev && \
-    apt-get install  -y wget curl && \
+    apt-get install --no-install-recommends -y python3 libcurl4 binutils build-essential perl cmake git zlib1g zlib1g-dev && \
+    apt-get install -y wget curl && \
     apt-get autoremove -y && \
     apt-get clean && \
     apt-get autoclean && \
     rm -rf /var/lib/apt/lists/* 
-
-# ensure we don't use a cached version of the repo
-ARG CACHEBUST=1
 
 RUN git clone https://bitbucket.org/berkeleylab/mhm2.git /var/tmp/mhm2-build
 RUN cd /var/tmp/mhm2-build && \
