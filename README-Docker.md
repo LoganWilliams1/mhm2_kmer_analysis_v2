@@ -1,4 +1,4 @@
-Docker support is limited to a single machine and CPUs only (no GPUs).
+Docker support is experimental and is limited to a single machine and CPUs only (no GPUs).
 
 A MetaHipMer image can be built directly from the bitbucket repository without needing to clone it as follows:
 
