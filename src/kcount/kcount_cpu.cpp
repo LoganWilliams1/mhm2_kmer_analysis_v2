@@ -1,11 +1,11 @@
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
- approvals from the U.S. Dept. of Energy).  All rights reserved."
+ approvals from the U.S. Dept. of Energy).  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without modification,
  are permitted provided that the following conditions are met:
-n
+
  (1) Redistributions of source code must retain the above copyright notice, this
  list of conditions and the following disclaimer.
 
@@ -546,7 +546,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   LOG_MEM("After reserving for local hashtable");
   int64_t num_purged = 0, num_inserted = 0;
   auto msm_max_kmer_count = fut_msm_max_kmer_count.wait();
-  if (!rank_me() LOG("High count (max) for kmers: ", msm_max_kmer_count.to_string(), "\n");
+  if (!rank_me()) LOG("High count (max) for kmers: ", msm_max_kmer_count.to_string(), "\n");
   int64_t high_count_threshold = msm_max_kmer_count.avg;
   state->kmers->begin_iterate();
   uint64_t sum_kmer_counts = 0;
