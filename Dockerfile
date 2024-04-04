@@ -27,6 +27,7 @@ RUN cd /var/tmp/mhm2-build && \
     TMPDIR=/var/tmp/mhm2-build ./upcxx-utils/contrib/install_upcxx.sh /usr/local --with-default-network=smp --disable-ibv && \
     cd /var/tmp/mhm2-build && \
     MHM2_INSTALL_PATH=/usr/local ./build.sh Release && \
+    rm -rf /var/tmp/mhm2-build* && \
     find / -name '*.pyc' -exec rm {} \;
 
 ENV PATH=/usr/local/bin:${PATH}
