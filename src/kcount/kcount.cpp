@@ -157,5 +157,5 @@ void analyze_kmers(unsigned kmer_len, unsigned prev_kmer_len, int qual_offset, P
   kmer_dht->clear_stores();
   auto msm_num_local = upcxx_utils::min_sum_max_reduce_one(kmer_dht->get_local_num_kmers(),0).wait();
   SLOG_VERBOSE("Local kmers: ", msm_num_local.to_string(), "\n");
-  SLOG("Total kmers: ", msm_num_local.sum, "\n");
+  SLOG_VERBOSE("Total kmers: ", msm_num_local.sum, "\n");
 };
