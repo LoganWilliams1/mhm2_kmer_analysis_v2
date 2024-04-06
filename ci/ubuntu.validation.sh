@@ -68,7 +68,7 @@ echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
 mv test-arctic-sample0 ${RUN_PREFIX}/rwdi-test-arctic-sample0
 echo "Starting debug run on with reduced workflow using ${DBG}/mhm2"
-timeout -k 1m -s INT --foreground -v 25m ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
+timeout -k 1m -s INT --foreground -v 25m ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --scaff-kmer-lens 63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
 echo "verify dbg-k3163 results $(ls -la ${RUN_PREFIX}/dbg-k3163)"
