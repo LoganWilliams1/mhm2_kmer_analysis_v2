@@ -422,8 +422,8 @@ static vector<shared_ptr<Vertex>> search_for_next_nbs(int max_kmer_len, int kmer
   stats.num_steps++;
   // get the nbs from the correct end
   auto nbs_merged_cids = (end == 5 ? curr_v->end5_merged : curr_v->end3_merged);
-  DBG_WALK("curr_v ", curr_v->cid, " depth ", curr_v->depth, " length ", curr_v->clen, " nbs ", nbs_cids.size(), " walk_depth ",
-           walk_depth, "\n");
+  DBG_WALK("curr_v ", curr_v->cid, " depth ", curr_v->depth, " length ", curr_v->clen, " nbs ", nbs_merged_cids.size(),
+           " walk_depth ", walk_depth, "\n");
   if (nbs_merged_cids.empty()) {
     stats.dead_ends++;
     DBG_WALK("    -> terminate: dead end\n");
@@ -679,15 +679,13 @@ static vector<pair<cid_t, int32_t>> sort_ctgs(int min_ctg_len) {
       bool found_higher_depth = false;
       for (auto nb_cid : all_nb_cids) {
         auto nb = _graph->get_vertex_cached(nb_cid);
-        if (nb->depth > v->depth) {
+        if (nb->depth >= v->depth) {
           found_higher_depth = true;
           break;
         }
         sum_nb_depths += nb->depth;
       }
-      if (!found_higher_depth) {
-        if (v->depth > 2.0 * sum_nb_depths / all_nb_cids.size()) continue;
-      }
+      if (!found_higher_depth && (v->depth > 2.0 * sum_nb_depths / all_nb_cids.size())) continue;
     }
     sorted_ctgs.push_back({v->cid, v->clen});
   }
