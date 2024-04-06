@@ -97,6 +97,11 @@ int main(int argc, char **argv) {
   upcxx::promise<> prom_report_init_timings(1);
   srand(rank_me() + 10);
 
+#ifdef CIDS_FROM_HASH
+  SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
+        "consistency across small runs");
+#endif
+
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
   if (gasnet_statsfile) _gasnet_stats = true;
@@ -442,8 +447,7 @@ int main(int argc, char **argv) {
   flush_logs_timer.start();
 #ifdef DEBUG
   _dbgstream.flush();
-  while (close_dbg())
-    ;
+  while (close_dbg());
 #endif
   LOG("closed DBG.\n");
 
