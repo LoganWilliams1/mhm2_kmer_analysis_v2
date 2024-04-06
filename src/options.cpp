@@ -604,8 +604,8 @@ bool Options::load(int argc, char **argv) {
     SLOG(KLBLUE, "_________________________", KNORM, "\n");
   }
   auto num_nodes = upcxx::rank_n() / upcxx::local_team().rank_n();
-  SLOG("Starting run with ", upcxx::rank_n(), " processes on ", num_nodes, " node", (num_nodes > 1 ? "s" : ""), " at ",
-       get_current_time(), "\n");
+  SLOG(KBLUE, "Starting run with ", upcxx::rank_n(), " processes on ", num_nodes, " node", (num_nodes > 1 ? "s" : ""), " at ",
+       get_current_time(), KNORM, "\n");
 #ifdef DEBUG
   SWARN("Running low-performance debug mode");
 #endif

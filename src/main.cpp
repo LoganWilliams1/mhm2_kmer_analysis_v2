@@ -192,7 +192,7 @@ int main(int argc, char **argv) {
       auto spos = reads_fname.find_first_of(':');  // support paired reads
       if (spos == string::npos) {
         auto sz = get_file_size(reads_fname);
-        SLOG("Reads file ", reads_fname, " is ", get_size_str(sz), "\n");
+        SLOG(KBLUE, "Reads file ", reads_fname, " is ", get_size_str(sz), KNORM, "\n");
         tot_file_size += sz;
       } else {
         // paired files
@@ -204,9 +204,9 @@ int main(int argc, char **argv) {
         tot_file_size += s1 + s2;
       }
     }
-    SOUT("Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""), " is ",
-         get_size_str(tot_file_size), "; ", get_size_str(tot_file_size / rank_n()), " per rank; ",
-         get_size_str(local_team().rank_n() * tot_file_size / rank_n()), " per node\n");
+    SOUT(KBLUE, "Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""),
+         " is ", get_size_str(tot_file_size), "; ", get_size_str(tot_file_size / rank_n()), " per rank; ",
+         get_size_str(local_team().rank_n() * tot_file_size / rank_n()), " per node", KNORM, "\n");
 
     if (total_free_mem < 3 * tot_file_size)
       SWARN("There may not be enough memory in this job of ", nodes,
