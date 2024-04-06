@@ -73,6 +73,7 @@ class Options {
   vector<string> reads_fnames;
   vector<string> paired_fnames;
   vector<string> unpaired_fnames;
+  bool adapter_trim = true;
   string adapter_fname;
   vector<unsigned> kmer_lens = {21, 31, 47, 63, 95};
   bool default_kmer_lens = true;

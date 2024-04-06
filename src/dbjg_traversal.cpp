@@ -114,6 +114,7 @@ struct StepInfo {
 
 struct WalkTermStats {
   int64_t num_deadends, num_forks, num_conflicts, num_repeats, num_visited;
+  static int64_t &get_next_step_count() { static int64_t _ = 0; return _; }
 
   void update(WalkStatus walk_status) {
     switch (walk_status) {
@@ -132,6 +133,7 @@ struct WalkTermStats {
     auto all_num_conflicts = reduce_one(num_conflicts, op_fast_add, 0).wait();
     auto all_num_repeats = reduce_one(num_repeats, op_fast_add, 0).wait();
     auto all_num_visited = reduce_one(num_visited, op_fast_add, 0).wait();
+    auto msm_next_step = upcxx_utils::min_sum_max_reduce_one(get_next_step_count(), 0).wait();
     auto tot_ends = all_num_forks + all_num_deadends + all_num_conflicts + all_num_repeats + all_num_visited;
     SLOG_VERBOSE("Walk statistics:\n");
     SLOG_VERBOSE("  deadends:  ", perc_str(all_num_deadends, tot_ends), "\n");
@@ -139,6 +141,7 @@ struct WalkTermStats {
     SLOG_VERBOSE("  conflicts: ", perc_str(all_num_conflicts, tot_ends), "\n");
     SLOG_VERBOSE("  repeats:   ", perc_str(all_num_repeats, tot_ends), "\n");
     SLOG_VERBOSE("  visited:   ", perc_str(all_num_visited, tot_ends), "\n");
+    SLOG_VERBOSE("  next_step: ", msm_next_step.to_string(), "\n");
   }
 };
 
@@ -172,6 +175,7 @@ template <int MAX_K>
 StepInfo<MAX_K> get_next_step(dist_object<KmerDHT<MAX_K>> &kmer_dht, const Kmer<MAX_K> &start_kmer, const Dirn dirn,
                               const char start_prev_ext, const char start_next_ext, bool revisit_allowed, bool is_rc,
                               const global_ptr<FragElem> frag_elem_gptr) {
+  WalkTermStats::get_next_step_count()++;
   StepInfo<MAX_K> step_info(start_kmer, start_prev_ext, start_next_ext);
   while (true) {
     KmerCounts *kmer_counts = kmer_dht->get_local_kmer_counts(step_info.kmer);
@@ -276,6 +280,7 @@ static global_ptr<FragElem> traverse_dirn(dist_object<KmerDHT<MAX_K>> &kmer_dht,
     StepInfo<MAX_K> step_info;
     if (target_rank == rank_me()) {
       step_info = get_next_step<MAX_K>(kmer_dht, next_kmer, dirn, prev_ext, next_ext, revisit_allowed, is_rc, frag_elem_gptr);
+      WalkTermStats::get_next_step_count()--; // do not count steps with self
     } else {
       traverse_rpc_timer.start();
       step_info = rpc(target_rank, get_next_step<MAX_K>, kmer_dht, next_kmer, dirn, prev_ext, next_ext, revisit_allowed, is_rc,
@@ -306,6 +311,7 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
   _num_node_rpcs = 0;
   _num_rpcs = 0;
   WalkTermStats walk_term_stats = {0};
+  WalkTermStats::get_next_step_count() = 0;
   int64_t num_walks = 0;
   barrier();
   IntermittentTimer traverse_dirn_timer("traverse direction");

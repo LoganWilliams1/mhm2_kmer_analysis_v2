@@ -100,7 +100,7 @@ done
 
 echo "Submitting $cmds $waits"
 OUT=perlmutter.accuracy.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
-sbatch --output=$OUT --wait --qos=debug --time=30:00 --account=m342 -C cpu -c 8 --wrap="$cmds $waits"
+sbatch --output=$OUT --wait --qos=debug --time=30:00 --account=m2865 -C cpu -c 8 --wrap="$cmds $waits"
 cat $OUT
 
 if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi

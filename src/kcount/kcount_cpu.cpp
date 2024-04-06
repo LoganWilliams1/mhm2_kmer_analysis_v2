@@ -1,11 +1,11 @@
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
- approvals from the U.S. Dept. of Energy).  All rights reserved."
+ approvals from the U.S. Dept. of Energy).  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without modification,
  are permitted provided that the following conditions are met:
-n
+
  (1) Redistributions of source code must retain the above copyright notice, this
  list of conditions and the following disclaimer.
 
@@ -524,14 +524,17 @@ template <int MAX_K>
 double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap<MAX_K>> &local_kmers) {
   BarrierTimer timer(__FILEFUNC__);
   int64_t num_good_kmers = state->kmers->size();
+  int64_t max_kmer_counts = 0;
   state->insert_timer.start();
   state->kmers->begin_iterate();
   while (true) {
     auto [kmer, kmer_ext_counts] = state->kmers->get_next();
     if (!kmer) break;
+    if (kmer_ext_counts->count > max_kmer_counts) max_kmer_counts = kmer_ext_counts->count;
     if ((kmer_ext_counts->count < 2) || (kmer_ext_counts->left_exts.is_zero() && kmer_ext_counts->right_exts.is_zero()))
       num_good_kmers--;
   }
+  auto fut_msm_max_kmer_count = upcxx_utils::min_sum_max_reduce_all(max_kmer_counts);
   LOG_MEM("Before inserting into local hashtable");
   SLOG_CPU_HT("Reserving compact hash table for ", num_good_kmers, " elements, requires ",
               get_size_str(num_good_kmers * (sizeof(Kmer<MAX_K>) + sizeof(KmerCounts))), "\n");
@@ -543,6 +546,9 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
               get_size_str(used_mem), "\n");
   LOG_MEM("After reserving for local hashtable");
   int64_t num_purged = 0, num_inserted = 0;
+  auto msm_max_kmer_count = fut_msm_max_kmer_count.wait();
+  if (!rank_me()) LOG("High count (max) for kmers: ", msm_max_kmer_count.to_string(), "\n");
+  int64_t high_count_threshold = msm_max_kmer_count.avg;
   state->kmers->begin_iterate();
   uint64_t sum_kmer_counts = 0;
   while (true) {
@@ -552,8 +558,8 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
       num_purged++;
       continue;
     }
-    if (kmer_ext_counts->count >= KCOUNT_HIGH_KMER_COUNT) {
-      LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
+    if (kmer_ext_counts->count >= high_count_threshold) {
+      NET_LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", kmer_ext_counts->count, " kmer = ", kmer->to_string(), "\n");
     }
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
                               .count = kmer_ext_counts->count,

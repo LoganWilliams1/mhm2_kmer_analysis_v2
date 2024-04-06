@@ -775,7 +775,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(uint64_t &num_dropped, uint64_t
   // is generally a lot less than the host memory, it should be fine.
   output_keys.resize(num_entries);
   output_vals.resize(num_entries);
-  output_index = 0;
+  begin_iterate();
   ERROR_CHECK(Memcpy(output_keys.data(), (void *)compact_read_kmers_dev.keys,
                      compact_read_kmers_dev.capacity * sizeof(KmerArray<MAX_K>), MemcpyDeviceToHost));
   ERROR_CHECK(Memcpy(output_vals.data(), compact_read_kmers_dev.vals, compact_read_kmers_dev.capacity * sizeof(CountExts),
@@ -812,6 +812,11 @@ template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::get_elapsed_time(double &insert_time, double &kernel_time) {
   insert_time = dstate->insert_timer.get_elapsed();
   kernel_time = dstate->kernel_timer.get_elapsed();
+}
+
+template<int MAX_K>
+void HashTableGPUDriver<MAX_K>::begin_iterate() {
+  output_index = 0;
 }
 
 template <int MAX_K>
