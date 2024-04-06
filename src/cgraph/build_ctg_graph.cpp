@@ -644,9 +644,9 @@ void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kme
   get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
   int64_t mismatched = 0, conflicts = 0, empty_spans = 0;
   _graph->purge_error_edges(&mismatched, &conflicts, &empty_spans);
-  // #ifdef DEBUG
+#ifdef DEBUG
   graph->print_graph("cgraph-" + to_string(kmer_len));
-  // #endif
+#endif
   auto num_edges = _graph->get_num_edges();
   SLOG_VERBOSE("Purged edges:\n");
   SLOG_VERBOSE("  mismatched:  ", perc_str(reduce_one(mismatched, op_fast_add, 0).wait(), num_edges), "\n");

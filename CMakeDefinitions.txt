@@ -42,7 +42,7 @@
 # define this to ensure contig ids are computed from the hash of the contig sequences. It could
 # result in duplicate sequences. The only reason to use this is to make it easier to compare
 # the results of different runs for non-determinism - best to compare small runs.
-add_definitions(-DCIDS_FROM_HASH)
+# add_definitions(-DCIDS_FROM_HASH)
 
 # use SSW for trimming reads - better quality, but maybe slower
 add_definitions(-DMERGE_READS_TRIM_WITH_SSW)
