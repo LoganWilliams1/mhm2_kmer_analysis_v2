@@ -408,7 +408,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
     }
     if (count_exts->count >= high_count_threshold) {
       Kmer<MAX_K> kmer(kmer_array->longs);
-      // NET_LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", count_exts->count, " kmer = ", kmer.to_string(), "\n");
+      NET_LOG("High count kmer: k = ", Kmer<MAX_K>::get_k(), " count = ", count_exts->count, " kmer = ", kmer.to_string(), "\n");
     }
 
     KmerCounts kmer_counts = {.uutig_frag = nullptr,
