@@ -227,7 +227,6 @@ int main(int argc, char **argv) {
     memory_tracker.start();
     LOG_MEM("Preparing to load reads");
     auto start_free_mem = get_free_mem(true);
-    SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
     PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
