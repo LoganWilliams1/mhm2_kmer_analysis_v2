@@ -548,6 +548,8 @@ bool Options::load(int argc, char **argv) {
   if (!app.get_option("--kmer-lens")->empty()) default_kmer_lens = false;
   if (!app.get_option("--scaff-kmer-lens")->empty()) default_scaff_kmer_lens = false;
 
+  if (scaff_kmer_lens.front() > kmer_lens.back()) SWARN("Scaffold kmer lengths may not be suitable for contigging kmer lengths");
+
   if (max_kmer_store_mb == 0) {
     // use 1% of the minimum available memory
     max_kmer_store_mb = get_free_mem(true) / 1024 / 1024 / 100;
