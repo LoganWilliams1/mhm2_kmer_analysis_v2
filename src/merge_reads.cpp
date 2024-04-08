@@ -1001,5 +1001,6 @@ int merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapse
   fut_summary.wait();
 
   timer.initiate_exit_barrier();
+  avg_read_len = broadcast(avg_read_len, 0).wait();
   return avg_read_len;
 }

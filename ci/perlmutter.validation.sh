@@ -61,7 +61,7 @@ do
   echo "Submitting job on ${nodes} $arch nodes"
   old=${SLURM_MEM_PER_CPU}
   unset SLURM_MEM_PER_CPU
-  job=$(sbatch --parsable --job-name="CImvg-${CI_COMMIT_SHORT_SHA}" ${slurm_opts} --nodes=${nodes} --wrap="source $inst-Release/env.sh ; module list ; env|grep SLURM; env|grep GAS; env|grep UPC; env|grep FI; set -x; ${RWDI} $OPTS -o ${RUN_PREFIX}/$arch-rwdi-0 && echo 'sleeping for 15s so that srun can recover' && sleep 15 && ${DBG} ${OPTS} --kmer-lens 63 --scaff-kmer-lens 63 -o ${RUN_PREFIX}/$arch-dbg-0-k63 && echo Good")
+  job=$(sbatch --parsable --job-name="CImvg-${CI_COMMIT_SHORT_SHA}" ${slurm_opts} --nodes=${nodes} --wrap="source $inst-Release/env.sh ; module list ; env|grep SLURM; env|grep GAS; env|grep UPC; env|grep FI; set -x; ${RWDI} $OPTS -o ${RUN_PREFIX}/$arch-rwdi-0 && echo 'sleeping for 15s so that srun can recover' && sleep 15 && ${DBG} ${OPTS} --kmer-lens 63 --scaff-kmer-lens 63 --use-qf=0 -o ${RUN_PREFIX}/$arch-dbg-0-k63 && echo Good")
   export SLURM_MEM_PER_CPU=${old}
   slurm_jobs="$slurm_jobs $job"
 done

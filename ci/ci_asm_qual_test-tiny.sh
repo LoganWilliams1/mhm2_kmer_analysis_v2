@@ -45,7 +45,7 @@ else
 fi
 uptime
 set -x
-timeout -k 1m -s INT --foreground -v 10m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
+timeout -k 1m -s INT --foreground -v 5m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
 status=$?
 if [ $status -ne 0 ]
 then
