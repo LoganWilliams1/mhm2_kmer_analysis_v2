@@ -34,8 +34,8 @@ Unaligned length             0
 Genome fraction (%)          1.808         
 Duplication ratio            0.999         
 # N's per 100 kbp            0.00          
-# mismatches per 100 kbp     161.13        
-# indels per 100 kbp         8.30          
+# mismatches per 100 kbp     173.20
+# indels per 100 kbp         11.30
 Largest alignment            2920          
 Total aligned length         1818458       
 NA50                         811           
