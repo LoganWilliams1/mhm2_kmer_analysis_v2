@@ -77,7 +77,7 @@ using namespace upcxx;
 using namespace upcxx_utils;
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
-                  int rlen_limit, bool compute_cigar);
+                  int rlen_limit, int clen_limit, bool compute_cigar);
 void cleanup_aligner();
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
                         Alns *alns, future<> &active_kernel_fut, int read_group_id, int max_clen, int max_rlen,
@@ -541,7 +541,7 @@ class Aligner {
   }
 
  public:
-  Aligner(int kmer_len, Alns &alns, int rlen_limit, bool report_cigar, bool use_blastn_scores)
+  Aligner(int kmer_len, Alns &alns, int rlen_limit, int clen_limit, bool report_cigar, bool use_blastn_scores)
       : num_alns(0)
       , num_perfect_alns(0)
       , kmer_len(kmer_len)
@@ -559,7 +559,7 @@ class Aligner {
       , remote_ctg_fetches(0) {
     init_aligner((int)cpu_aligner.ssw_aligner.get_match_score(), (int)cpu_aligner.ssw_aligner.get_mismatch_penalty(),
                  (int)cpu_aligner.ssw_aligner.get_gap_opening_penalty(), (int)cpu_aligner.ssw_aligner.get_gap_extending_penalty(),
-                 (int)cpu_aligner.ssw_aligner.get_ambiguity_penalty(), rlen_limit, report_cigar);
+                 (int)cpu_aligner.ssw_aligner.get_ambiguity_penalty(), rlen_limit, clen_limit, report_cigar);
   }
 
   ~Aligner() {
@@ -896,7 +896,8 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &kmer_ctg_dht, PackedReads *packed_reads, 
 
 template <int MAX_K>
 void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, Alns &alns, int read_group_id, int rlen_limit,
-                  bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, int rget_buf_size, KlignTimers &timers) {
+                  int clen_limit, bool report_cigar, bool use_blastn_scores, int64_t all_num_ctgs, int rget_buf_size,
+                  KlignTimers &timers) {
   assert(!upcxx::in_progress());
   assert(upcxx::master_persona().active_with_caller());
   auto short_name = get_basename(packed_reads->get_fname());
@@ -907,7 +908,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   int64_t num_reads = 0;
   auto sh_alns = make_shared<Alns>();
   Alns &alns_for_sample = *sh_alns;
-  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, clen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(), string("Computing alignments on ") + short_name);
   for (auto &read_record : read_records) {
@@ -1001,13 +1002,14 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
 #ifdef DEBUG
 // kmer_ctg_dht.dump_ctg_kmers();
 #endif
+  int max_clen = reduce_all(ctgs.get_max_clen(), op_fast_max).wait();
   int read_group_id = 0;
   upcxx::promise prom_gpu(1);
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, use_blastn_scores, all_num_ctgs,
-                        rget_buf_size, timers);
+    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, max_clen, report_cigar, use_blastn_scores,
+                        all_num_ctgs, rget_buf_size, timers);
     read_group_id++;
   }
   timers.done_all();

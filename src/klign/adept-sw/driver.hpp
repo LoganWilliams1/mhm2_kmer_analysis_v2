@@ -73,7 +73,7 @@ class GPUDriver {
 
  public:
   GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score, short gap_opening_score,
-            short gap_extending_score, int rlen_limit, bool compute_cigar, double &init_time);
+            short gap_extending_score, int rlen_limit, int clen_limit, bool compute_cigar, double &init_time);
   ~GPUDriver();
 
   void run_kernel_forwards(std::vector<std::string> &reads, std::vector<std::string> &contigs, unsigned maxReadSize,

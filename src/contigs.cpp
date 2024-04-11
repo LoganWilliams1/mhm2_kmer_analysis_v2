@@ -274,10 +274,11 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
     double depth = strtod(endptr, NULL);
     Contig contig = {.id = id, .seq = seq, .depth = depth};
     add_contig(contig);
+    max_clen = max(max_clen, (int)seq.length());
   }
   if (ctgs_file.tellg() < stop_offset)
     DIE("Did not read the entire contigs file from ", start_offset, " to ", stop_offset, " tellg=", ctgs_file.tellg());
-  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, "\n");
+  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, " max_clen=", max_clen, "\n");
   auto &pr = Timings::get_promise_reduce();
   auto fut_tot_contigs = pr.reduce_one(contigs.size(), op_fast_add, 0);
   auto fut_tot_len = pr.reduce_one(tot_len, op_fast_add, 0);
@@ -296,3 +297,5 @@ size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
   }
   return num_ctg_kmers;
 }
+
+int Contigs::get_max_clen() const { return max_clen; }

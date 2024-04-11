@@ -93,8 +93,8 @@ struct gpu_alignments_traceback {
   gpu_alignments_traceback(int max_alignments, int maxCIGAR, unsigned const maxMatrixSize) {
     // printf("new operator called, creating gpu_alignments_traceback data structure\n");
     ERROR_CHECK(Malloc(&CIGAR_gpu, (max_alignments) * sizeof(char) * maxCIGAR));
-    ERROR_CHECK(Malloc(&H_ptr_gpu, 1.25 * sizeof(char) * maxMatrixSize *
-                                       (max_alignments)));  // added a buffer because of cuda-error in larger sequences
+    // added a buffer because of cuda-error in larger sequences
+    ERROR_CHECK(Malloc(&H_ptr_gpu, 1.25 * sizeof(char) * maxMatrixSize * (max_alignments)));
     ERROR_CHECK(Malloc(&longCIGAR_gpu, sizeof(char) * maxCIGAR * (max_alignments)));
   }
 
@@ -126,13 +126,13 @@ void asynch_mem_copies_htd(gpu_alignments* gpu_data, unsigned* offsetA_h, unsign
 
   size_t size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
   if (size_strB < totalLengthB) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
-              << "totalLengthB " << totalLengthB << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "totalLengthB "
+              << totalLengthB << " max rlen " << max_rlen << "\n";
     std::abort();
   }
   if (size_strB < half_length_B) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
-              << "half_length_B " << half_length_B << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "half_length_B "
+              << half_length_B << " max rlen " << max_rlen << "\n";
     std::abort();
   }
 
@@ -192,13 +192,13 @@ void asynch_mem_copies_htd_t(gpu_alignments* gpu_data, gpu_alignments_traceback*
 
   size_t size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
   if (size_strB < totalLengthB) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
-              << "totalLengthB " << totalLengthB << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "totalLengthB "
+              << totalLengthB << " max rlen " << max_rlen << "\n";
     std::abort();
   }
   if (size_strB < half_length_B) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
-              << "half_length_B " << half_length_B << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "half_length_B "
+              << half_length_B << " max rlen " << max_rlen << "\n";
     std::abort();
   }
   ERROR_CHECK(MemcpyAsync(strB_d, strB, half_length_B * sizeof(char), MemcpyHostToDevice, streams_cuda[0]));
@@ -273,12 +273,11 @@ struct adept_sw::DriverState {
 };
 
 adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score,
-                               short gap_opening_score, short gap_extending_score, int max_rlen, bool compute_cigar,
+                               short gap_opening_score, short gap_extending_score, int max_rlen, int max_clen, bool compute_cigar,
                                double& init_time) {
   timepoint_t t = std::chrono::high_resolution_clock::now();
 
   // calculate if the batch will fit into global memory
-  int max_clen = 3 * max_rlen;  // FIXME LL: Hack until I can pass in max_clen
   unsigned maxCIGAR = (max_clen > max_rlen) ? 3 * max_clen : 3 * max_rlen;
 
   int maxMatrixSize = max_rlen * max_clen;
@@ -338,9 +337,8 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   driver_state->gpu_data = new gpu_alignments(KLIGN_GPU_BLOCK_SIZE);  // gpu mallocs
   // elapsed =  std::chrono::high_resolution_clock::now() - t; os << " final=" << elapsed.count();
 
-  if (compute_cigar) {
+  if (compute_cigar)
     driver_state->gpu_data_traceback = new gpu_alignments_traceback(KLIGN_GPU_BLOCK_SIZE, maxCIGAR, maxMatrixSize);  // gpu mallocs
-  }
 
   ERROR_CHECK(EventCreateWithFlags(&driver_state->event_fwd_0, EventDisableTiming | EventBlockingSync));
   ERROR_CHECK(EventCreateWithFlags(&driver_state->event_fwd_1, EventDisableTiming | EventBlockingSync));

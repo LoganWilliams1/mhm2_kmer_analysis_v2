@@ -60,9 +60,11 @@ struct Contig {
 
 class Contigs {
   vector<Contig> contigs;
+  int max_clen;
 
  public:
-  Contigs() {}
+  Contigs()
+      : max_clen(0) {}
 
   void clear();
 
@@ -88,4 +90,6 @@ class Contigs {
   void load_contigs(const string &ctgs_fname, const string &prefix);
 
   size_t get_num_ctg_kmers(int kmer_len) const;
+
+  int get_max_clen() const;
 };
