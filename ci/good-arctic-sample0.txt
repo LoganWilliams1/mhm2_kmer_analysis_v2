@@ -12,7 +12,7 @@ Total length (>= 1000 bp)    22903550
 Total length (>= 5000 bp)    7605212       
 Total length (>= 10000 bp)   4507252       
 Total length (>= 25000 bp)   1711868       
-Total length (>= 50000 bp)   430123        
+Total length (>= 50000 bp)   322225
 # contigs                    18814         
 Largest contig               71076
 Total length                 29939588      
