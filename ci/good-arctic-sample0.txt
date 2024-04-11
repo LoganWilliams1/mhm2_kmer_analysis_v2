@@ -11,7 +11,7 @@ Total length (>= 0 bp)       29939588
 Total length (>= 1000 bp)    22903550      
 Total length (>= 5000 bp)    7605212       
 Total length (>= 10000 bp)   4507252       
-Total length (>= 25000 bp)   1711868       
+Total length (>= 25000 bp)   1553569
 Total length (>= 50000 bp)   322225
 # contigs                    18814         
 Largest contig               71076
@@ -24,7 +24,7 @@ L75                          8281
 # misassemblies              28            
 # misassembled contigs       28            
 Misassembled contigs length  151819
-# local misassemblies        154           
+# local misassemblies        6
 # scaffold gap ext. mis.     0             
 # scaffold gap loc. mis.     0             
 # unaligned mis. contigs     0             
@@ -33,11 +33,11 @@ Unaligned length             0
 Genome fraction (%)          31.229        
 Duplication ratio            1.002         
 # N's per 100 kbp            0.02          
-# mismatches per 100 kbp     104.25
-# indels per 100 kbp         2.61          
+# mismatches per 100 kbp     107.72
+# indels per 100 kbp         3.87        
 Largest alignment            71076         
 Total aligned length         29933994      
 NA50                         2110          
 NA75                         1038          
-LA50                         3115          
+LA50                         3147
 LA75                         8296          
