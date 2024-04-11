@@ -140,7 +140,7 @@ void Aln::set_sam_string(std::string_view read_seq, string cigar) {
   } else {
     sam_string += "0\t";
   }
-  sam_string += "Contig" + std::to_string(cid) + "\t" + std::to_string(cstart + 1) + "\t";
+  sam_string += "scaffold_" + std::to_string(cid) + "\t" + std::to_string(cstart + 1) + "\t";
   uint32_t mapq;
   // for perfect match, set to same maximum as used by minimap or bwa
   if (score2 == 0) {
@@ -177,9 +177,8 @@ void Aln::set_sam_string(std::string_view read_seq, string cigar) {
 // minimap2 PAF output format
 string Aln::to_paf_string() const {
   ostringstream os;
-  os << read_id << "\t" << rstart + 1 << "\t" << rstop << "\t" << rlen << "\t"
-     << "Contig" << cid << "\t" << cstart + 1 << "\t" << cstop << "\t" << clen << "\t" << (orient == '+' ? "Plus" : "Minus") << "\t"
-     << score1 << "\t" << score2;
+  os << read_id << "\t" << rstart + 1 << "\t" << rstop << "\t" << rlen << "\t" << "Contig" << cid << "\t" << cstart + 1 << "\t"
+     << cstop << "\t" << clen << "\t" << (orient == '+' ? "Plus" : "Minus") << "\t" << score1 << "\t" << score2;
   //<< "0";
   return os.str();
 }
@@ -191,9 +190,8 @@ string Aln::to_blast6_string() const {
   int gap_opens = 0;
   int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
   double identity = calc_identity();
-  os << read_id << "\t"
-     << "Contig" << cid << "\t" << std::fixed << std::setprecision(3) << identity << "\t" << aln_len << "\t" << mismatches << "\t"
-     << gap_opens << "\t" << rstart + 1 << "\t" << rstop << "\t";
+  os << read_id << "\t" << "Contig" << cid << "\t" << std::fixed << std::setprecision(3) << identity << "\t" << aln_len << "\t"
+     << mismatches << "\t" << gap_opens << "\t" << rstart + 1 << "\t" << rstop << "\t";
   // subject start and end reversed when orientation is minus
   if (orient == '+')
     os << cstart + 1 << "\t" << cstop;
@@ -401,7 +399,7 @@ upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> 
   for (const auto &ctg : ctgs) {
     if (ctg.seq.length() < min_ctg_len) continue;
     assert(ctg.id >= 0);
-    of << "@SQ\tSN:Contig" << std::to_string(ctg.id) << "\tLN:" << std::to_string(ctg.seq.length()) << "\n";
+    of << "@SQ\tSN:scaffold_" << std::to_string(ctg.id) << "\tLN:" << std::to_string(ctg.seq.length()) << "\n";
   }
   // all @SQ headers aggregated to the top of the file
   auto all_done = of.flush_collective();

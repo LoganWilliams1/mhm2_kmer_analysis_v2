@@ -50,7 +50,7 @@ using namespace upcxx;
 using namespace upcxx_utils;
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
-                  int rlen_limit, bool compute_cigar) {}
+                  int rlen_limit, int clen_limit, bool compute_cigar) {}
 void cleanup_aligner() {}
 
 void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vector<string> &ctg_seqs, vector<string> &read_seqs,
