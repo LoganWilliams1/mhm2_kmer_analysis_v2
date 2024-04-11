@@ -428,7 +428,7 @@ int main(int argc, char **argv) {
     memory_tracker.start();
     BarrierTimer("Post Processing");
     LOG_MEM("Before Post-Processing");
-    if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname, "contig_");
+    if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname, "scaffold_");
     post_assembly(ctgs, options, max_expected_ins_size);
     FastqReaders::close_all();
     memory_tracker.stop();
