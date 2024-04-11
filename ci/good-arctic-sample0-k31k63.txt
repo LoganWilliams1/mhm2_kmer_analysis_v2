@@ -24,7 +24,7 @@ L50                          4479
 L90                          13521         
 # misassemblies              6             
 # misassembled contigs       6             
-Misassembled contigs length  6599          
+Misassembled contigs length  9020
 # local misassemblies        3             
 # scaffold gap ext. mis.     0             
 # scaffold gap loc. mis.     0             
