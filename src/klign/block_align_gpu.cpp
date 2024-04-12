@@ -190,8 +190,8 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     shared_ptr<AlignBlockData> aln_block_data =
         make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id);
     assert(kernel_alns.empty());
-    // for now, the GPU alignment doesn't support cigars
-    if (gpu_utils::gpus_present()) {
+    // FIXME: the GPU alignment doesn't support cigars properly
+    if (gpu_utils::gpus_present() && !cpu_aligner.ssw_filter.report_cigar) {
       active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, klign_timers);
     } else {
       active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, klign_timers.aln_kernel);

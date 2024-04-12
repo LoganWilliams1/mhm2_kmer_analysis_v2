@@ -949,7 +949,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   });
   Timings::set_pending(fut_report);
 
-  // barrier before possibly loosing attention for sort & append
+  // barrier before possibly losing attention for sort & append
   LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
   BarrierTimer sort_bt("Sorting Alignments for " + short_name);
   if (!sh_alns->empty()) {

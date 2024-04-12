@@ -1,7 +1,11 @@
 set(SRCS parse_and_pack.cpp gpu_hash_table.cpp hashutil.cpp)
 
+string(ASCII 27 Esc)
+set(ColorReset "${Esc}[m")
+set(Yellow      "${Esc}[33m")
+
 if(ENABLE_CUDA)
-  message(STATUS "Building for CUDA")
+  message(STATUS "${Yellow}Building for CUDA${ColorReset}")
   add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
     target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
