@@ -268,7 +268,7 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
     // extract the id
     char *endptr;
     int64_t id = strtol(cname.c_str() + ctg_prefix.length(), &endptr, 10);
-    if (id == prev_id) DIE("DUplicate ids ", prev_id, " in file ", ctgs_fname);
+    if (id == prev_id) DIE("Duplicate ids ", prev_id, " in file ", ctgs_fname);
     prev_id = id;
     // depth is the last field in the cname
     double depth = strtod(endptr, NULL);

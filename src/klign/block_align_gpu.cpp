@@ -142,6 +142,8 @@ void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty
     SWARN("No GPU will be used for alignments");
   } else {
     double init_time;
+    // FIXME: set the compute_cigar to false because the computation is broken
+    compute_cigar = false;
     gpu_driver = new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)match_score,
                                          (short)-mismatch_penalty, (short)-gap_opening_penalty, (short)-gap_extending_penalty,
                                          rlen_limit, clen_limit, compute_cigar, init_time);
