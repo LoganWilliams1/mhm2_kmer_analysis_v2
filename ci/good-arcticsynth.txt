@@ -17,19 +17,19 @@ Total length (>= 50000 bp)   62429980
 Largest contig               1462373       
 Total length                 95433785      
 Reference length             102521842     
-N50                          108268
+N50                          106740
 N75                          24954         
 L50                          198           
 L75                          660           
 # misassemblies              103           
 # misassembled contigs       100           
 Misassembled contigs length  7580859       
-# local misassemblies        88            
+# local misassemblies        28
 # scaffold gap ext. mis.     0             
 # scaffold gap loc. mis.     0             
 # unaligned mis. contigs     0             
 # unaligned contigs          0 + 2 part    
-Unaligned length             1038          
+Unaligned length             1227
 Genome fraction (%)          93.766        
 Duplication ratio            1.004         
 # N's per 100 kbp            0.00          
