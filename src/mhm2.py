@@ -541,7 +541,7 @@ def print_err_msgs(err_msgs, return_status):
 def print_not_help(*args):
     global _show_help
     if not _show_help:
-        print("".join(args))
+        print(*args)
 
 
 def main():
