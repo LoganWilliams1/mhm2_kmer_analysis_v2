@@ -87,6 +87,9 @@ void post_assembly(Contigs &ctgs, Options &options) {
   unsigned rlen_limit = 0;
   int read_group_id = 0;
   for (auto &reads_fname : options.reads_fnames) {
+    SLOG(KBLUE, "_________________________", KNORM, "\n");
+    SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
+    SLOG("\n");
     vector<string> one_file_list;
     one_file_list.push_back(reads_fname);
     FastqReaders::open_all_file_blocking(one_file_list);
