@@ -57,8 +57,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-using upcxx::future;
-
 void post_assembly(Contigs &ctgs, Options &options) {
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
@@ -82,7 +80,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   }
 
   shared_ptr<dist_ofstream> sh_sam_of;
-  future<> fut_sam = make_future();
+  upcxx::future<> fut_sam = make_future();
   if (options.post_assm_aln) {
     SLOG_VERBOSE("Writing SAM headers\n");
     sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
@@ -145,7 +143,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
       LOG_MEM("After Post Assembly SAM Saved");
     }
     if (options.post_assm_abundances) {
-      SLOG("\n");
       stage_timers.compute_ctg_depths->start();
       // compute depths 1 column at a time
       sh_aln_depths->compute_for_read_group(alns, read_group_id);
