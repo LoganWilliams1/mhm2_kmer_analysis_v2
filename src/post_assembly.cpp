@@ -81,7 +81,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   upcxx::future<> fut_sam = make_future();
   SLOG_VERBOSE("Writing SAM headers\n");
   sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
-  fut_sam = Alns::_write_sam_header(*sh_sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
+  fut_sam = Alns::write_sam_header(*sh_sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
 
   KlignTimers timers;
   unsigned rlen_limit = 0;
@@ -135,7 +135,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
 #endif
     LOG_MEM("After Post Assembly Alignments Saved");
     // Dump 1 file at a time with proper read groups
-    auto fut_flush = alns._write_sam_alignments(*sh_sam_of, options.min_ctg_print_len);
+    auto fut_flush = alns.write_sam_alignments(*sh_sam_of, options.min_ctg_print_len);
     fut_sam = when_all(fut_sam, fut_flush);
 
     LOG_MEM("After Post Assembly SAM Saved");

@@ -393,8 +393,8 @@ void Alns::dump_single_file(const string fname) const {
   upcxx::barrier();
 }
 
-upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
-                                        int min_ctg_len) {
+upcxx::future<> Alns::write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
+                                       int min_ctg_len) {
   // First all ranks dump Sequence tags - @SQ	SN:Contig0	LN:887
   for (const auto &ctg : ctgs) {
     if (ctg.seq.length() < min_ctg_len) continue;
@@ -417,7 +417,7 @@ upcxx::future<> Alns::_write_sam_header(dist_ofstream &of, const vector<string> 
   return all_done;
 }
 
-upcxx::future<> Alns::_write_sam_alignments(dist_ofstream &of, int min_ctg_len) const {
+upcxx::future<> Alns::write_sam_alignments(dist_ofstream &of, int min_ctg_len) const {
   // next alignments.  rank0 will be first with the remaining header fields
   dump_all(of, true, min_ctg_len);
   return of.flush_collective();
@@ -425,15 +425,10 @@ upcxx::future<> Alns::_write_sam_alignments(dist_ofstream &of, int min_ctg_len) 
 
 void Alns::dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
-
   string out_str = "";
-
   dist_ofstream of(fname);
-
-  auto fut = _write_sam_header(of, read_group_names, ctgs, min_ctg_len);
-
-  auto fut2 = _write_sam_alignments(of, min_ctg_len);
-
+  auto fut = write_sam_header(of, read_group_names, ctgs, min_ctg_len);
+  auto fut2 = write_sam_alignments(of, min_ctg_len);
   when_all(fut, fut2, of.close_async()).wait();
   of.close_and_report_timings().wait();
 }
