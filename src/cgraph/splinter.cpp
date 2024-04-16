@@ -145,7 +145,7 @@ static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats) {
     stats.short_alns++;
     return false;
   }
-  if (gap < -aln1->rlen) DIE("Gap is too small: ", gap, ", read length ", aln1->rlen, "\n");
+  assert(gap >= -aln1->rlen);
   // check for bad overlaps
   if (gap < 0 && (aln1->clen < -gap || aln2->clen < -gap)) {
     stats.bad_overlaps++;
@@ -173,6 +173,7 @@ static bool add_splint(const Aln *aln1, const Aln *aln2, AlnStats &stats) {
                .short_aln = false,
                .gap_reads = {}};
   if (edge.gap > 0) {
+    assert(aln1->read_id == aln2->read_id);
     edge.gap_reads = vector<GapRead>{GapRead(aln1->read_id, gap_start, orient1, cids.cid1)};
     _graph->add_pos_gap_read(aln1->read_id);
   }
@@ -199,7 +200,7 @@ void get_splints_from_alns(Alns &alns, CtgGraph *graph) {
       for (int j = i + 1; j < (int)alns_for_read.size(); j++) {
         progress();
         auto other_aln = &alns_for_read[j];
-        if (other_aln->read_id != aln->read_id) DIE("Mismatched read ids: ", other_aln->read_id, " != ", aln->read_id, "\n");
+        assert(other_aln->read_id == aln->read_id);
         if (add_splint(other_aln, aln, stats)) num_splints++;
       }
     }

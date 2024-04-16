@@ -55,6 +55,7 @@
 
 #include "alignments.hpp"
 #include "contigs.hpp"
+#include "aln_depths.hpp"
 #include "upcxx_utils/flat_aggr_store.hpp"
 #include "upcxx_utils/three_tier_aggr_store.hpp"
 #include "upcxx_utils/limit_outstanding.hpp"
@@ -74,6 +75,9 @@ struct AvgVar {
   AvgVar()
       : avg(0)
       , var(0) {}
+  AvgVar(float avg, float var)
+      : avg(avg)
+      , var(var) {}
 };  // template struct AvgVar
 
 struct CtgLen {
@@ -205,7 +209,7 @@ struct CtgBaseDepths {
     free_base_counts(read_group_id);
   }  // calc_stats
 
-};   // struct CtgBaseDepths
+};  // struct CtgBaseDepths
 
 class CtgsDepths {
  private:
@@ -253,10 +257,10 @@ class CtgsDepths {
   }
 
  public:
-  CtgsDepths(Contigs &ctgs, int edge_base_len, int min_ctg_len, int num_read_groups)
+  CtgsDepths(Contigs &ctgs, int min_ctg_len, int num_read_groups)
       : ctgs_depths(local_ctgs_depths_map_t{})
       , ctgs(ctgs)
-      , edge_base_len(edge_base_len)
+      , edge_base_len(min_ctg_len >= 75 ? 75 : 0)
       , min_ctg_len(min_ctg_len)
       , num_read_groups(num_read_groups == 0 ? 1 : num_read_groups)
       , finished_read_groups(0)
@@ -283,8 +287,8 @@ class CtgsDepths {
     for (auto &rg_prom : all_done_rg_prom_barriers) {
       auto fut_calc = rg_prom.get_future().then([&self = *this, read_group_id]() {
         DBG("Calculating stats on read_group=", read_group_id, "\n");
-        for (auto &ctgs_depth : *self.ctgs_depths) {
-          auto &[cid, ctg_base_depths] = ctgs_depth;
+        for (auto &ctg_depths : *self.ctgs_depths) {
+          auto &[cid, ctg_base_depths] = ctg_depths;
           if (ctg_base_depths.owning_rank == rank_me() && get_target_rank(cid) != rank_me() &&
               ctg_base_depths.read_group_base_counts.empty())
             continue;  // ignore placeholders here
@@ -296,6 +300,7 @@ class CtgsDepths {
       read_group_id++;
     }
   }
+
   ~CtgsDepths() { assert(finished_read_groups == num_read_groups); }
 
   void finish_read_group(int read_group_id) {
@@ -305,35 +310,6 @@ class CtgsDepths {
     all_done_rg_prom_barriers[read_group_id].get_future().wait();
     DBG("Finished rg=", read_group_id, "\n");
     finished_read_groups++;
-  }
-
-  void finish_all() {
-    BarrierTimer timer(__FILEFUNC__);
-    DBG("Finishing all\n");
-    ctg_aln_depth_store.clear();
-    return_stats_store.set_size("Return stats",
-                                max_store_bytes * sizeof(CtgStats) / (sizeof(CtgStats) + num_read_groups * 2 * sizeof(float)));
-    fut_done.wait();
-    if (num_read_groups != finished_read_groups)
-      DIE("finish_all cannot be called before all read groups have called finish_read_group");
-    Timings::set_pending(fut_done);
-
-    SLOG_VERBOSE("Sending read group stats back to original rank\n");
-    for (auto &key_val : *ctgs_depths) {
-      auto &[cid, cbds] = key_val;
-      auto tgt = get_target_rank(cid);
-      if (tgt != rank_me()) continue;  // placeholder for one of my loaded contigs to be updated
-      tgt = cbds.owning_rank;
-      if (tgt == rank_me()) {
-        // bypass.  All good
-      } else {
-        CtgStats cs{.cid = cid, .rg_stats = std::move(cbds.rg_stats)};
-        return_stats_store.update(tgt, cs);
-      }
-      cbds.clear_rg_bases();  // free some memory
-    }
-    return_stats_store.flush_updates();
-    return_stats_store.clear();
   }
 
   void flush_contigs() {
@@ -390,7 +366,14 @@ class CtgsDepths {
   future<vector<AvgVar<float>>> fut_get_depth(cid_t cid) {
     auto it = ctgs_depths->find(cid);
     if (it != ctgs_depths->end()) {
-      return make_future(it->second.rg_stats);
+      auto &ctg_base_depths = it->second;
+      if (ctg_base_depths.rg_stats.size() == 0) {
+        // this can happen when using hash CIDs and we have duplicate contigs. This is a hack to keep going
+        WARN("empty rg stats for cid ", cid, "; likely duplicate contig");
+        ctg_base_depths.rg_stats.push_back({1.0, 1.0});
+      }
+      assert(ctg_base_depths.rg_stats.size() > 0);
+      return make_future(ctg_base_depths.rg_stats);
     }
     LOG("Falling back to rpc for cid=", cid, "\n");
     auto target_rank = get_target_rank(cid);
@@ -398,18 +381,24 @@ class CtgsDepths {
     return upcxx::rpc(
         target_rank,
         [](ctgs_depths_map_t &ctgs_depths, cid_t cid, int edge_base_len) -> vector<AvgVar<float>> {
-          const auto it = ctgs_depths->find(cid);
-          if (it == ctgs_depths->end()) DIE("could not fetch vertex ", cid, "\n");
-          const auto &ctg_base_depths = it->second;
+          auto it = ctgs_depths->find(cid);
+          if (it == ctgs_depths->end()) DIE("could not fetch contig ", cid, "\n");
+          auto &ctg_base_depths = it->second;
           auto &read_group_base_counts = ctg_base_depths.read_group_base_counts;
           for (auto &rg_base_counts_ptr : read_group_base_counts) {
             DBG("Testing ", rg_base_counts_ptr, "\n");
             assert(rg_base_counts_ptr == nullptr);
           }
+          if (ctg_base_depths.rg_stats.size() == 0) {
+            // this can happen when using hash CIDs and we have duplicate contigs. This is a hack to keep going
+            WARN("empty rg stats for cid ", cid, "; likely duplicate contig");
+            ctg_base_depths.rg_stats.push_back({1.0, 1.0});
+          }
+          assert(ctg_base_depths.rg_stats.size() > 0);
           return ctg_base_depths.rg_stats;
         },
         ctgs_depths, cid, edge_base_len);
-  }  // fut_get_depth
+  }
 
   void add_contigs(const Contigs &ctgs) {
     BarrierTimer timer(__FILEFUNC__);
@@ -435,24 +424,7 @@ class CtgsDepths {
     LOG_MEM("After allocating per_base ctgs_depths");
   }
 
-  static shared_ptr<CtgsDepths> build_ctgs_depths(Contigs &ctgs, int min_ctg_len, int num_read_groups) {
-    BarrierTimer timer(__FILEFUNC__);
-    int edge_base_len = (min_ctg_len >= 75 ? 75 : 0);
-
-    size_t bases = 0;
-    for (auto &ctg : ctgs) {
-      int clen = ctg.seq.length();
-      if (clen < min_ctg_len) continue;
-      bases += clen;
-    }
-
-    auto sh_ctgs_depths = make_shared<CtgsDepths>(ctgs, edge_base_len, min_ctg_len, num_read_groups);
-    auto &ctgs_depths = *sh_ctgs_depths;
-    ctgs_depths.add_contigs(ctgs);
-    return sh_ctgs_depths;
-  }
-
-  void compute_aln_depths_by_read_group(const Alns &alns, bool double_count_merged_region, int read_group_id = -1) {
+  void compute_aln_depths_by_read_group(const Alns &alns, bool double_count_merged_region, int read_group_id) {
     assert(!upcxx::in_progress());
     DBG("alns=", alns.size(), "\n");
     auto unmerged_rlen = alns.calculate_unmerged_rlen();
@@ -461,6 +433,7 @@ class CtgsDepths {
     ProgressBar progbar(alns.size(), "Processing alignments");
     for (auto &aln : alns) {
       progbar.update();
+      // read_group_id could be one of multiple groups, so we set it to -1
       assert(read_group_id == -1 || aln.read_group_id == read_group_id);
       // aln.check_quality();
       //  this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
@@ -505,15 +478,58 @@ class CtgsDepths {
     Timings::set_pending(when_all(fut_progbar, fut_report));
   }
 
-  void write_aln_depths(string fname, const vector<string> &read_group_names) {
-    DBG(__FILEFUNC__, "\n");
-    if (read_group_names.size() != num_read_groups)
-      SDIE("Wong size if read_group_names.  Expecting ", num_read_groups, " got ", read_group_names.size());
-    finish_all();
-    shared_ptr<upcxx_utils::dist_ofstream> ctg_ofstream;
-    if (fname != "") ctg_ofstream = make_shared<upcxx_utils::dist_ofstream>(fname);
+  void finish_all() {
+    BarrierTimer timer(__FILEFUNC__);
+    ctg_aln_depth_store.clear();
+    return_stats_store.set_size("Return stats",
+                                max_store_bytes * sizeof(CtgStats) / (sizeof(CtgStats) + num_read_groups * 2 * sizeof(float)));
+    fut_done.wait();
+    assert(num_read_groups == finished_read_groups);
+    Timings::set_pending(fut_done);
+    SLOG_VERBOSE("Sending read group stats back to original rank\n");
+    for (auto &key_val : *ctgs_depths) {
+      auto &[cid, cbds] = key_val;
+      auto tgt = get_target_rank(cid);
+      if (tgt != rank_me()) continue;  // placeholder for one of my loaded contigs to be updated
+      tgt = cbds.owning_rank;
+      if (tgt == rank_me()) {
+        // bypass.  All good
+      } else {
+        CtgStats cs{.cid = cid, .rg_stats = std::move(cbds.rg_stats)};
+        return_stats_store.update(tgt, cs);
+      }
+      cbds.clear_rg_bases();  // free some memory
+    }
+    return_stats_store.flush_updates();
+    return_stats_store.clear();
+  }
 
-    if (!upcxx::rank_me() && ctg_ofstream) {
+  void set_ctgs_depths() {
+    future<> fut_chain = make_future();
+    for (auto it = ctgs.begin(); it != ctgs.end(); it++) {
+      auto &ctg = *it;
+      if ((int)ctg.seq.length() < min_ctg_len) continue;
+      auto fut_rg_avg_vars = fut_get_depth(ctg.id);
+      auto fut_ready = when_all(fut_chain, fut_rg_avg_vars);
+      fut_chain = fut_ready.then([&ctg, num_read_groups = this->num_read_groups](const vector<AvgVar<float>> &rg_avg_vars) {
+        assert(rg_avg_vars.size() == num_read_groups);
+        ctg.depth = 0.0;
+        for (int rg = 0; rg < num_read_groups; rg++) {
+          ctg.depth += rg_avg_vars[rg].avg;
+        }
+      });
+      limit_outstanding_futures(fut_chain).wait();
+      upcxx::progress();
+    }
+    flush_outstanding_futures();
+    fut_chain.wait();
+    barrier();
+  }
+
+  void write_aln_depths(string fname, const vector<string> &read_group_names) {
+    assert(read_group_names.size() == num_read_groups);
+    shared_ptr<upcxx_utils::dist_ofstream> ctg_ofstream = make_shared<upcxx_utils::dist_ofstream>(fname);
+    if (!upcxx::rank_me()) {
       *ctg_ofstream << "contigName\tcontigLen\ttotalAvgDepth";
       for (auto rg_name : read_group_names) {
         string shortname = upcxx_utils::get_basename(rg_name);
@@ -521,10 +537,7 @@ class CtgsDepths {
       }
       *ctg_ofstream << "\n";
     }
-
-    // FIXME: the depths need to be in the same order as the contigs in the final_assembly.fasta file. This is an inefficient
-    // way of ensuring that
-
+    // The depths need to be in the same order as the contigs in the final_assembly.fasta file.
     future<> fut_chain = make_future();
     for (auto it = ctgs.begin(); it != ctgs.end(); it++) {
       auto &ctg = *it;
@@ -534,18 +547,11 @@ class CtgsDepths {
       fut_chain =
           fut_ready.then([&ctg, ctg_ofstream, num_read_groups = this->num_read_groups](const vector<AvgVar<float>> &rg_avg_vars) {
             assert(rg_avg_vars.size() == num_read_groups);
-            double tot_depth = 0.0;
+            *ctg_ofstream << "scaffold_" << ctg.id << "\t" << ctg.seq.length() << "\t" << ctg.depth;
             for (int rg = 0; rg < num_read_groups; rg++) {
-              tot_depth += rg_avg_vars[rg].avg;
+              *ctg_ofstream << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
             }
-            ctg.depth = tot_depth;
-            if (ctg_ofstream) {
-              *ctg_ofstream << "Contig" << ctg.id << "\t" << ctg.seq.length() << "\t" << tot_depth;
-              for (int rg = 0; rg < num_read_groups; rg++) {
-                *ctg_ofstream << "\t" << rg_avg_vars[rg].avg << "\t" << rg_avg_vars[rg].var;
-              }
-              *ctg_ofstream << "\n";
-            }
+            *ctg_ofstream << "\n";
           });
       limit_outstanding_futures(fut_chain).wait();
       upcxx::progress();
@@ -553,37 +559,31 @@ class CtgsDepths {
     flush_outstanding_futures();
     fut_chain.wait();
     barrier();
-    if (fname != "") {
-      assert(ctg_ofstream);
-      DBG("Prepared contig depths for '", fname, "\n");
-      ctg_ofstream->close();  // sync and print stats
-    }
+    DBG("Prepared contig depths for '", fname, "\n");
+    ctg_ofstream->close();  // sync and print stats
+  }
+};  // class CtgsDepths
 
-  }  // write_aln_depths
-
-};   // class CtgsDepths
-
-// wrapper method for scaffolding to just calculate depths
-// so squash all read_groups into the total
-void compute_aln_depths_scaffolding(Contigs &ctgs, const Alns &alns, int max_kmer_len, int min_ctg_len,
-                                    bool double_count_merged_region) {
-  auto sh_ctgs_depths = CtgsDepths::build_ctgs_depths(ctgs, min_ctg_len, 1);
-  sh_ctgs_depths->compute_aln_depths_by_read_group(alns, double_count_merged_region, -1);
-  vector<string> names;
-  names.push_back("");
-  sh_ctgs_depths->write_aln_depths("", names);
+AlnDepths::AlnDepths(Contigs &ctgs, int min_ctg_len, int num_read_groups)
+    : ctgs(ctgs)
+    , min_ctg_len(min_ctg_len) {
+  BarrierTimer timer(__FILEFUNC__);
+  sh_ctgs_depths = make_shared<CtgsDepths>(ctgs, min_ctg_len, num_read_groups);
+  sh_ctgs_depths->add_contigs(ctgs);
 }
 
-// methods for post-asm
-shared_ptr<CtgsDepths> build_ctgs_depths(Contigs &ctgs, int min_ctg_len, int num_read_groups) {
-  return CtgsDepths::build_ctgs_depths(ctgs, min_ctg_len, num_read_groups);
+// compute depths over all read groups
+void AlnDepths::compute(const Alns &alns) { sh_ctgs_depths->compute_aln_depths_by_read_group(alns, true, -1); }
+
+void AlnDepths::compute_for_read_group(const Alns &alns, int read_group_id) {
+  sh_ctgs_depths->compute_aln_depths_by_read_group(alns, false, read_group_id);
 }
 
-void compute_aln_depths_post_asm(CtgsDepths &ctg_depths, const Alns &alns, bool double_count_merged_region, int read_group_id) {
-  DBG("alns=", alns.size(), "\n");
-  ctg_depths.compute_aln_depths_by_read_group(alns, double_count_merged_region, read_group_id);
+void AlnDepths::done_computing() {
+  sh_ctgs_depths->finish_all();
+  sh_ctgs_depths->set_ctgs_depths();
 }
 
-void write_aln_depths(CtgsDepths &ctg_depths, string fname, const vector<string> &read_group_names) {
-  ctg_depths.write_aln_depths(fname, read_group_names);
+void AlnDepths::dump_depths(const string &fname, const vector<string> &read_group_names) {
+  sh_ctgs_depths->write_aln_depths(fname, read_group_names);
 }

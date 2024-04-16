@@ -97,6 +97,11 @@ int main(int argc, char **argv) {
   upcxx::promise<> prom_report_init_timings(1);
   srand(rank_me() + 10);
 
+#ifdef CIDS_FROM_HASH
+  SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
+        "consistency across small runs");
+#endif
+
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
   if (gasnet_statsfile) _gasnet_stats = true;
@@ -187,7 +192,7 @@ int main(int argc, char **argv) {
       auto spos = reads_fname.find_first_of(':');  // support paired reads
       if (spos == string::npos) {
         auto sz = get_file_size(reads_fname);
-        SLOG("Reads file ", reads_fname, " is ", get_size_str(sz), "\n");
+        SLOG(KBLUE, "Reads file ", reads_fname, " is ", get_size_str(sz), KNORM, "\n");
         tot_file_size += sz;
       } else {
         // paired files
@@ -199,9 +204,9 @@ int main(int argc, char **argv) {
         tot_file_size += s1 + s2;
       }
     }
-    SOUT("Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""), " is ",
-         get_size_str(tot_file_size), "; ", get_size_str(tot_file_size / rank_n()), " per rank; ",
-         get_size_str(local_team().rank_n() * tot_file_size / rank_n()), " per node\n");
+    SOUT(KBLUE, "Total size of ", options->reads_fnames.size(), " input file", (options->reads_fnames.size() > 1 ? "s" : ""),
+         " is ", get_size_str(tot_file_size), "; ", get_size_str(tot_file_size / rank_n()), " per rank; ",
+         get_size_str(local_team().rank_n() * tot_file_size / rank_n()), " per node", KNORM, "\n");
 
     if (total_free_mem < 3 * tot_file_size)
       SWARN("There may not be enough memory in this job of ", nodes,
@@ -222,7 +227,6 @@ int main(int argc, char **argv) {
     memory_tracker.start();
     LOG_MEM("Preparing to load reads");
     auto start_free_mem = get_free_mem(true);
-    SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
     PackedReadsList packed_reads_list;
     for (auto const &reads_fname : options->reads_fnames) {
       packed_reads_list.push_back(new PackedReads(options->qual_offset, get_merged_reads_fname(reads_fname)));
@@ -265,7 +269,7 @@ int main(int argc, char **argv) {
 
     if (!options->ctgs_fname.empty()) {
       stage_timers.load_ctgs->start();
-      ctgs.load_contigs(options->ctgs_fname);
+      ctgs.load_contigs(options->ctgs_fname, options->ctgs_fname.substr(0, 5) == "scaff" ? "scaffold_" : "contig_");
       stage_timers.load_ctgs->stop();
     }
 
@@ -383,7 +387,7 @@ int main(int argc, char **argv) {
     // output final assembly
     SLOG(KBLUE "_________________________", KNORM, "\n");
     stage_timers.dump_ctgs->start();
-    ctgs.dump_contigs("final_assembly.fasta", options->min_ctg_print_len);
+    ctgs.dump_contigs("final_assembly.fasta", options->min_ctg_print_len, "scaffold_");
     stage_timers.dump_ctgs->stop();
 
     SLOG(KBLUE "_________________________", KNORM, "\n");
@@ -424,7 +428,7 @@ int main(int argc, char **argv) {
     memory_tracker.start();
     BarrierTimer("Post Processing");
     LOG_MEM("Before Post-Processing");
-    if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname);
+    if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname, "scaffold_");
     post_assembly(ctgs, options, max_expected_ins_size);
     FastqReaders::close_all();
     memory_tracker.stop();
@@ -442,8 +446,7 @@ int main(int argc, char **argv) {
   flush_logs_timer.start();
 #ifdef DEBUG
   _dbgstream.flush();
-  while (close_dbg())
-    ;
+  while (close_dbg());
 #endif
   LOG("closed DBG.\n");
 

@@ -574,8 +574,8 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   double mem_ratio = (double)(0.8 * gpu_avail_mem) / tot_size;
   if (mem_ratio < 0.9)
     log_warnings << "Insufficent memory for " << fixed << setprecision(3) << target_load_factor
-                 << " load factor across all data structures; reducing by a factor of " << mem_ratio
-                 << "; this could result in an OOM";
+                 << " load factor across all data structures; reducing to " << (mem_ratio * target_load_factor)
+                 << "; this could result in an OOM or dropped kmers";
   max_read_kmers *= mem_ratio;
   max_qf_kmers *= mem_ratio;
   max_ctg_kmers *= mem_ratio;

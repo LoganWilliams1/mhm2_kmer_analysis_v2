@@ -61,11 +61,8 @@ using std::vector;
 // #define DBG_BUILD DBG
 #define DBG_BUILD(...)
 
-// #define DBG_WALK DBG
-#define DBG_WALK(...)
-
-// #define DBG_WALK_CONT DBG_CONT
-#define DBG_WALK_CONT(...)
+#define DBG_WALK DBG
+// #define DBG_WALK(...)
 
 // #define DBG_SPANS DBG
 #define DBG_SPANS(...)
@@ -188,18 +185,11 @@ struct Edge {
   bool mismatch_error, conflict_error, excess_error, short_aln;
   // contains information of reads that map to a positive gap - used for filling the gap
   vector<GapRead> gap_reads;
-#ifdef TNF_PATH_RESOLUTION
-  // TNF probability for this link
-  double tnf_prob;
-#endif
 
   UPCXX_SERIALIZED_FIELDS(cids, end1, end2, gap, support, aln_len, aln_score, edge_type, seq, mismatch_error, conflict_error,
-                          excess_error, short_aln, gap_reads
-#ifdef TNF_PATH_RESOLUTION
-                          ,
-                          tnf_prob
-#endif
-  );
+                          excess_error, short_aln, gap_reads);
+
+  friend ostream &operator<<(ostream &os, const Edge &edge);
 };
 
 struct Vertex {
@@ -218,20 +208,15 @@ struct Vertex {
   // FIXME: when using spans make sure these are valid
   vector<vector<cid_t>> end5_merged;
   vector<vector<cid_t>> end3_merged;
-#ifdef TNF_PATH_RESOLUTION
-  // the tnf distribution for this vertex
-  tnf_t tnf;
-#endif
   // book-keeping fields for resolving walk conflicts between ranks -
   // choose the walk with the longest scaffold, and if there is a tie, choose the highest rank
   int walk_score;
   int walk_rank;
   int walk_i;
-  UPCXX_SERIALIZED_FIELDS(cid, clen, depth, aln_depth, visited, seq_gptr, end5, end3, end5_merged, end3_merged,
-#ifdef TNF_PATH_RESOLUTION
-                          tnf,
-#endif
-                          walk_score, walk_rank, walk_i);
+  UPCXX_SERIALIZED_FIELDS(cid, clen, depth, aln_depth, visited, seq_gptr, end5, end3, end5_merged, end3_merged, walk_score,
+                          walk_rank, walk_i);
+
+  friend ostream &operator<<(ostream &os, const Vertex &vertex);
 };
 
 class CtgGraph {
@@ -248,6 +233,8 @@ class CtgGraph {
   HASH_TABLE<cid_t, shared_ptr<Vertex>> vertex_cache;
   HASH_TABLE<CidPair, shared_ptr<Edge>> edge_cache;
 
+  // ofstream dbg_ofs;
+
   struct VertexDepthInfo {
     cid_t cid;
     double depth;
@@ -262,10 +249,6 @@ class CtgGraph {
   size_t get_edge_target_rank(CidPair &cids);
 
   size_t get_read_target_rank(const string &r);
-
-#ifdef TNF_PATH_RESOLUTION
-  double calc_tnf_dist(shared_ptr<Vertex> v1, shared_ptr<Vertex> v2);
-#endif
 
  public:
   int max_read_len;
@@ -339,9 +322,8 @@ class CtgGraph {
   shared_ptr<Edge> get_edge_cached(cid_t cid1, cid_t cid2);
 
   void print_stats(int min_ctg_print_len, string graph_fname = "");
-#ifdef TNF_PATH_RESOLUTION
-  void compute_edge_tnfs();
-#endif
 
   void print_gfa2(const string &gfa_fname, int min_ctg_print_len);
+
+  void print_graph(const string &fname);
 };

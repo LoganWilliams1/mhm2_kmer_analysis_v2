@@ -378,7 +378,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
     if (!kmer_array) break;
     if (count_exts->count > max_kmer_count) max_kmer_count = count_exts->count;
   }
-  
+
   auto msm_max_kmer_count = upcxx_utils::min_sum_max_reduce_all(max_kmer_count).wait();
   if (!rank_me()) LOG("High count (max) for kmers: ", msm_max_kmer_count.to_string(), "\n");
   int64_t high_count_threshold = msm_max_kmer_count.avg;

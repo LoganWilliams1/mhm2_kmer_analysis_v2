@@ -156,13 +156,18 @@ static string gptr_str(global_ptr<FragElem> gptr) {
 }
 
 template <int MAX_K>
-static bool check_kmers(const string &seq, dist_object<KmerDHT<MAX_K>> &kmer_dht, int kmer_len) {
+static bool check_kmers(const string &seq, double depth, dist_object<KmerDHT<MAX_K>> &kmer_dht, int kmer_len) {
   vector<Kmer<MAX_K>> kmers;
   Kmer<MAX_K>::get_kmers(kmer_len, seq, kmers, true);
+  double tot_depth = 0;
   for (auto &kmer : kmers) {
     assert(kmer.is_valid());
-    if (!kmer_dht->kmer_exists(kmer)) return false;
+    auto count = kmer_dht->get_kmer_count(kmer);
+    if (!count) return false;
+    tot_depth += count;
   }
+  tot_depth /= (seq.length() - kmer_len + 1);
+  if (tot_depth != depth) WARN("depth ", tot_depth, " != ", depth, " clen ", seq.length());
   return true;
 }
 
@@ -224,7 +229,7 @@ StepInfo<MAX_K> get_next_step(dist_object<KmerDHT<MAX_K>> &kmer_dht, const Kmer<
       step_info.kmer = step_info.kmer.forward_base(step_info.next_ext);
     }
     step_info.walk_status = WalkStatus::RUNNING;
-    step_info.sum_depths += kmer_counts->count;
+    if (!revisit_allowed) step_info.sum_depths += kmer_counts->count;
 
     revisit_allowed = false;
     auto kmer = step_info.kmer;
@@ -283,9 +288,8 @@ static global_ptr<FragElem> traverse_dirn(dist_object<KmerDHT<MAX_K>> &kmer_dht,
                       .wait();
       traverse_rpc_timer.stop();
     }
-
-    revisit_allowed = false;
     sum_depths += step_info.sum_depths;
+    revisit_allowed = false;
     uutig += step_info.uutig;
     if (step_info.walk_status != WalkStatus::RUNNING) {
       walk_term_stats.update(step_info.walk_status);
@@ -306,7 +310,6 @@ static void construct_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer
   _num_rank_me_rpcs = 0;
   _num_node_rpcs = 0;
   _num_rpcs = 0;
-  // allocate space for biggest possible uutig in global storage
   WalkTermStats walk_term_stats = {0};
   WalkTermStats::get_next_step_count() = 0;
   int64_t num_walks = 0;
@@ -558,7 +561,10 @@ static void connect_frags(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer_d
     if (walk_ok) {
       num_steps += walk_steps;
       max_steps = max(walk_steps, max_steps);
-      my_uutigs.add_contig({0, uutig, (double)depths / (uutig.length() - kmer_len + 2)});
+      // always take the smallest of revcomp and non-revcomp for consistency across runs
+      string rc_uutig = revcomp(uutig);
+      string seq = (rc_uutig < uutig ? rc_uutig : uutig);
+      my_uutigs.add_contig({0, seq, (double)depths / (seq.length() - kmer_len + 1)});
       // the walk is successful, so set the visited for all the local elems
       for (auto &elem : my_frag_elems_visited) elem->visited = true;
     } else {
@@ -598,18 +604,25 @@ void traverse_debruijn_graph(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kme
     connect_frags(kmer_len, kmer_dht, frag_elems, my_uutigs);
   }
   // now get unique ids for the uutigs
+#ifdef CIDS_FROM_HASH
+  // compute the cid from the hash of the seq. This is for reproducibility, and will likely fail for very large collections of
+  // uutigs
+  std::hash<string> id_hash;
+  for (auto it = my_uutigs.begin(); it != my_uutigs.end(); it++) it->id = id_hash(it->seq) % INT64_MAX;
+#else
   auto num_ctgs = my_uutigs.size();
   auto fut = upcxx_utils::reduce_prefix(num_ctgs, upcxx::op_fast_add).then([num_ctgs, &my_uutigs](size_t my_prefix) {
     auto my_counter = my_prefix - num_ctgs;  // get my start
     for (auto it = my_uutigs.begin(); it != my_uutigs.end(); it++) it->id = my_counter++;
   });
   fut.wait();
+#endif
   barrier();
 #ifdef DEBUG
   ProgressBar progbar(my_uutigs.size(), "Checking kmers in uutigs");
   for (auto uutig : my_uutigs) {
     progbar.update();
-    if (!check_kmers(uutig.seq, kmer_dht, kmer_len)) DIE("kmer not found in uutig");
+    if (!check_kmers(uutig.seq, uutig.depth, kmer_dht, kmer_len)) DIE("kmer not found in uutig");
   }
   progbar.done();
 #endif

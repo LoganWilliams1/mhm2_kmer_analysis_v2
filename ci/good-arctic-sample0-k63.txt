@@ -1,45 +1,45 @@
 All statistics are based on contigs of size >= 500 bp, unless otherwise noted (e.g., "# contigs (>= 0 bp)" and "Total length (>= 0 bp)" include all contigs).
 
 Assembly                     final_assembly
-# contigs (>= 0 bp)          4139          
-# contigs (>= 1000 bp)       568           
+# contigs (>= 0 bp)          1533          
+# contigs (>= 1000 bp)       62            
 # contigs (>= 5000 bp)       0             
 # contigs (>= 10000 bp)      0             
 # contigs (>= 25000 bp)      0             
 # contigs (>= 50000 bp)      0             
-Total length (>= 0 bp)       3083604
-Total length (>= 1000 bp)    763770        
+Total length (>= 0 bp)       993852        
+Total length (>= 1000 bp)    82025         
 Total length (>= 5000 bp)    0             
 Total length (>= 10000 bp)   0             
 Total length (>= 25000 bp)   0             
 Total length (>= 50000 bp)   0             
-# contigs                    4139          
-Largest contig               3655          
-Total length                 3083604       
+# contigs                    1533          
+Largest contig               2705          
+Total length                 993852        
 Reference length             102521842     
-N50                          734           
-N90                          535           
-auN                          873.3         
-L50                          1633
-L90                          3829
-# misassemblies              6             
-# misassembled contigs       6             
-Misassembled contigs length  9049          
-# local misassemblies        1             
+N50                          620           
+N90                          519           
+auN                          705.9         
+L50                          630           
+L90                          1338          
+# misassemblies              1             
+# misassembled contigs       1             
+Misassembled contigs length  2111          
+# local misassemblies        0             
 # scaffold gap ext. mis.     0             
 # scaffold gap loc. mis.     0             
 # unaligned mis. contigs     0             
 # unaligned contigs          0 + 0 part    
 Unaligned length             0             
-Genome fraction (%)          3.693
+Genome fraction (%)          1.418         
 Duplication ratio            1.000         
-# N's per 100 kbp            0.35          
-# mismatches per 100 kbp     334.23        
-# indels per 100 kbp         10.84
-Largest alignment            3655          
-Total aligned length         3083604
-NA50                         734           
-NA90                         535           
-auNA                         871.4         
-LA50                         1635
-LA90                         3832
+# N's per 100 kbp            1.01          
+# mismatches per 100 kbp     284.22        
+# indels per 100 kbp         8.86          
+Largest alignment            2705          
+Total aligned length         993581        
+NA50                         619           
+NA90                         519           
+auNA                         704.4         
+LA50                         631           
+LA90                         1339          

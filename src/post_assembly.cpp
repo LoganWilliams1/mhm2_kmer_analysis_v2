@@ -75,13 +75,11 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   LOG_MEM("After Post Assembly Built Kmer Seeds");
 
-  auto min_ctg_len = options->min_ctg_print_len;
   auto num_read_groups = options->reads_fnames.size();
-  future<> fut_aln_depths = make_future();
-  shared_ptr<CtgsDepths> sh_ctgs_depths;
+  shared_ptr<AlnDepths> sh_aln_depths;
   if (options->post_assm_abundances) {
-    SLOG_VERBOSE("Preparing Ctgs Depths for post assembly abundance\n");
-    sh_ctgs_depths = build_ctgs_depths(ctgs, min_ctg_len, num_read_groups);
+    SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
+    sh_aln_depths = make_shared<AlnDepths>(ctgs, options->min_ctg_print_len, num_read_groups);
     LOG_MEM("After Post Assembly Ctgs Depths");
   }
 
@@ -90,7 +88,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   if (options->post_assm_aln) {
     SLOG_VERBOSE("Writing SAM headers\n");
     sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
-    fut_sam = Alns::_write_sam_header(*sh_sam_of, options->reads_fnames, ctgs, min_ctg_len);
+    fut_sam = Alns::_write_sam_header(*sh_sam_of, options->reads_fnames, ctgs, options->min_ctg_print_len);
   }
 
   KlignTimers timers;
@@ -153,10 +151,7 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
       SLOG("\n");
       stage_timers.compute_ctg_depths->start();
       // compute depths 1 column at a time
-      compute_aln_depths_post_asm(*sh_ctgs_depths, alns, false, read_group_id);
-      // compute depths 1 column at a time
-      // compute_aln_depths("final_assembly_depths.txt", ctgs, alns, kmer_len, options->min_ctg_print_len, options->reads_fnames,
-      // false);
+      sh_aln_depths->compute_for_read_group(alns, read_group_id);
       stage_timers.compute_ctg_depths->stop();
       LOG_MEM("After Post Assembly Depths Saved");
     }
@@ -176,9 +171,9 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
   if (options->post_assm_abundances) {
     string fname("final_assembly_depths.txt");
     SLOG_VERBOSE("Writing ", fname, "\n");
-    fut_aln_depths.wait();
-    write_aln_depths(*sh_ctgs_depths, fname, options->reads_fnames);
-    SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options->output_dir, "/final_assembly_depths.txt", KNORM, "\n");
+    sh_aln_depths->done_computing();
+    sh_aln_depths->dump_depths(fname, options->reads_fnames);
+    SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options->output_dir, "/", fname, KNORM, "\n");
   }
 
   SLOG(KBLUE, "_________________________", KNORM, "\n");

@@ -105,10 +105,19 @@ struct CtgLoc {
 };
 
 struct CtgAndReadLoc {
-  CtgLoc ctg_loc;
+  int32_t pos_in_ctg : 31;  // pack int 31 bits
+  uint32_t ctg_is_rc : 1;   // bool
   int32_t cstart;
   int32_t pos_in_read : 31;  // pack into 31 bits
   uint32_t read_is_rc : 1;   // bool
+};
+
+struct CtgAndReadLocs {
+  cid_t cid;
+  global_ptr<char> seq_gptr;
+  int32_t clen;
+  float depth;
+  vector<CtgAndReadLoc> locs;
 };
 
 template <int MAX_K>
@@ -123,7 +132,7 @@ struct CtgLocAndKmerIdx {
   int kmer_i;
 };
 
-using CtgAndReadLocsMap = HASH_TABLE<cid_t, vector<CtgAndReadLoc>>;
+using CtgAndReadLocsMap = HASH_TABLE<cid_t, CtgAndReadLocs>;
 
 struct ReadRecord {
   int64_t index : 40;

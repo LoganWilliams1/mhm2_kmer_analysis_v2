@@ -82,6 +82,7 @@ void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_lis
   LOG("num_reads=", num_reads, " num_read_bases=", num_read_bases, " max_read_len=", max_read_len, "\n");
   CtgsWithReadsDHT ctgs_dht(ctgs.size(), num_ctg_bases);
   add_ctgs(ctgs_dht, ctgs);
+
   ctgs_dht.prep_ctg_read_store(num_reads, num_read_bases);
   ReadsToCtgsDHT reads_to_ctgs(100, alns.size());
   // extract read id to ctg id mappings from alignments

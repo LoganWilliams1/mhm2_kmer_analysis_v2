@@ -49,21 +49,12 @@
 using std::string;
 using std::vector;
 
-#ifdef TNF_PATH_RESOLUTION
-#define nTNF 136
-using tnf_t = std::array<double, nTNF>;
-#endif
-
 using cid_t = int64_t;
 
 struct Contig {
   cid_t id;
   string seq;
   double depth;
-#ifdef TNF_PATH_RESOLUTION
-  // histogram of teranucleotide frequencies for contig similarity check in cgraph walks
-  tnf_t tnf;
-#endif
   uint16_t get_uint16_t_depth() { return (depth > UINT16_MAX ? UINT16_MAX : depth); }
 };
 
@@ -92,9 +83,9 @@ class Contigs {
 
   void print_stats(unsigned min_ctg_len) const;
 
-  void dump_contigs(const string &fname, unsigned min_ctg_len);
+  void dump_contigs(const string &fname, unsigned min_ctg_len, const string &prefix);
 
-  void load_contigs(const string &ctgs_fname);
+  void load_contigs(const string &ctgs_fname, const string &prefix);
 
   size_t get_num_ctg_kmers(int kmer_len) const;
 };

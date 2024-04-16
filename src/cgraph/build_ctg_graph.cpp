@@ -231,9 +231,6 @@ static void add_vertices_from_ctgs(Contigs &ctgs) {
   ProgressBar progbar(ctgs.size(), "Adding contig vertices to graph");
   for (auto &ctg : ctgs) {
     Vertex v = {.cid = ctg.id, .clen = (int)ctg.seq.length(), .depth = ctg.depth};
-#ifdef TNF_PATH_RESOLUTION
-    v.tnf = ctg.tnf;
-#endif
     _graph->add_vertex(v, ctg.seq);
     progbar.update();
   }
@@ -524,40 +521,39 @@ static bool merge_end(Vertex *curr_v, const vector<cid_t> &nb_cids, vector<vecto
   }
   t_merge_sort_nbs.start();
   // found multiple nbs, check for overlaps that can be merged
-  // first, sort nbs by gap size
-  sort(nbs.begin(), nbs.end(), [](const auto &elem1, const auto &elem2) { return elem1.edge->gap < elem2.edge->gap; });
+  // first, sort nbs by gap size, from smallest to largest
+  sort(nbs.begin(), nbs.end(), [](const NbPair &elem1, const NbPair &elem2) {
+    if (elem1.edge->gap != elem2.edge->gap) return elem1.edge->gap < elem2.edge->gap;
+    if (elem1.vertex->clen != elem2.vertex->clen) return elem1.vertex->clen < elem2.vertex->clen;
+    return elem1.vertex->cid < elem2.vertex->cid;
+  });
   t_merge_sort_nbs.stop();
 
   // gather a vector of merged paths (there can be more than one because of forks)
   vector<vector<NbPair *> > all_next_nbs = {};
+  all_next_nbs.push_back({&nbs.front()});
   // attempt to merge all neighbors as overlaps
-  for (size_t i = 0; i < nbs.size(); i++) {
+  for (size_t i = 1; i < nbs.size(); i++) {
     NbPair *nb = &nbs[i];
     DBG_BUILD("\t", nb->vertex->cid, " gap ", nb->edge->gap, " len ", nb->vertex->clen, " depth ", nb->vertex->depth, "\n");
-    if (i == 0) {
-      all_next_nbs.push_back({nb});
-      continue;
-    }
     bool found_merge = false;
-    for (auto &next_nbs : all_next_nbs) {
+    for (vector<NbPair *> &next_nbs : all_next_nbs) {
       progress();
       auto prev_nb = next_nbs.back();
-      int g1 = -prev_nb->edge->gap;
-      int g2 = -nb->edge->gap;
-      int gdiff = g1 - g2;
-      // check gap spacing to see if current nb overlaps previous nb
-      if ((prev_nb->edge->gap == nb->edge->gap) || (gdiff >= prev_nb->vertex->clen - 10) ||
-          (gdiff + nb->vertex->clen <= prev_nb->vertex->clen)) {
+      int g1 = prev_nb->edge->gap;
+      int g2 = nb->edge->gap;
+      int gdiff = g2 - g1;
+      // reject if current neigbbor does not overlap beyond previous one
+      if (gdiff + nb->vertex->clen <= prev_nb->vertex->clen) {
         DBG_BUILD("\tMerge conflict ", prev_nb->vertex->cid, " ", nb->vertex->cid, "\n");
         continue;
       }
       // now check that there is an edge from this vertex to the previous one
-      auto intermediate_edge = _graph->get_edge_cached(nb->vertex->cid, prev_nb->vertex->cid);
-      if (!intermediate_edge) {
+      if (!_graph->get_edge_cached(nb->vertex->cid, prev_nb->vertex->cid)) {
         DBG_BUILD("\tNo edge found between ", prev_nb->vertex->cid, " and ", nb->vertex->cid, "\n");
         continue;
       }
-      // now check the overlaps are correct
+      // FIXME: now check the overlaps are correct
       DBG_BUILD("\tMERGE ", prev_nb->vertex->cid, " ", nb->vertex->cid, "\n");
       next_nbs.push_back(nb);
       found_merge = true;
@@ -643,17 +639,14 @@ void build_ctg_graph(CtgGraph *graph, int insert_avg, int insert_stddev, int kme
                      Contigs &ctgs, Alns &alns) {
   BarrierTimer timer(__FILEFUNC__);
   _graph = graph;
-#ifdef TNF_PATH_RESOLUTION
-  compute_tnfs(ctgs);
-#endif
   add_vertices_from_ctgs(ctgs);
   get_splints_from_alns(alns, graph);
   get_spans_from_alns(insert_avg, insert_stddev, kmer_len, alns, graph);
-#ifdef TNF_PATH_RESOLUTION
-  _graph->compute_edge_tnfs();
-#endif
   int64_t mismatched = 0, conflicts = 0, empty_spans = 0;
   _graph->purge_error_edges(&mismatched, &conflicts, &empty_spans);
+#ifdef DEBUG
+  graph->print_graph("cgraph-" + to_string(kmer_len));
+#endif
   auto num_edges = _graph->get_num_edges();
   SLOG_VERBOSE("Purged edges:\n");
   SLOG_VERBOSE("  mismatched:  ", perc_str(reduce_one(mismatched, op_fast_add, 0).wait(), num_edges), "\n");

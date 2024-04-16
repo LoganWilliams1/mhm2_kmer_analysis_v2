@@ -229,6 +229,22 @@ bool KmerDHT<MAX_K>::kmer_exists(Kmer<MAX_K> kmer_fw) {
 }
 
 template <int MAX_K>
+kmer_count_t KmerDHT<MAX_K>::get_kmer_count(Kmer<MAX_K> kmer_fw) {
+  const Kmer<MAX_K> kmer_rc = kmer_fw.revcomp();
+  const Kmer<MAX_K> *kmer = (kmer_rc < kmer_fw) ? &kmer_rc : &kmer_fw;
+
+  return rpc(
+             get_kmer_target_rank(kmer_fw, &kmer_rc),
+             [](const Kmer<MAX_K> &kmer, dist_object<KmerMap<MAX_K>> &local_kmers) -> kmer_count_t {
+               const auto it = local_kmers->find(kmer);
+               if (it == local_kmers->end()) return 0;
+               return it->second.count;
+             },
+             *kmer, local_kmers)
+      .wait();
+}
+
+template <int MAX_K>
 void KmerDHT<MAX_K>::add_supermer(Supermer &supermer, int target_rank) {
   kmer_store.update(target_rank, supermer);
 }
@@ -251,7 +267,7 @@ void KmerDHT<MAX_K>::finish_updates() {
 }
 
 // one line per kmer, format:
-// KMERCHARS LR N
+// KMERCHARS N L R
 // where L is left extension and R is right extension, one char, either X, F or A, C, G, T
 // where N is the count of the kmer frequency
 template <int MAX_K>
