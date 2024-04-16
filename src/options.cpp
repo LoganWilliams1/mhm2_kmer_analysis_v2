@@ -337,19 +337,6 @@ string Options::get_job_id() {
   return job_id;
 }
 
-Options::Options() {
-  char buf[32];
-  memset(buf, 0, sizeof(buf));
-  if (!upcxx::rank_me()) {
-    setup_time = get_current_time(true);
-    strncpy(buf, setup_time.c_str(), sizeof(buf) - 1);
-  }
-  upcxx::broadcast(buf, sizeof(buf), 0, world()).wait();
-  setup_time = string(buf);
-  output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
-               to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
-}
-
 Options::~Options() {
   flush_logger();
   cleanup();
@@ -367,7 +354,17 @@ CLI::Option *add_flag_def(CLI::App &app, string flag, bool &var, string help) {
   return app.add_flag(flag, var, help + " (" + (var ? "true" : "false") + ")");
 }
 
-bool Options::load(int argc, char **argv) {
+Options::Options(int argc, char **argv) {
+  char buf[32];
+  memset(buf, 0, sizeof(buf));
+  if (!upcxx::rank_me()) {
+    setup_time = get_current_time(true);
+    strncpy(buf, setup_time.c_str(), sizeof(buf) - 1);
+  }
+  upcxx::broadcast(buf, sizeof(buf), 0, world()).wait();
+  setup_time = string(buf);
+  output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
+               to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
   // MHM2 version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
   string full_version_str = "MHM2 version " + string(MHM2_VERSION) + "-" + string(MHM2_BRANCH) + " with upcxx-utils " +
                             string(UPCXX_UTILS_VERSION) + " built on " + string(MHM2_BUILD_DATE);
@@ -464,14 +461,14 @@ bool Options::load(int argc, char **argv) {
       if (e.get_exit_code() != 0) cerr << "\nError (" << e.get_exit_code() << ") in command line:\n";
       app.exit(e);
     }
-    return false;
+    exit(127);
   }
 
   if (!paired_fnames.empty()) {
     // convert pairs to colon ':' separated unpaired/single files for FastqReader to process
     if (paired_fnames.size() % 2 != 0) {
       if (!rank_me()) cerr << "Did not get pairs of files in -p: " << paired_fnames.size() << endl;
-      return false;
+      exit(127);
     }
     while (paired_fnames.size() >= 2) {
       reads_fnames.push_back(paired_fnames[0] + ":" + paired_fnames[1]);
@@ -500,7 +497,7 @@ bool Options::load(int argc, char **argv) {
   if (!restart && reads_fnames.empty()) {
     if (!rank_me())
       cerr << "\nError in command line:\nRequire read names if not restarting\nRun with --help for more information\n";
-    return false;
+    exit(127);
   }
 
   if (post_assm_only && ctgs_fname.empty()) ctgs_fname = "final_assembly.fasta";
@@ -511,7 +508,7 @@ bool Options::load(int argc, char **argv) {
     if (restart) {
       if (!rank_me())
         cerr << "\nError in command line:\nRequire output directory when restarting run\nRun with --help for more information\n";
-      return false;
+      exit(127);
     }
     string first_read_fname = reads_fnames[0];
     // strip out the paired or unpaired/single the possible ':' in the name string
@@ -545,7 +542,7 @@ bool Options::load(int argc, char **argv) {
         cerr << "\nError (" << e.get_exit_code() << ") in config file (" << config_file << "):\n";
         app.exit(e);
       }
-      return false;
+      exit(127);
     }
   }
 
@@ -623,7 +620,6 @@ bool Options::load(int argc, char **argv) {
     if (ret != 0 && !restart) LOG("Could not hard link config file, continuing\n");
   }
   upcxx::barrier();
-  return true;
 }
 
 template <typename T>

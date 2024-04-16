@@ -47,4 +47,4 @@
 #include "contigs.hpp"
 #include "options.hpp"
 
-void post_assembly(Contigs &ctgs, std::shared_ptr<Options> options);
+void post_assembly(Contigs &ctgs, Options &options);

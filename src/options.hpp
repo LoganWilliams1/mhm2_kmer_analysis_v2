@@ -112,12 +112,13 @@ class Options {
   int sequencing_depth = 4;
   string optimize_for = "default";
 
-  Options();
+  Options() {}
+
+  Options(int argc, char **argv);
+
   ~Options();
 
   void cleanup();
-
-  bool load(int argc, char **argv);
 
   template <typename T>
   static string vec_to_str(const vector<T> &vec, const string &delimiter = ",");

@@ -66,12 +66,12 @@ void traverse_ctg_graph(int insert_avg, int insert_stddev, int max_kmer_len, int
 
 template <int MAX_K>
 void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
-                 Histogrammer &histogrammer, shared_ptr<Options> options) {
+                 Histogrammer &histogrammer, Options &options) {
   BarrierTimer(string("Scaffolding ") + to_string(max_kmer_len));
   LOG_MEM("Scaffolding started");
   auto loop_start_t = clock_now();
-  unsigned scaff_kmer_len = options->scaff_kmer_lens[scaff_i];
-  bool gfa_iter = (options->dump_gfa && scaff_i == options->scaff_kmer_lens.size() - 1) ? true : false;
+  unsigned scaff_kmer_len = options.scaff_kmer_lens[scaff_i];
+  bool gfa_iter = (options.dump_gfa && scaff_i == options.scaff_kmer_lens.size() - 1) ? true : false;
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   if (gfa_iter)
     SLOG(KBLUE, "Computing contig graph for GFA output, k = ", scaff_kmer_len, KNORM, "\n\n");
@@ -82,20 +82,20 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
   is_debug = true;
 #endif
   string scaff_contigs_fname("scaff-contigs-" + to_string(scaff_kmer_len) + ".fasta");
-  if ((options->restart || is_debug) && file_exists(scaff_contigs_fname)) {
+  if ((options.restart || is_debug) && file_exists(scaff_contigs_fname)) {
     SLOG_VERBOSE("(Re)loading scaffold contigs ", scaff_contigs_fname, "\n");
     ctgs.load_contigs(scaff_contigs_fname, "scaffold_");
     LOG_MEM("Loaded contigs");
   } else {
     Alns alns;
     stage_timers.alignments->start();
-    auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
+    auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
     int seed_space = KLIGN_SEED_SPACE;
-    if (options->dump_gfa && scaff_i == options->scaff_kmer_lens.size() - 1) seed_space = 1;
+    if (options.dump_gfa && scaff_i == options.scaff_kmer_lens.size() - 1) seed_space = 1;
     begin_gasnet_stats("alignment sk = " + to_string(scaff_kmer_len));
     auto [kernel_elapsed, aln_comms_elapsed] = find_alignments<MAX_K>(
-        scaff_kmer_len, packed_reads_list, max_kmer_store, options->max_rpcs_in_flight, ctgs, alns, seed_space, rlen_limit, false,
-        options->optimize_for == "contiguity", 0, options->klign_rget_buf_size);
+        scaff_kmer_len, packed_reads_list, max_kmer_store, options.max_rpcs_in_flight, ctgs, alns, seed_space, rlen_limit, false,
+        options.optimize_for == "contiguity", 0, options.klign_rget_buf_size);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.aln_comms->inc_elapsed(aln_comms_elapsed);
@@ -114,18 +114,18 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     histogrammer.calculate_insert_size(alns);
     // insert size should never be larger than this; if it is that signals some
     // error in the assembly
-    int break_scaff_Ns = (scaff_kmer_len == options->scaff_kmer_lens.back() ? options->break_scaff_Ns : 1);
+    int break_scaff_Ns = (scaff_kmer_len == options.scaff_kmer_lens.back() ? options.break_scaff_Ns : 1);
     stage_timers.cgraph->start();
     begin_gasnet_stats("traverse_ctg_graph sk = " + to_string(scaff_kmer_len));
-    traverse_ctg_graph(histogrammer.ins_avg, histogrammer.ins_stddev, max_kmer_len, scaff_kmer_len, options->min_ctg_print_len,
+    traverse_ctg_graph(histogrammer.ins_avg, histogrammer.ins_stddev, max_kmer_len, scaff_kmer_len, options.min_ctg_print_len,
                        packed_reads_list, break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""),
-                       options->optimize_for == "contiguity");
+                       options.optimize_for == "contiguity");
     end_gasnet_stats();
     stage_timers.cgraph->stop();
     LOG_MEM("Traverse ctg graph");
-    ctgs.print_stats(options->min_ctg_print_len);
-    int max_scaff_i = (options->dump_gfa ? options->scaff_kmer_lens.size() - 2 : options->scaff_kmer_lens.size() - 1);
-    if (is_debug || options->checkpoint) {
+    ctgs.print_stats(options.min_ctg_print_len);
+    int max_scaff_i = (options.dump_gfa ? options.scaff_kmer_lens.size() - 2 : options.scaff_kmer_lens.size() - 1);
+    if (is_debug || options.checkpoint) {
       SLOG_VERBOSE("Saving scaffold contigs ", scaff_contigs_fname, "\n");
       stage_timers.dump_ctgs->start();
       ctgs.dump_contigs(scaff_contigs_fname, 0, "scaffold_");
