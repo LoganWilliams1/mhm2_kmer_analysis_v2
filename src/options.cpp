@@ -349,6 +349,7 @@ Options::Options() {
   output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
                to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
 }
+
 Options::~Options() {
   flush_logger();
   cleanup();
