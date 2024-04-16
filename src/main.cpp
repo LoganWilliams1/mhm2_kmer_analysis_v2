@@ -467,7 +467,7 @@ int main(int argc, char **argv) {
   flush_logs_timer.stop();
   auto sh_flush_timings = flush_logs_timer.reduce_timings().wait();
   barrier();
-  SLOG("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
+  SLOG_VERBOSE("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible

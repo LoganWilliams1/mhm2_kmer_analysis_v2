@@ -170,7 +170,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
     SLOG_VERBOSE("Writing ", fname, "\n");
     sh_aln_depths->done_computing();
     sh_aln_depths->dump_depths(fname, options.reads_fnames);
-    SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options.output_dir, "/", fname, KNORM, "\n");
+    SLOG(KBLUE, "Contig depths (abundances) can be found at ", options.output_dir, "/", fname, KNORM, "\n");
   }
 
   SLOG(KBLUE, "_________________________", KNORM, "\n");
