@@ -113,12 +113,8 @@ class Options {
   string optimize_for = "default";
 
   Options() {}
-
   Options(int argc, char **argv);
-
   ~Options();
-
-  void cleanup();
 
   template <typename T>
   static string vec_to_str(const vector<T> &vec, const string &delimiter = ",");

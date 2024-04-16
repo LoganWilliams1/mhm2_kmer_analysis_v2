@@ -339,10 +339,6 @@ string Options::get_job_id() {
 
 Options::~Options() {
   flush_logger();
-  cleanup();
-}
-
-void Options::cleanup() {
   // cleanup and close loggers that Options opened in load
   close_logger();
 #ifdef DEBUG
