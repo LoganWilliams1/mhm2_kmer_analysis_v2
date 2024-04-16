@@ -73,19 +73,15 @@ void post_assembly(Contigs &ctgs, Options &options) {
 
   auto num_read_groups = options.reads_fnames.size();
   shared_ptr<AlnDepths> sh_aln_depths;
-  if (options.post_assm_abundances) {
-    SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
-    sh_aln_depths = make_shared<AlnDepths>(ctgs, options.min_ctg_print_len, num_read_groups);
-    LOG_MEM("After Post Assembly Ctgs Depths");
-  }
+  SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
+  sh_aln_depths = make_shared<AlnDepths>(ctgs, options.min_ctg_print_len, num_read_groups);
+  LOG_MEM("After Post Assembly Ctgs Depths");
 
   shared_ptr<dist_ofstream> sh_sam_of;
   upcxx::future<> fut_sam = make_future();
-  if (options.post_assm_aln) {
-    SLOG_VERBOSE("Writing SAM headers\n");
-    sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
-    fut_sam = Alns::_write_sam_header(*sh_sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
-  }
+  SLOG_VERBOSE("Writing SAM headers\n");
+  sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
+  fut_sam = Alns::_write_sam_header(*sh_sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
 
   KlignTimers timers;
   unsigned rlen_limit = 0;
@@ -125,50 +121,44 @@ void post_assembly(Contigs &ctgs, Options &options) {
     delete packed_reads;
     LOG_MEM("Purged Post Assembly Reads" + short_name);
 
-    if (options.post_assm_aln) {
 #ifdef PAF_OUTPUT_FORMAT
-      string aln_name("final_assembly-" + short_name + ".paf");
-      alns.dump_single_file(aln_name);
-      SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+    string aln_name("final_assembly-" + short_name + ".paf");
+    alns.dump_single_file(aln_name);
+    SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
 #elif BLAST6_OUTPUT_FORMAT
-      string aln_name("final_assembly-" + short_name + ".b6");
-      alns.dump_single_file(aln_name);
-      SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+    string aln_name("final_assembly-" + short_name + ".b6");
+    alns.dump_single_file(aln_name);
+    SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
 #endif
-      LOG_MEM("After Post Assembly Alignments Saved");
-      // Dump 1 file at a time with proper read groups
-      auto fut_flush = alns._write_sam_alignments(*sh_sam_of, options.min_ctg_print_len);
-      fut_sam = when_all(fut_sam, fut_flush);
+    LOG_MEM("After Post Assembly Alignments Saved");
+    // Dump 1 file at a time with proper read groups
+    auto fut_flush = alns._write_sam_alignments(*sh_sam_of, options.min_ctg_print_len);
+    fut_sam = when_all(fut_sam, fut_flush);
 
-      LOG_MEM("After Post Assembly SAM Saved");
-    }
-    if (options.post_assm_abundances) {
-      stage_timers.compute_ctg_depths->start();
-      // compute depths 1 column at a time
-      sh_aln_depths->compute_for_read_group(alns, read_group_id);
-      stage_timers.compute_ctg_depths->stop();
-      LOG_MEM("After Post Assembly Depths Saved");
-    }
+    LOG_MEM("After Post Assembly SAM Saved");
+
+    stage_timers.compute_ctg_depths->start();
+    // compute depths 1 column at a time
+    sh_aln_depths->compute_for_read_group(alns, read_group_id);
+    stage_timers.compute_ctg_depths->stop();
+    LOG_MEM("After Post Assembly Depths Saved");
+
     read_group_id++;
   }
   stage_timers.kernel_alns->inc_elapsed(timers.aln_kernel.get_elapsed());
 
   Timings::wait_pending();
 
-  if (options.post_assm_aln) {
-    fut_sam.wait();
-    sh_sam_of->close();
-    SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options.output_dir,
-         "/final_assembly.sam", KNORM, "\n");
-  }
+  fut_sam.wait();
+  sh_sam_of->close();
+  SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options.output_dir,
+       "/final_assembly.sam", KNORM, "\n");
 
-  if (options.post_assm_abundances) {
-    string fname("final_assembly_depths.txt");
-    SLOG_VERBOSE("Writing ", fname, "\n");
-    sh_aln_depths->done_computing();
-    sh_aln_depths->dump_depths(fname, options.reads_fnames);
-    SLOG(KBLUE, "Contig depths (abundances) can be found at ", options.output_dir, "/", fname, KNORM, "\n");
-  }
+  string fname("final_assembly_depths.txt");
+  SLOG_VERBOSE("Writing ", fname, "\n");
+  sh_aln_depths->done_computing();
+  sh_aln_depths->dump_depths(fname, options.reads_fnames);
+  SLOG(KBLUE, "Contig depths (abundances) can be found at ", options.output_dir, "/", fname, KNORM, "\n");
 
   SLOG(KBLUE, "_________________________", KNORM, "\n");
 }

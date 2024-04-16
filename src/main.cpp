@@ -440,7 +440,7 @@ int main(int argc, char **argv) {
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
   if (!options.post_assm_only) run_pipeline(options, memory_tracker, start_t);
-  if (options.post_assm_aln || options.post_assm_abundances) run_post_assembly(options, memory_tracker);
+  if (options.post_assm) run_post_assembly(options, memory_tracker);
 
   LOG("Cleaning up and completing remaining tasks\n");
 

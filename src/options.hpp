@@ -91,8 +91,7 @@ class Options {
   int klign_rget_buf_size = KLIGN_RGET_BUF_SIZE;
   bool checkpoint = false;
   bool dump_merged = false;
-  bool post_assm_aln = false;
-  bool post_assm_abundances = false;
+  bool post_assm = false;
   bool post_assm_only = false;
   bool dump_gfa = false;
   bool show_progress = false;

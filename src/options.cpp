@@ -145,14 +145,14 @@ void Options::get_restart_options() {
   bool found = file_exists("final_assembly.fasta");
   if (found) {
     // assembly completed check for post assembly options
-    if (post_assm_abundances || post_assm_aln) {
+    if (post_assm) {
       if (!post_assm_only) {
         SLOG_VERBOSE("Running with --post-asm-only as this run has already completed\n");
         post_assm_only = true;
       }
       ctgs_fname = "final_assembly.fasta";
     } else {
-      SWARN("This run has already completed (final_assembly.fasta exists) but --restart was chosen without any --post-asm options");
+      SWARN("This run has already completed (final_assembly.fasta exists) but --restart was chosen without --post-asm option");
       found = false;
     }
   }
@@ -397,9 +397,8 @@ Options::Options(int argc, char **argv) {
   add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.");
   add_flag_def(app, "--restart", restart,
                "Restart in previous directory where a run failed (must specify the previous directory with -o).");
-  add_flag_def(app, "--post-asm-align", post_assm_aln, "Align reads to final assembly");
-  add_flag_def(app, "--post-asm-abd", post_assm_abundances, "Compute and output abundances for final assembly (used by MetaBAT).");
-  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly (alignment and/or abundances).");
+  add_flag_def(app, "--post-asm", post_assm, "Align reads to final assembly and compute abundances (for use by MetaBAT).");
+  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly.");
   add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.");
   app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
       ->check(CLI::IsMember({0, 33, 64}));
