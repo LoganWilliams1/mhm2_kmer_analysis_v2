@@ -45,7 +45,6 @@
 #include "aln_depths.hpp"
 #include "fastq.hpp"
 #include "gasnet_stats.hpp"
-#include "histogrammer.hpp"
 #include "klign.hpp"
 #include "packed_reads.hpp"
 #include "stage_timers.hpp"
@@ -60,8 +59,7 @@ using std::vector;
 
 using upcxx::future;
 
-void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_ins_size) {
-  auto loop_start_t = std::chrono::high_resolution_clock::now();
+void post_assembly(Contigs &ctgs, shared_ptr<Options> options) {
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
   LOG_MEM("Starting Post Assembly");
@@ -128,8 +126,6 @@ void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_
 
     delete packed_reads;
     LOG_MEM("Purged Post Assembly Reads" + short_name);
-
-    calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
 
     if (options->post_assm_aln) {
 #ifdef PAF_OUTPUT_FORMAT

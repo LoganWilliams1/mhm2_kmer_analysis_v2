@@ -46,6 +46,7 @@
 #include <upcxx/upcxx.hpp>
 
 #include "alignments.hpp"
+#include "histogrammer.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/ofstream.hpp"
 #include "upcxx_utils/progress_bar.hpp"
@@ -62,8 +63,7 @@ bool bad_alignment(const Aln *aln) {
   return false;
 }
 
-pair<int, int> calculate_insert_size(Alns &alns, int expected_ins_avg, int expected_ins_stddev, int max_expected_ins_size,
-                                     const string &dump_large_alns_fname = "") {
+void Histogrammer::calculate_insert_size(Alns &alns) {
   BarrierTimer timer(__FILEFUNC__);
   auto unmerged_rlen = alns.calculate_unmerged_rlen();
   ProgressBar progbar(alns.size(), "Processing alignments to compute insert size");
@@ -119,6 +119,7 @@ pair<int, int> calculate_insert_size(Alns &alns, int expected_ins_avg, int expec
             prev_cstop = prev_aln->clen - prev_aln->cstart;
           }
           auto insert_size = max(prev_cstop, aln.cstop) - min(prev_cstart, aln.cstart);
+          // check for outliers
           if (max_expected_ins_size && insert_size >= max_expected_ins_size) {
             // WARN("large insert size: ", insert_size, " prev: ", prev_aln->clen, " ",
             //     prev_aln->orient, " ", prev_aln->cstart, " ", prev_aln->cstop, " ", prev_cstart, " ", prev_cstop,
@@ -170,34 +171,33 @@ pair<int, int> calculate_insert_size(Alns &alns, int expected_ins_avg, int expec
 
   auto all_sum_insert_size = reduce_all(sum_insert_size, op_fast_add).wait();
   if (!all_num_valid_pairs) {
-    if (expected_ins_avg) {
-      WARN("Could not find any suitable alignments for calculating the insert size. Using the parameters ", expected_ins_avg, " ",
-           expected_ins_stddev);
-      return {expected_ins_avg, expected_ins_stddev};
-    } else {
-      SWARN("Could not find any suitable alignments for calculating the insert size and no parameters are set.");
-      return {0, 0};
+    SWARN("Could not find any suitable alignments for calculating the insert size.");
+    if (!expected_ins_avg) {
+      ins_avg = 0;
+      ins_stddev = 0;
     }
+  } else {
+    ins_avg = all_sum_insert_size / all_num_valid_pairs;
+    double sum_sqs = 0;
+    for (auto insert_size : insert_sizes) {
+      sum_sqs += pow((double)insert_size - ins_avg, 2.0);
+    }
+    auto all_min_insert_size = reduce_one(min_insert_size, op_fast_min, 0).wait();
+    auto all_max_insert_size = reduce_one(max_insert_size, op_fast_max, 0).wait();
+    auto all_sum_sqs = reduce_all(sum_sqs, op_fast_add).wait();
+    ins_stddev = sqrt(all_sum_sqs / all_num_valid_pairs);
+    SLOG_VERBOSE("Calculated insert size: average ", ins_avg, " stddev ", ins_stddev, " min ", all_min_insert_size, " max ",
+                 all_max_insert_size, "\n");
   }
-  auto insert_avg = all_sum_insert_size / all_num_valid_pairs;
-  double sum_sqs = 0;
-  for (auto insert_size : insert_sizes) {
-    sum_sqs += pow((double)insert_size - insert_avg, 2.0);
-  }
-  auto all_min_insert_size = reduce_one(min_insert_size, op_fast_min, 0).wait();
-  auto all_max_insert_size = reduce_one(max_insert_size, op_fast_max, 0).wait();
-  auto all_sum_sqs = reduce_all(sum_sqs, op_fast_add).wait();
-  auto insert_stddev = sqrt(all_sum_sqs / all_num_valid_pairs);
-  SLOG_VERBOSE("Calculated insert size: average ", insert_avg, " stddev ", insert_stddev, " min ", all_min_insert_size, " max ",
-               all_max_insert_size, "\n");
   if (expected_ins_avg) {
-    if (abs(insert_avg - expected_ins_avg) > 100)
-      SWARN("Large difference in calculated (", insert_avg, ") vs expected (", expected_ins_avg, ") insert average sizes");
-    if (abs(insert_stddev - expected_ins_stddev) > 100)
-      SWARN("Large difference in calculated (", insert_stddev, ") vs expected (", expected_ins_stddev,
-            ") insert standard deviation");
+    if (abs(ins_avg - expected_ins_avg) > 100)
+      SWARN("Large difference in calculated (", ins_avg, ") vs expected (", expected_ins_avg, ") insert average sizes");
+    if (abs(ins_stddev - expected_ins_stddev) > 100)
+      SWARN("Large difference in calculated (", ins_stddev, ") vs expected (", expected_ins_stddev, ") insert standard deviation");
     SLOG_VERBOSE("Using specified ", expected_ins_avg, " avg insert size and ", expected_ins_stddev, " stddev\n");
-    return {expected_ins_avg, expected_ins_stddev};
+    ins_avg = expected_ins_avg;
+    ins_stddev = expected_ins_stddev;
   }
-  return {insert_avg, insert_stddev};
+  // set the max expected according to the calulation, 5 sigma deviation
+  max_expected_ins_size = ins_avg + 5 * ins_stddev;
 }

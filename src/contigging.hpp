@@ -45,13 +45,14 @@
 #include "contigs.hpp"
 #include "options.hpp"
 #include "packed_reads.hpp"
+#include "histogrammer.hpp"
 
 template <int MAX_K>
 void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
-                int &max_expected_ins_size, int &ins_avg, int &ins_stddev, std::shared_ptr<Options> options);
+                Histogrammer &Histogrammer, std::shared_ptr<Options> options);
 
 #define __MACRO_CONTIGGING__(KMER_LEN, MODIFIER) \
-  MODIFIER void contigging<KMER_LEN>(int, int, int &, PackedReadsList &, Contigs &, int &, int &, int &, std::shared_ptr<Options>);
+  MODIFIER void contigging<KMER_LEN>(int, int, int &, PackedReadsList &, Contigs &, Histogrammer &, std::shared_ptr<Options>);
 
 // Reduce compile time by instantiating templates of common types
 // extern template declarations are in contigging.hpp

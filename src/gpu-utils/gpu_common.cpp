@@ -67,10 +67,10 @@ void gpu_die(Error_t code, const char* file, int line, bool abort) {
 QuickTimer::QuickTimer()
     : secs(0) {}
 
-void QuickTimer::start() { t = std::chrono::high_resolution_clock::now(); }
+void QuickTimer::start() { t = clock_now(); }
 
 void QuickTimer::stop() {
-  std::chrono::duration<double> t_elapsed = std::chrono::high_resolution_clock::now() - t;
+  std::chrono::duration<double> t_elapsed = clock_now() - t;
   secs += t_elapsed.count();
 }
 

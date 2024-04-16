@@ -66,10 +66,10 @@ void traverse_ctg_graph(int insert_avg, int insert_stddev, int max_kmer_len, int
 
 template <int MAX_K>
 void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,
-                 int &max_expected_ins_size, int &ins_avg, int &ins_stddev, shared_ptr<Options> options) {
+                 Histogrammer &histogrammer, shared_ptr<Options> options) {
   BarrierTimer(string("Scaffolding ") + to_string(max_kmer_len));
   LOG_MEM("Scaffolding started");
-  auto loop_start_t = std::chrono::high_resolution_clock::now();
+  auto loop_start_t = clock_now();
   unsigned scaff_kmer_len = options->scaff_kmer_lens[scaff_i];
   bool gfa_iter = (options->dump_gfa && scaff_i == options->scaff_kmer_lens.size() - 1) ? true : false;
   SLOG(KBLUE, "_________________________", KNORM, "\n");
@@ -111,15 +111,15 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     end_gasnet_stats();
     LOG_MEM("Compute alignments");
     // always recalculate the insert size because we may need it for resumes of failed runs
-    tie(ins_avg, ins_stddev) = calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
+    histogrammer.calculate_insert_size(alns);
     // insert size should never be larger than this; if it is that signals some
     // error in the assembly
-    max_expected_ins_size = ins_avg + 8 * ins_stddev;
     int break_scaff_Ns = (scaff_kmer_len == options->scaff_kmer_lens.back() ? options->break_scaff_Ns : 1);
     stage_timers.cgraph->start();
     begin_gasnet_stats("traverse_ctg_graph sk = " + to_string(scaff_kmer_len));
-    traverse_ctg_graph(ins_avg, ins_stddev, max_kmer_len, scaff_kmer_len, options->min_ctg_print_len, packed_reads_list,
-                       break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""), options->optimize_for == "contiguity");
+    traverse_ctg_graph(histogrammer.ins_avg, histogrammer.ins_stddev, max_kmer_len, scaff_kmer_len, options->min_ctg_print_len,
+                       packed_reads_list, break_scaff_Ns, ctgs, alns, (gfa_iter ? "final_assembly" : ""),
+                       options->optimize_for == "contiguity");
     end_gasnet_stats();
     stage_timers.cgraph->stop();
     LOG_MEM("Traverse ctg graph");
@@ -133,7 +133,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     }
   }
 
-  std::chrono::duration<double> loop_t_elapsed = std::chrono::high_resolution_clock::now() - loop_start_t;
+  std::chrono::duration<double> loop_t_elapsed = clock_now() - loop_start_t;
   SLOG("\n");
   SLOG(KBLUE, "Completed ", (gfa_iter ? "GFA output" : "scaffolding"), " round k = ", scaff_kmer_len, " in ", setprecision(2),
        fixed, loop_t_elapsed.count(), " s at ", get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)",

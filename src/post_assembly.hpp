@@ -47,4 +47,4 @@
 #include "contigs.hpp"
 #include "options.hpp"
 
-void post_assembly(Contigs &ctgs, std::shared_ptr<Options> options, int max_expected_ins_size);
+void post_assembly(Contigs &ctgs, std::shared_ptr<Options> options);

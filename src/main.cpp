@@ -220,6 +220,7 @@ int main(int argc, char **argv) {
   }
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
+  Histogrammer histogrammer(options->insert_size[0], options->insert_size[1]);
   Contigs ctgs;
   int max_kmer_len = 0;
   int max_expected_ins_size = 0;
@@ -288,7 +289,9 @@ int main(int argc, char **argv) {
     SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
          " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
 
-    { BarrierTimer("Start Contigging"); }
+    {
+      BarrierTimer("Start Contigging");
+    }
 
     // contigging loops
     if (options->kmer_lens.size()) {
@@ -298,11 +301,8 @@ int main(int argc, char **argv) {
         auto max_k = (kmer_len / 32 + 1) * 32;
         LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
-#define CONTIG_K(KMER_LEN)                                                                                                         \
-  case KMER_LEN:                                                                                                                   \
-    contigging<KMER_LEN>(kmer_len, prev_kmer_len, rlen_limit, packed_reads_list, ctgs, max_expected_ins_size, ins_avg, ins_stddev, \
-                         options);                                                                                                 \
-    break
+#define CONTIG_K(KMER_LEN) \
+  case KMER_LEN: contigging<KMER_LEN>(kmer_len, prev_kmer_len, rlen_limit, packed_reads_list, ctgs, histogrammer, options); break
 
         switch (max_k) {
           CONTIG_K(32);
@@ -326,7 +326,9 @@ int main(int argc, char **argv) {
       }
     }
 
-    { BarrierTimer("Start Scaffolding)"); }
+    {
+      BarrierTimer("Start Scaffolding)");
+    }
 
     // scaffolding loops
     if (options->dump_gfa) {
@@ -347,11 +349,8 @@ int main(int argc, char **argv) {
         auto max_k = (scaff_kmer_len / 32 + 1) * 32;
         LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
-#define SCAFFOLD_K(KMER_LEN)                                                                                                \
-  case KMER_LEN:                                                                                                            \
-    scaffolding<KMER_LEN>(i, max_kmer_len, rlen_limit, packed_reads_list, ctgs, max_expected_ins_size, ins_avg, ins_stddev, \
-                          options);                                                                                         \
-    break
+#define SCAFFOLD_K(KMER_LEN) \
+  case KMER_LEN: scaffolding<KMER_LEN>(i, max_kmer_len, rlen_limit, packed_reads_list, ctgs, histogrammer, options); break
 
         switch (max_k) {
           SCAFFOLD_K(32);
@@ -429,7 +428,7 @@ int main(int argc, char **argv) {
     BarrierTimer("Post Processing");
     LOG_MEM("Before Post-Processing");
     if (options->post_assm_only && !options->ctgs_fname.empty()) ctgs.load_contigs(options->ctgs_fname, "scaffold_");
-    post_assembly(ctgs, options, max_expected_ins_size);
+    post_assembly(ctgs, options);
     FastqReaders::close_all();
     memory_tracker.stop();
   }

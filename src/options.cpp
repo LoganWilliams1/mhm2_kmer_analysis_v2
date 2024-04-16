@@ -173,7 +173,7 @@ void Options::get_restart_options() {
 }
 
 double Options::setup_output_dir() {
-  auto t_start = chrono::high_resolution_clock::now();
+  auto t_start = clock_now();
   if (output_dir.empty()) DIE("Invalid empty ouput_dir");
   if (!upcxx::rank_me()) {
     // create the output directory (and possibly stripe it)
@@ -293,12 +293,12 @@ double Options::setup_output_dir() {
   DBG("Changed dir to ", output_dir, "\n");
   upcxx::barrier();
 
-  chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - t_start;
+  chrono::duration<double> t_elapsed = clock_now() - t_start;
   return t_elapsed.count();
 }
 
 double Options::setup_log_file() {
-  auto t_start = chrono::high_resolution_clock::now();
+  auto t_start = clock_now();
   if (!upcxx::rank_me()) {
     // check to see if mhm2.log exists. If so, and not restarting, rename it
     if (file_exists("mhm2.log") && !restart) {
@@ -313,7 +313,7 @@ double Options::setup_log_file() {
     }
   }
   upcxx::barrier();
-  chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - t_start;
+  chrono::duration<double> t_elapsed = clock_now() - t_start;
   return t_elapsed.count();
 }
 
@@ -562,7 +562,7 @@ bool Options::load(int argc, char **argv) {
   if (optimize_for == "contiguity") {
   }
 
-  auto logger_t = chrono::high_resolution_clock::now();
+  auto logger_t = clock_now();
   if (upcxx::local_team().rank_me() == 0) {
     // open 1 log per node
     // all have logs in per_rank
@@ -581,7 +581,7 @@ bool Options::load(int argc, char **argv) {
   }
 
   barrier();
-  chrono::duration<double> logger_t_elapsed = chrono::high_resolution_clock::now() - logger_t;
+  chrono::duration<double> logger_t_elapsed = clock_now() - logger_t;
   SLOG_VERBOSE("init_logger took ", setprecision(2), fixed, logger_t_elapsed.count(), " s at ", get_current_time(), " (",
                setup_time, " s for io)\n");
 
