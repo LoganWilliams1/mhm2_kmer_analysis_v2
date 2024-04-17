@@ -129,8 +129,8 @@ void extend_ctgs(CtgsWithReadsDHT &ctgs_dht, Contigs &ctgs, int insert_avg, int 
   auto fut_gpu_team_promise_barrier = gpu_team_promise_barrier.get_future();
   upcxx::discharge();
   auto tot_mids{mid_slice.ctg_vec.size()};
-  while ((!fut_outlier.ready() && mid_slice.ctg_vec.size() > 0) ||
-         (!fut_gpu_team_promise_barrier.ready() && mid_slice.ctg_vec.size() > 0) ||
+  while ((!fut_outlier.is_ready() && mid_slice.ctg_vec.size() > 0) ||
+         (!fut_gpu_team_promise_barrier.is_ready() && mid_slice.ctg_vec.size() > 0) ||
          (mid_slice.ctg_vec.size() <= 100 && mid_slice.ctg_vec.size() > 0)) {
     CtgWithReads *ctg = mid_slice.ctg_vec.back();
     extend_ctg(ctg, wm, insert_avg, insert_stddev, max_kmer_len, kmer_len, qual_offset, walk_len_limit, count_mers_timer,
