@@ -80,7 +80,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
   for (int subset_i = 0; subset_i < num_subsets; subset_i++) {
     size_t begin_idx = subset_i * subset_size;
     size_t end_idx = (subset_i == num_subsets - 1 ? num_ctgs : (subset_i + 1) * subset_size);
-    SLOG("num_ctgs ", num_ctgs, " subset begin ", begin_idx, " subset end ", end_idx, "\n");
     ctgs.set_range(begin_idx, end_idx);
 
     // build kmer_ctg_dht
