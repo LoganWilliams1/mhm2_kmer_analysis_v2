@@ -361,6 +361,7 @@ Options::Options(int argc, char **argv) {
   setup_time = string(buf);
   output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
                to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
+  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN");  // get default from the environment if it exists
   // MHM2 version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
   string full_version_str = "MHM2 version " + string(MHM2_VERSION) + "-" + string(MHM2_BRANCH) + " with upcxx-utils " +
                             string(UPCXX_UTILS_VERSION) + " built on " + string(MHM2_BUILD_DATE);
@@ -370,84 +371,117 @@ Options::Options(int argc, char **argv) {
   app.add_option("-r, --reads", reads_fnames,
                  "Files containing interleaved paired reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
-      ->check(CLI::ExistingFile);
+      ->check(CLI::ExistingFile)
+      ->group("Basic options");
   app.add_option("-p, --paired-reads", paired_fnames,
                  "Alternating read files containing separate paired reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
-      ->check(CLI::ExistingFile);
+      ->check(CLI::ExistingFile)
+      ->group("Basic options");
   app.add_option("-u, --unpaired-reads", unpaired_fnames, "Unpaired or single reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
-      ->check(CLI::ExistingFile);
-  add_flag_def(app, "--adapter-trim", adapter_trim, "Trim adapters using reference given by --adapter-refs");
-  app.add_option("--adapter-refs", adapter_fname, "File containing adapter sequences for trimming in FASTA format.")
-      ->check(CLI::ExistingFile);
-  app.add_option("-i, --insert", insert_size, "Insert size (average:stddev) (autodetected by default).")
-      ->delimiter(':')
-      ->expected(2)
-      ->check(CLI::Range(1, 10000));
+      ->check(CLI::ExistingFile)
+      ->group("Basic options");
   app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging (set to 0 to disable contigging).")
-      ->delimiter(',');
+      ->delimiter(',')
+      ->group("Basic options");
   app.add_option("-s, --scaff-kmer-lens", scaff_kmer_lens,
                  "kmer lengths (comma separated) for scaffolding (set to 0 to disable scaffolding).")
-      ->delimiter(',');
+      ->delimiter(',')
+      ->group("Basic options");
   app.add_option("--min-ctg-print-len", min_ctg_print_len, "Minimum length required for printing a contig in the final assembly.")
       ->default_val(to_string(min_ctg_print_len))
-      ->check(CLI::Range(0, 100000));
-  auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.");
-  add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.");
+      ->check(CLI::Range(0, 100000))
+      ->group("Basic options");
+  auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.")->group("Basic options");
+  add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.")->group("Basic options");
   add_flag_def(app, "--restart", restart,
-               "Restart in previous directory where a run failed (must specify the previous directory with -o).");
-  add_flag_def(app, "--post-asm", post_assm, "Align reads to final assembly and compute abundances (for use by MetaBAT).");
-  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly.");
-  add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.");
-  app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
-      ->check(CLI::IsMember({0, 33, 64}));
-  add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.");
-  add_flag_def(app, "-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).");
-  auto *cfg_opt = app.set_config("--config", "", "Load options from a configuration file.");
+               "Restart in previous directory where a run failed (must specify the previous directory with -o).")
+      ->group("Basic options");
+  add_flag_def(app, "--post-asm", post_assm, "Align reads to final assembly and compute abundances (for use by MetaBAT).")
+      ->group("Basic options");
+  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly.")->group("Basic options");
+  add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.")->group("Basic options");
+  add_flag_def(app, "-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).")
+      ->group("Basic options");
+  auto *cfg_opt = app.set_config("--config", "", "Load options from a configuration file.")->group("Basic options");
 
   // advanced options
   // restarts
-  app.add_option("-c, --contigs", ctgs_fname, "FASTA file containing contigs used for restart.");
+  app.add_option("-c, --contigs", ctgs_fname, "FASTA file containing contigs used for restart.")->group("Restarting options");
   app.add_option("--max-kmer-len", max_kmer_len,
                  "Maximum contigging kmer length for restart (needed if only scaffolding and contig file is specified).")
-      ->check(CLI::Range(0, 159));
+      ->check(CLI::Range(0, 159))
+      ->group("Restarting options");
   app.add_option("--prev-kmer-len", prev_kmer_len,
                  "Previous contigging kmer length for restart (needed if contigging and contig file is specified).")
-      ->check(CLI::Range(0, 159));
+      ->check(CLI::Range(0, 159))
+      ->group("Restarting options");
   // quality tuning
+  add_flag_def(app, "--adapter-trim", adapter_trim, "Trim adapters using reference given by --adapter-refs")
+      ->group("Quality tuning options");
+  app.add_option("--adapter-refs", adapter_fname, "File containing adapter sequences for trimming in FASTA format.")
+      ->check(CLI::ExistingFile)
+      ->group("Quality tuning options");
+  app.add_option("-i, --insert", insert_size, "Insert size (average:stddev) (autodetected by default).")
+      ->delimiter(':')
+      ->expected(2)
+      ->check(CLI::Range(1, 10000))
+      ->group("Quality tuning options");
   app.add_option("--break-scaff-Ns", break_scaff_Ns, "Number of Ns allowed before a scaffold is broken.")
-      ->check(CLI::Range(0, 1000));
+      ->check(CLI::Range(0, 1000))
+      ->group("Quality tuning options");
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
-      ->check(CLI::Range(1, 100));
-  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
-      ->check(CLI::Range(10000, 10000000));
+      ->check(CLI::Range(1, 100))
+      ->group("Quality tuning options");
   app.add_option("--optimize", optimize_for,
                  "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
-      ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
+      ->check(CLI::IsMember({"default", "contiguity", "correctness"}))
+      ->group("Quality tuning options");
   // performance trade-offs
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
-      ->check(CLI::Range(0, 5000));
+      ->check(CLI::Range(0, 5000))
+      ->group("Performance trade-off options");
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
                  "Maximum number of RPCs in flight, per process (set to 0 for unlimited).")
-      ->check(CLI::Range(0, 10000));
+      ->check(CLI::Range(0, 10000))
+      ->group("Performance trade-off options");
+  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
+      ->check(CLI::Range(10000, 10000000))
+      ->group("Performance trade-off options");
   app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
-      ->check(CLI::Range(0, 16));
-  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN");  // get default from the environment if it exists
+      ->check(CLI::Range(0, 16))
+      ->group("Performance trade-off options");
   app.add_option("--pin", pin_by,
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
-      ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}));
-  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
-  // miscellaneous
-  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
+      ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}))
+      ->group("Performance trade-off options");
+  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")
+      ->check(CLI::Range(1, 100))
+      ->group("Performance trade-off options");
+  app.add_option("--post-asm-subsets", post_assm_subsets,
+                 "Number of subsets to split contigs into for post-assembly. "
+                 "More subsets means less memory but more compute time.")
+      ->check(CLI::Range(1, 100))
+      ->group("Performance trade-off options");
+  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality")->group("Performance trade-off options");
   add_flag_def(app, "--use-qf", use_qf,
-               "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
+               "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).")
+      ->group("Performance trade-off options");
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")
+      ->check(CLI::Range(1, 100))
+      ->group("Performance trade-off options");
+  // miscellaneous
   add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
-      ->multi_option_policy();
-  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
-  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")->check(CLI::Range(1, 100));
+      ->multi_option_policy()
+      ->group("Other options");
+  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.")->group("Other options");
+  add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.")->group("Other options");
+  app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
+      ->check(CLI::IsMember({0, 33, 64}))
+      ->group("Other options");
 
   try {
     app.parse(argc, argv);

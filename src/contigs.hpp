@@ -63,12 +63,14 @@ class Contigs {
   int max_clen;
   size_t begin_idx;
   size_t end_idx;
+  size_t tot_length;
 
  public:
   Contigs()
       : max_clen(0)
       , begin_idx(0)
-      , end_idx(0) {}
+      , end_idx(0)
+      , tot_length(0) {}
 
   void clear();
 
@@ -97,5 +99,7 @@ class Contigs {
 
   int get_max_clen() const;
 
-  void set_range(size_t begin_idx, size_t end_idx);
+  void set_next_slice(int num_slices);
+
+  void sort_by_length();
 };

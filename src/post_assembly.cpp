@@ -73,14 +73,11 @@ void post_assembly(Contigs &ctgs, Options &options) {
   AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
   LOG_MEM("After Post Assembly Ctgs Depths");
 
-  int num_subsets = 5;
-  int subset_size = ctgs.size() / num_subsets;
-  size_t num_ctgs = ctgs.size();
-
-  for (int subset_i = 0; subset_i < num_subsets; subset_i++) {
-    size_t begin_idx = subset_i * subset_size;
-    size_t end_idx = (subset_i == num_subsets - 1 ? num_ctgs : (subset_i + 1) * subset_size);
-    ctgs.set_range(begin_idx, end_idx);
+  SLOG(KBLUE, "Processing contigs in ", options.post_assm_subsets, " subsets", KNORM, "\n");
+  for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
+    SLOG(KBLUE, "_________________________", KNORM, "\n");
+    SLOG(KBLUE, "Contig subset ", subset_i, KNORM, "\n");
+    ctgs.set_next_slice(options.post_assm_subsets);
 
     // build kmer_ctg_dht
     auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
@@ -95,7 +92,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
     unsigned rlen_limit = 0;
     int read_group_id = 0;
     for (auto &reads_fname : options.reads_fnames) {
-      SLOG(KBLUE, "_________________________", KNORM, "\n");
+      SLOG("\n");
+      // SLOG(KBLUE, "_________________________", KNORM, "\n");
       SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
       SLOG("\n");
       vector<string> one_file_list;

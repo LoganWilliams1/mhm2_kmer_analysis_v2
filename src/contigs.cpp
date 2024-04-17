@@ -90,11 +90,13 @@ void Contigs::set_capacity(int64_t sz) { contigs.reserve(sz); }
 void Contigs::add_contig(const Contig &contig) {
   contigs.push_back(contig);
   end_idx++;
+  tot_length += contig.seq.length();
 }
 
 void Contigs::add_contig(Contig &&contig) {
   contigs.emplace_back(std::move(contig));
   end_idx++;
+  tot_length += contig.seq.length();
 }
 
 size_t Contigs::size() const { return end_idx - begin_idx; }
@@ -308,10 +310,24 @@ size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
 
 int Contigs::get_max_clen() const { return max_clen; }
 
-void Contigs::set_range(size_t begin_idx, size_t end_idx) {
-  assert(end_idx > begin_idx && end_idx <= contigs.size() && end_idx > 0);
-  this->begin_idx = begin_idx;
-  this->end_idx = end_idx;
+void Contigs::set_next_slice(int num_slices) {
+  if (end_idx == contigs.size() && begin_idx == 0) end_idx = 0;  // first call
+  begin_idx = end_idx;
+  int expected_slice_size = tot_length / num_slices;
+  size_t slice_size = 0;
+  for (size_t i = begin_idx; i < contigs.size(); i++) {
+    slice_size += contigs[i].seq.length();
+    if (slice_size >= expected_slice_size) {
+      end_idx = i + 1;
+      break;
+    }
+  }
+  if (end_idx == begin_idx) end_idx = contigs.size();
+  auto msm_slice_size = min_sum_max_reduce_one(slice_size, 0).wait();
+  SLOG_VERBOSE("Rank 0, contig slice: begin idx ", begin_idx, " end idx ", end_idx, " num ctgs ", contigs.size(), "\n");
+  SLOG_VERBOSE("Rank 0, expected contig slice size ", expected_slice_size, " actual slice size ", slice_size, " total size ",
+               tot_length, "\n");
+  SLOG_VERBOSE("All contig slice sizes ", msm_slice_size.to_string(), "\n");
 }
 
 std::vector<Contig>::iterator Contigs::begin() { return contigs.begin() + begin_idx; }
@@ -321,3 +337,7 @@ std::vector<Contig>::iterator Contigs::end() { return contigs.begin() + end_idx;
 std::vector<Contig>::const_iterator Contigs::begin() const { return contigs.begin() + begin_idx; }
 
 std::vector<Contig>::const_iterator Contigs::end() const { return contigs.begin() + end_idx; }
+
+void Contigs::sort_by_length() {
+  sort(contigs.begin(), contigs.end(), [](const Contig &c1, const Contig &c2) { return c1.seq.length() > c2.seq.length(); });
+}
