@@ -81,15 +81,23 @@ using namespace upcxx_utils;
 void Contigs::clear() {
   contigs.clear();
   vector<Contig>().swap(contigs);
+  begin_idx = 0;
+  end_idx = 0;
 }
 
 void Contigs::set_capacity(int64_t sz) { contigs.reserve(sz); }
 
-void Contigs::add_contig(const Contig &contig) { contigs.push_back(contig); }
+void Contigs::add_contig(const Contig &contig) {
+  contigs.push_back(contig);
+  end_idx++;
+}
 
-void Contigs::add_contig(Contig &&contig) { contigs.emplace_back(std::move(contig)); }
+void Contigs::add_contig(Contig &&contig) {
+  contigs.emplace_back(std::move(contig));
+  end_idx++;
+}
 
-size_t Contigs::size() const { return contigs.size(); }
+size_t Contigs::size() const { return end_idx - begin_idx; }
 
 void Contigs::print_stats(unsigned min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
@@ -299,3 +307,17 @@ size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
 }
 
 int Contigs::get_max_clen() const { return max_clen; }
+
+void Contigs::set_range(size_t begin_idx, size_t end_idx) {
+  assert(end_idx > begin_idx && end_idx <= contigs.size() && end_idx > 0);
+  this->begin_idx = begin_idx;
+  this->end_idx = end_idx;
+}
+
+std::vector<Contig>::iterator Contigs::begin() { return contigs.begin() + begin_idx; }
+
+std::vector<Contig>::iterator Contigs::end() { return contigs.begin() + end_idx; }
+
+std::vector<Contig>::const_iterator Contigs::begin() const { return contigs.begin() + begin_idx; }
+
+std::vector<Contig>::const_iterator Contigs::end() const { return contigs.begin() + end_idx; }

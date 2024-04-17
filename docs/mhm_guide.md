@@ -133,9 +133,13 @@ This option only supports reads where each pair of reads has the same sequence l
 
 A collection of names of files containing unpaired reads in FASTQ format. Multiple files must be comma-separated, or can be separated by spaces.
 
+**`--adapter-trim BOOL`**
+
+If set to true, will trim adapters using the `--adapter-refs` file. The default is true.
+
 **`--adapter-refs STRING`**
 
-A file containing adapter sequences in the FASTA format. If specified, it will be used to trim out all adapters when the input reads are first loaded. Two files containing adapter sequences are provided in the `contrib` directory: `adapters_no_transposase.fa` and `all_adapters.fa.gz`. The latter must be `gunzip`ped before it can be used.
+A file containing adapter sequences in the FASTA format. If specified, it will be used to trim out all adapters when the input reads are first loaded. Two files containing adapter sequences are provided in the `contrib` directory: `adapters_no_transposase.fa` and `all_adapters.fa.gz`. When installed the latter is unzipped and copied to the install directory under `share`. The default is to trim adapters using this file, so this option usually does not need to be set. 
 
 **`-i, --insert INT:INT`**
 
@@ -143,11 +147,11 @@ The insert size for paired reads. The first integer is the average insert size f
 
 **`-k, --kmer-lens INT,INT,...`**
 
-The *k*-mer lengths used for the contigging rounds. MHM2 performs one or more contigging rounds, each of which performs *k*-mer counting, followed by a deBruijn graph traversal, then alignment and local assembly to extend the contigs. Typically, multiple rounds are used with increasing values of *k*; the shorter values are useful for low abundance genomes, whereas the longer *k* values are useful for resolving repeats. This option defaults to `-k 21,33,55,77,99`, which is fine for reads of length 150. For shorter or longer reads, it may be a good idea to adjust these values, for example, for reads of length 101, a better set is usually `-k 21,33,47,63`. Also, each round of contigging takes time, so the overall assembly time an be reduced by reducing the number of rounds, although this will likely reduce the quality of the final assembly.
+The *k*-mer lengths used for the contigging rounds. MHM2 performs one or more contigging rounds, each of which performs *k*-mer counting, followed by a deBruijn graph traversal, then alignment and local assembly to extend the contigs. Typically, multiple rounds are used with increasing values of *k*; the shorter values are useful for low abundance genomes, whereas the longer *k* values are useful for resolving repeats. This option defaults to `-k 21,31,47,63,95` for reads of average length at least 130, and to `-k 21,31,47,63` for shorter reads. For reads longer than 150, it may be a good idea to adjust these values, for example, adding 121. Also, each round of contigging takes time, so the overall assembly time an be reduced by reducing the number of rounds, although this will likely reduce the quality of the final assembly.
 
 **`-s, --scaff-kmer-lens INT,INT,...`**
 
-The *k*-mer lengths used for the scaffolding rounds. In MHM2, the contigging rounds are followed by one or more scaffolding rounds. These rounds usually proceed from a high *k* to a low one, i.e. the reverse ordering of contigging. This option defaults to `-s 99,33`. The first value should always be set to the final `k` used in contigging, e.g. for reads of length 101 with parameter `-k 21,33,47,63`, the scaffolding values could be `-s 63,33`. More rounds may improve contiguity but will likely increase misassemblies. To disable scaffolding altogether, set this value to 0, i.e. `-s 0`.
+The *k*-mer lengths used for the scaffolding rounds. In MHM2, the contigging rounds are followed by one or more scaffolding rounds. These rounds usually proceed from a high *k* to a low one, i.e. the reverse ordering of contigging. This option defaults to `-s 95,47,31` for reads of length greater than 130, and to `\s 47,31` for shorter reads. The first value should always be set to the final `k` used in contigging, e.g. for reads of length 250 with parameter `-k 21,33,47,63,95,121`, the scaffolding values could be `-s 121,63,31`. More rounds may improve contiguity but will likely increase misassemblies. To disable scaffolding altogether, set this value to 0, i.e. `-s 0`.
 
 **`--min-ctg-print-len INT`**
 

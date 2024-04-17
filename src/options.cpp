@@ -497,6 +497,8 @@ Options::Options(int argc, char **argv) {
 
   if (post_assm_only && ctgs_fname.empty()) ctgs_fname = "final_assembly.fasta";
 
+  if (post_assm_only) post_assm = true;
+
   upcxx::barrier();
 
   if (!*output_dir_opt) {

@@ -73,83 +73,93 @@ void post_assembly(Contigs &ctgs, Options &options) {
   AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
   LOG_MEM("After Post Assembly Ctgs Depths");
 
-  // build kmer_ctg_dht
-  auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
-  int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
-  const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
-  auto sh_kmer_ctg_dht =
-      build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs, options.min_ctg_print_len, true);
-  auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
-  LOG_MEM("After Post Assembly Built Kmer Seeds");
+  int num_subsets = 5;
+  int subset_size = ctgs.size() / num_subsets;
+  size_t num_ctgs = ctgs.size();
 
-  KlignTimers timers;
-  unsigned rlen_limit = 0;
-  int read_group_id = 0;
-  for (auto &reads_fname : options.reads_fnames) {
-    SLOG(KBLUE, "_________________________", KNORM, "\n");
-    SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
-    SLOG("\n");
-    vector<string> one_file_list;
-    one_file_list.push_back(reads_fname);
-    FastqReaders::open_all_file_blocking(one_file_list);
-    PackedReadsList packed_reads_list;
-    packed_reads_list.push_back(new PackedReads(options.qual_offset, reads_fname, true));
-    auto packed_reads = packed_reads_list[0];
-    auto short_name = get_basename(packed_reads->get_fname());
+  for (int subset_i = 0; subset_i < num_subsets; subset_i++) {
+    size_t begin_idx = subset_i * subset_size;
+    size_t end_idx = (subset_i == num_subsets - 1 ? num_ctgs : (subset_i + 1) * subset_size);
+    SLOG("num_ctgs ", num_ctgs, " subset begin ", begin_idx, " subset end ", end_idx, "\n");
+    ctgs.set_range(begin_idx, end_idx);
 
-    stage_timers.cache_reads->start();
-    packed_reads->load_reads();
-    auto max_read_len = packed_reads->get_max_read_len();
-    rlen_limit = max(rlen_limit, max_read_len);
-    DBG("max_read_len=", max_read_len, " rlen_limit=", rlen_limit, "\n");
-    stage_timers.cache_reads->stop();
-    max_read_len = reduce_all(max_read_len, op_fast_max).wait();
-    LOG_MEM("Read " + short_name);
+    // build kmer_ctg_dht
+    auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
+    int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
+    const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
+    auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
+                                                     options.min_ctg_print_len, true);
+    auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
+    LOG_MEM("After Post Assembly Built Kmer Seeds");
 
-    stage_timers.alignments->start();
+    KlignTimers timers;
+    unsigned rlen_limit = 0;
+    int read_group_id = 0;
+    for (auto &reads_fname : options.reads_fnames) {
+      SLOG(KBLUE, "_________________________", KNORM, "\n");
+      SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
+      SLOG("\n");
+      vector<string> one_file_list;
+      one_file_list.push_back(reads_fname);
+      FastqReaders::open_all_file_blocking(one_file_list);
+      PackedReadsList packed_reads_list;
+      packed_reads_list.push_back(new PackedReads(options.qual_offset, reads_fname, true));
+      auto packed_reads = packed_reads_list[0];
+      auto short_name = get_basename(packed_reads->get_fname());
 
-    bool report_cigar = true;
-    int kmer_len = POST_ASM_ALN_K;
+      stage_timers.cache_reads->start();
+      packed_reads->load_reads();
+      auto max_read_len = packed_reads->get_max_read_len();
+      rlen_limit = max(rlen_limit, max_read_len);
+      DBG("max_read_len=", max_read_len, " rlen_limit=", rlen_limit, "\n");
+      stage_timers.cache_reads->stop();
+      max_read_len = reduce_all(max_read_len, op_fast_max).wait();
+      LOG_MEM("Read " + short_name);
 
-    Alns alns;
-    vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
-    fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
-    int max_clen = reduce_all(ctgs.get_max_clen(), op_fast_max).wait();
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, max_clen, report_cigar, true, all_num_ctgs,
-                        options.klign_rget_buf_size, timers);
-    stage_timers.alignments->stop();
-    LOG_MEM("Aligned Post Assembly Reads " + short_name);
+      stage_timers.alignments->start();
 
-    delete packed_reads;
-    LOG_MEM("Purged Post Assembly Reads" + short_name);
+      bool report_cigar = true;
+      int kmer_len = POST_ASM_ALN_K;
+
+      Alns alns;
+      vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
+      fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
+      int max_clen = reduce_all(ctgs.get_max_clen(), op_fast_max).wait();
+      compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, max_clen, report_cigar, true, all_num_ctgs,
+                          options.klign_rget_buf_size, timers);
+      stage_timers.alignments->stop();
+      LOG_MEM("Aligned Post Assembly Reads " + short_name);
+
+      delete packed_reads;
+      LOG_MEM("Purged Post Assembly Reads" + short_name);
 
 #ifdef PAF_OUTPUT_FORMAT
-    string aln_name("final_assembly-" + short_name + ".paf");
-    alns.dump_single_file(aln_name);
-    SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+      string aln_name("final_assembly-" + short_name + ".paf");
+      alns.dump_single_file(aln_name);
+      SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
 #elif BLAST6_OUTPUT_FORMAT
-    string aln_name("final_assembly-" + short_name + ".b6");
-    alns.dump_single_file(aln_name);
-    SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+      string aln_name("final_assembly-" + short_name + ".b6");
+      alns.dump_single_file(aln_name);
+      SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
 #endif
-    LOG_MEM("After Post Assembly Alignments Saved");
-    // Dump 1 file at a time with proper read groups
-    auto fut_flush = alns.write_sam_alignments(sam_of, options.min_ctg_print_len);
-    fut_sam = when_all(fut_sam, fut_flush);
+      LOG_MEM("After Post Assembly Alignments Saved");
+      // Dump 1 file at a time with proper read groups
+      auto fut_flush = alns.write_sam_alignments(sam_of, options.min_ctg_print_len);
+      fut_sam = when_all(fut_sam, fut_flush);
 
-    LOG_MEM("After Post Assembly SAM Saved");
+      LOG_MEM("After Post Assembly SAM Saved");
 
-    stage_timers.compute_ctg_depths->start();
-    // compute depths 1 column at a time
-    aln_depths.compute_for_read_group(alns, read_group_id);
-    stage_timers.compute_ctg_depths->stop();
-    LOG_MEM("After Post Assembly Depths Saved");
+      stage_timers.compute_ctg_depths->start();
+      // compute depths 1 column at a time
+      aln_depths.compute_for_read_group(alns, read_group_id);
+      stage_timers.compute_ctg_depths->stop();
+      LOG_MEM("After Post Assembly Depths Saved");
 
-    read_group_id++;
+      read_group_id++;
+    }
+    stage_timers.kernel_alns->inc_elapsed(timers.aln_kernel.get_elapsed());
+    Timings::wait_pending();
   }
-  stage_timers.kernel_alns->inc_elapsed(timers.aln_kernel.get_elapsed());
-
-  Timings::wait_pending();
 
   fut_sam.wait();
   sam_of.close();
