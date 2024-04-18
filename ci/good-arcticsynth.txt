@@ -17,9 +17,9 @@ Total length (>= 50000 bp)   62429980
 Largest contig               1462373       
 Total length                 95433785      
 Reference length             102521842     
-N50                          106740
+N50                          104549
 N75                          24954         
-L50                          198           
+L50                          201           
 L75                          660           
 # misassemblies              103           
 # misassembled contigs       100           
@@ -39,5 +39,5 @@ Largest alignment            1462373
 Total aligned length         95417119      
 NA50                         103764
 NA75                         23720         
-LA50                         206           
+LA50                         209           
 LA75                         687           
