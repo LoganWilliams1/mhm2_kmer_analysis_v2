@@ -214,7 +214,9 @@ class KmerCtgDHT {
     size_t max_ctgs = 0;
     // determine max number of ctgs mapped to by a single kmer
     for (auto &elem : *kmer_map) {
-      max_ctgs = ::max(max_ctgs, (size_t)distance(elem.second.begin(), elem.second.end()));  // .size());
+      auto num_ctgs_for_kmer = (size_t)distance(elem.second.begin(), elem.second.end());
+      if (num_ctgs_for_kmer > KLIGN_MAX_KMER_TO_CTG_MAPS) WARN("kmer ", elem.first, " maps to ", num_ctgs_for_kmer, " contigs");
+      max_ctgs = ::max(max_ctgs, num_ctgs_for_kmer);  // .size());
     }
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(max_ctgs, op_fast_max, 0));

@@ -101,6 +101,8 @@ add_definitions(-DKLIGN_MAX_MEM_PCT=10)
 add_definitions(-DKLIGN_MAX_CTGS_PER_KMER=500) # 0 disables
 # bypass rget_irregular and directly call rget on large contigs over this size
 add_definitions(-DKLIGN_MAX_IRREGULAR_RGET=8128)
+# threshold of the number of times a single kmer maps to different contigs before it is blacklisted
+add_definitions(-DKLIGN_MAX_KMER_TO_CTG_MAPS=10)
 
 # controls depth matching in cgraph
 add_definitions(-DCGRAPH_DEPTH_DIFF_THRES=0.1)
