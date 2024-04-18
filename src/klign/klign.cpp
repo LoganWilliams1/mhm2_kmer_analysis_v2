@@ -122,7 +122,7 @@ struct RgetRequest {
 
 template <int MAX_K>
 class KmerCtgDHT {
-  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, forward_list<CtgLoc>>;
+  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, vector<CtgLoc>>;
   using kmer_map_t = dist_object<local_kmer_map_t>;
   kmer_map_t kmer_map;
   vector<global_ptr<char>> global_ctg_seqs;
@@ -153,7 +153,8 @@ class KmerCtgDHT {
         it = kmer_map->insert({kmer_and_ctg_loc.kmer, {ctg_loc}}).first;
       } else {
         if (allow_multi_kmers) {
-          it->second.push_front(ctg_loc);
+          // only add if we haven't hit the threshold to prevent excess memory usage and load imbalance here
+          if (it->second.size() < KLIGN_MAX_CTGS_PER_KMER) it->second.push_back(ctg_loc);
         } else {
           // there are conflicts so don't allow any kmer mappings. This improves the assembly when scaffolding k is smaller than
           // the final contigging k, e.g. sk=33
@@ -214,9 +215,8 @@ class KmerCtgDHT {
     size_t max_ctgs = 0;
     // determine max number of ctgs mapped to by a single kmer
     for (auto &elem : *kmer_map) {
-      auto num_ctgs_for_kmer = (size_t)distance(elem.second.begin(), elem.second.end());
-      if (num_ctgs_for_kmer > KLIGN_MAX_KMER_TO_CTG_MAPS) WARN("kmer ", elem.first, " maps to ", num_ctgs_for_kmer, " contigs");
-      max_ctgs = ::max(max_ctgs, num_ctgs_for_kmer);  // .size());
+      auto num_ctgs_for_kmer = elem.second.size();
+      max_ctgs = ::max(max_ctgs, num_ctgs_for_kmer);
     }
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(max_ctgs, op_fast_max, 0));
@@ -352,7 +352,7 @@ class KmerCtgDHT {
     Timings::set_pending(fut_report);
   }
 
-  void purge_high_count_seeds(int max_ctgs_per_kmer = KLIGN_MAX_CTGS_PER_KMER) {
+  void purge_high_count_seeds() {
     BarrierTimer timer(__FILEFUNC__);
     // FIXME: Hack for Issue137 to be fixed robustly later
     size_t num_purged = 0;
@@ -364,21 +364,19 @@ class KmerCtgDHT {
     vector<Kmer<MAX_K>> to_be_purged;
     for (auto &elem : *kmer_map) {
       auto &[kmer, ctg_locs] = elem;
-      size_t sz = 0;
       double depth = 0.0;
       for (auto &ctg_loc : ctg_locs) {
-        sz++;
         depth += ctg_loc.depth;
       }
-
-      if (sz > max_ctg_locs) max_ctg_locs = sz;
-      if (depth > max_depth) max_depth = depth;
+      max_ctg_locs = max(max_ctg_locs, ctg_locs.size());
+      max_depth = max(max_depth, depth);
       total_depth += depth;
-      if (max_ctgs_per_kmer > 0 && sz > max_ctgs_per_kmer) {
+      // we should never actually exceed this threshold because we limit the number of insertions
+      if (KLIGN_MAX_CTGS_PER_KMER > 0 && ctg_locs.size() >= KLIGN_MAX_CTGS_PER_KMER) {
         DBG("Removing kmer with ", sz, " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
         to_be_purged.push_back(kmer);
         num_purged++;
-        num_ctg_locs_purged += sz;
+        num_ctg_locs_purged += ctg_locs.size();
         total_purged_depth += depth;
       }
     }
