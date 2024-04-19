@@ -98,7 +98,7 @@ add_definitions(-DKLIGN_MAX_RPC_MESSAGE_SIZE=256000)
 # percent of max free memory to use in buffering within klign's per_rank buffers
 add_definitions(-DKLIGN_MAX_MEM_PCT=10)
 # max contigs per kmer to prevent load imbalance and excessive memory usage
-add_definitions(-DKLIGN_MAX_CTGS_PER_KMER=50) # 0 disables
+add_definitions(-DKLIGN_MAX_CTGS_PER_KMER=500) # 0 disables
 # bypass rget_irregular and directly call rget on large contigs over this size
 add_definitions(-DKLIGN_MAX_IRREGULAR_RGET=8128)
 
