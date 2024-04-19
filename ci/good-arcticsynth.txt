@@ -14,10 +14,10 @@ Total length (>= 10000 bp)   81788291
 Total length (>= 25000 bp)   71509133      
 Total length (>= 50000 bp)   62429980      
 # contigs                    7295          
-Largest contig               1358684
+Largest contig               1244687
 Total length                 95433785      
 Reference length             102521842     
-N50                          104549
+N50                          103089
 N75                          24954         
 L50                          201           
 L75                          660           
@@ -37,7 +37,7 @@ Duplication ratio            1.004
 # indels per 100 kbp         1.45          
 Largest alignment            1244956
 Total aligned length         95417119      
-NA50                         103764
+NA50                         99287
 NA75                         23720         
 LA50                         209           
 LA75                         687           
