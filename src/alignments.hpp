@@ -127,7 +127,11 @@ class Alns {
       DBG(aln.to_paf_string(), "\n");
       if (aln.clen < min_ctg_len) continue;
       if (!as_sam_format)
+#ifdef PAF_OUTPUT_FORMAT
+        os << aln.to_paf_string() << "\n";
+#else
         os << aln.to_blast6_string() << "\n";
+#endif
       else
         os << aln.sam_string << "\n";
     }

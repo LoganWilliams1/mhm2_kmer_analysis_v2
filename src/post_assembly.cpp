@@ -64,7 +64,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
 
   // set up output files
   SLOG_VERBOSE("Writing SAM headers\n");
-  // shared_ptr<dist_ofstream> sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
   dist_ofstream sam_of("final_assembly.sam");
   upcxx::future<> fut_sam = make_future();
   fut_sam = Alns::write_sam_header(sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
@@ -79,7 +78,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
     SLOG(KBLUE, "Contig subset ", subset_i, KNORM, "\n");
     ctgs.set_next_slice(options.post_assm_subsets);
 
-    // build kmer_ctg_dht
     auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
     int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
     const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
@@ -93,7 +91,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
     int read_group_id = 0;
     for (auto &reads_fname : options.reads_fnames) {
       SLOG("\n");
-      // SLOG(KBLUE, "_________________________", KNORM, "\n");
       SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
       SLOG("\n");
       vector<string> one_file_list;
