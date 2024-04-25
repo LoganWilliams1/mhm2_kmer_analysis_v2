@@ -126,11 +126,11 @@ bool FastqReader::get_fq_name(string &header) {
         return true;
       } else {
         // unknown pairing format, just remove comment
-        if (end_read > start_read && start_read + 1000 > tellg()) DBG("unknown format ", header, " end pos ", end_pos, " removing comment\n");
+        if (end_read > start_read && start_read + 1000 > tellg())
+          DBG("unknown format ", header, " end pos ", end_pos, " removing comment\n");
         header.resize(end_pos);
         return true;
       }
-      
     }
   }
   return true;
@@ -214,7 +214,8 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     std::getline(*in, buf);
     read_io_t.stop();
     if (in->eof() || buf.empty()) {
-      DBG("Got eof or empty getline while reading ", NUM_LINES, " after offset=", offset, " returning end of file=", file_size, "\n");
+      DBG("Got eof or empty getline while reading ", NUM_LINES, " after offset=", offset, " returning end of file=", file_size,
+          "\n");
       in->clear();
       return file_size;
     }
@@ -244,7 +245,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
           _fix_paired_name = true;
           LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname,
               "\n");
-          if (offset == 0) WARN(this->fname, " is paired but read names are indistinguisable.  example: ", possible_header, "\n");
+          if (offset == 0) WARN(this->fname, " is paired but read names are indistinguishable.  example: ", possible_header, "\n");
         } else if (!_is_paired) {
           DIE("Invalid unpaired fastq file that contains identical sequential read names: ", last_header, " in ", this->fname,
               " _is_paired=", _is_paired, " _fix_paired_name=", _fix_paired_name, " i=", i, " offset=", offset, "\n");
@@ -261,8 +262,8 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
       DBG_VERBOSE("Testing for header: ", header, "\n");
       for (int j = 0; j < 3; j++) {
         if (i + 1 + j >= lines.size())
-          DIE("Missing record info at ", get_basename(fname), " around pos ", tells[i], " i=", i, " lines: ", lines[0], " - ", lines[i], " header: ", header,
-              " possible_header=", possible_header, "\n");
+          DIE("Missing record info at ", get_basename(fname), " around pos ", tells[i], " i=", i, " lines: ", lines[0], " - ",
+              lines[i], " header: ", header, " possible_header=", possible_header, "\n");
         string &tmp2 = lines[i + 1 + j];
 
         if (j == 0) {
@@ -395,7 +396,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
     WARN("First rank to read really should return the first byte for ", fname, " offset=", offset, " last_tell=", last_tell, "\n");
   if (interleaved_failures)
     WARN("When searching for next fastq record, found ", interleaved_failures,
-                 " records that were not correctly interleaved, starting on ", last_header, "\n");
+         " records that were not correctly interleaved, starting on ", last_header, "\n");
   return last_tell;
 }
 
