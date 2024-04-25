@@ -89,6 +89,8 @@ class Alns {
   int64_t num_bad;
 
  public:
+  enum class Format { PAF, BLAST, SAM };
+
   Alns();
 
   void clear();
@@ -121,28 +123,13 @@ class Alns {
   inline auto end() const { return alns.end(); };
 
   template <typename OSTREAM>
-  void dump_all(OSTREAM &os, bool as_sam_format, int min_ctg_len = 0) const {
-    // all ranks dump their valid alignments
-    for (const auto &aln : alns) {
-      DBG(aln.to_paf_string(), "\n");
-      if (aln.clen < min_ctg_len) continue;
-      if (!as_sam_format)
-#ifdef PAF_OUTPUT_FORMAT
-        os << aln.to_paf_string() << "\n";
-#else
-        os << aln.to_blast6_string() << "\n";
-#endif
-      else
-        os << aln.sam_string << "\n";
-    }
-  }
-
-  void dump_single_file(const string fname) const;
+  void dump_all(OSTREAM &os, Format fmt, int min_ctg_len = 0) const;
+  void dump_single_file(const string fname, Format fmt) const;
   static upcxx::future<> write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
                                           int min_ctg_len);
   upcxx::future<> write_sam_alignments(dist_ofstream &of, int min_contig_len) const;
   void dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_contig_len = 0) const;
-  void dump_rank_file(const string fname) const;
+  void dump_rank_file(const string fname, Format fmt) const;
 
   int calculate_unmerged_rlen() const;
 

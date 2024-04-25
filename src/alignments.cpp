@@ -177,8 +177,9 @@ void Aln::set_sam_string(std::string_view read_seq, string cigar) {
 // minimap2 PAF output format
 string Aln::to_paf_string() const {
   ostringstream os;
-  os << read_id << "\t" << rstart + 1 << "\t" << rstop << "\t" << rlen << "\t" << "Contig" << cid << "\t" << cstart + 1 << "\t"
-     << cstop << "\t" << clen << "\t" << (orient == '+' ? "Plus" : "Minus") << "\t" << score1 << "\t" << score2;
+  os << read_id << "\t" << rstart + 1 << "\t" << rstop << "\t" << rlen << "\t"
+     << "Contig" << cid << "\t" << cstart + 1 << "\t" << cstop << "\t" << clen << "\t" << (orient == '+' ? "Plus" : "Minus") << "\t"
+     << score1 << "\t" << score2;
   //<< "0";
   return os.str();
 }
@@ -190,8 +191,9 @@ string Aln::to_blast6_string() const {
   int gap_opens = 0;
   int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
   double identity = calc_identity();
-  os << read_id << "\t" << "Contig" << cid << "\t" << std::fixed << std::setprecision(3) << identity << "\t" << aln_len << "\t"
-     << mismatches << "\t" << gap_opens << "\t" << rstart + 1 << "\t" << rstop << "\t";
+  os << read_id << "\t"
+     << "Contig" << cid << "\t" << std::fixed << std::setprecision(3) << identity << "\t" << aln_len << "\t" << mismatches << "\t"
+     << gap_opens << "\t" << rstart + 1 << "\t" << rstop << "\t";
   // subject start and end reversed when orientation is minus
   if (orient == '+')
     os << cstart + 1 << "\t" << cstop;
@@ -378,17 +380,31 @@ int64_t Alns::get_num_dups() { return num_dups; }
 
 int64_t Alns::get_num_bad() { return num_bad; }
 
-void Alns::dump_rank_file(string fname) const {
+template <typename OSTREAM>
+void Alns::dump_all(OSTREAM &os, Format fmt, int min_ctg_len) const {
+  // all ranks dump their valid alignments
+  for (const auto &aln : alns) {
+    // DBG(aln.to_paf_string(), "\n");
+    if (aln.clen < min_ctg_len) continue;
+    switch (fmt) {
+      case Format::PAF: os << aln.to_paf_string() << "\n"; break;
+      case Format::BLAST: os << aln.to_blast6_string() << "\n"; break;
+      case Format::SAM: os << aln.sam_string << "\n"; break;
+    }
+  }
+}
+
+void Alns::dump_rank_file(string fname, Format fmt) const {
   get_rank_path(fname, rank_me());
   zstr::ofstream f(fname);
-  dump_all(f, false);
+  dump_all(f, fmt);
   f.close();
   upcxx::barrier();
 }
 
-void Alns::dump_single_file(const string fname) const {
+void Alns::dump_single_file(const string fname, Format fmt) const {
   dist_ofstream of(fname);
-  dump_all(of, false);
+  dump_all(of, fmt);
   of.close();
   upcxx::barrier();
 }
@@ -419,7 +435,7 @@ upcxx::future<> Alns::write_sam_header(dist_ofstream &of, const vector<string> &
 
 upcxx::future<> Alns::write_sam_alignments(dist_ofstream &of, int min_ctg_len) const {
   // next alignments.  rank0 will be first with the remaining header fields
-  dump_all(of, true, min_ctg_len);
+  dump_all(of, Format::SAM, min_ctg_len);
   return of.flush_collective();
 }
 

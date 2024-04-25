@@ -153,7 +153,7 @@ add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 # seed length used for post assembly alignment
 add_definitions(-DPOST_ASM_ALN_K=31)
 # also dump alignments from post assembly in PAF format (in addition to SAM)
-add_definitions(-DPAF_OUTPUT_FORMAT)
+# add_definitions(-DPAF_OUTPUT_FORMAT)
 # also dump alignments from post assembly in Blast6 format
 # add_definitions(-DBLAST6_OUTPUT_FORMAT)
 

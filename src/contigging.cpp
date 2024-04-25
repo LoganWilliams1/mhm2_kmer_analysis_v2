@@ -162,7 +162,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
     stage_timers.alignments->stop();
     barrier();
     LOG_MEM("Aligned reads to contigs");
-    if (is_debug) alns.dump_single_file("ctg-alns-" + to_string(kmer_len) + ".blast");
+    if (is_debug) alns.dump_single_file("ctg-alns-" + to_string(kmer_len) + ".blast", Alns::Format::BLAST);
     histogrammer.calculate_insert_size(alns);
     // insert size should never be larger than this; if it is that signals some error in the assembly
     barrier();

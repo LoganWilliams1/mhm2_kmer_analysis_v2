@@ -129,11 +129,11 @@ void post_assembly(Contigs &ctgs, Options &options) {
 
 #ifdef PAF_OUTPUT_FORMAT
       string aln_name("final_assembly-" + short_name + ".paf");
-      alns.dump_single_file(aln_name);
+      alns.dump_single_file(aln_name, Alns::Format::PAF);
       SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
 #elif BLAST6_OUTPUT_FORMAT
       string aln_name("final_assembly-" + short_name + ".b6");
-      alns.dump_single_file(aln_name);
+      alns.dump_single_file(aln_name, Alns::Format::BLAST);
       SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
 #endif
       LOG_MEM("After Post Assembly Alignments Saved");
