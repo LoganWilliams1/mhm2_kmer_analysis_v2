@@ -127,13 +127,13 @@ void asynch_mem_copies_htd(gpu_alignments* gpu_data, unsigned* offsetA_h, unsign
 
   size_t size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
   if (size_strB < totalLengthB) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "totalLengthB "
-              << totalLengthB << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
+              << "totalLengthB " << totalLengthB << " max rlen " << max_rlen << "\n";
     std::abort();
   }
   if (size_strB < half_length_B) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "half_length_B "
-              << half_length_B << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
+              << "half_length_B " << half_length_B << " max rlen " << max_rlen << "\n";
     std::abort();
   }
 
@@ -193,13 +193,13 @@ void asynch_mem_copies_htd_t(gpu_alignments* gpu_data, gpu_alignments_traceback*
 
   size_t size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
   if (size_strB < totalLengthB) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "totalLengthB "
-              << totalLengthB << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
+              << "totalLengthB " << totalLengthB << " max rlen " << max_rlen << "\n";
     std::abort();
   }
   if (size_strB < half_length_B) {
-    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < " << "half_length_B "
-              << half_length_B << " max rlen " << max_rlen << "\n";
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << size_strB << " < "
+              << "half_length_B " << half_length_B << " max rlen " << max_rlen << "\n";
     std::abort();
   }
   ERROR_CHECK(MemcpyAsync(strB_d, strB, half_length_B * sizeof(char), MemcpyHostToDevice, streams_cuda[0]));
@@ -263,6 +263,8 @@ struct adept_sw::DriverState {
   char *strA_d, *strB_d;
   char* strA;
   char* strB;
+  size_t max_size_strA;
+  size_t max_size_strB;
 
   Event_t event_fwd_0, event_fwd_1, event_rev_0, event_rev_1;
   short matchScore, misMatchScore, startGap, extendGap;
@@ -331,8 +333,10 @@ adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_
   ERROR_CHECK(Malloc(&driver_state->strB_d, max_rlen * KLIGN_GPU_BLOCK_SIZE * sizeof(char)));
   // elapsed =  clock_now() - t; os << " mallocs=" << elapsed.count();
 
-  ERROR_CHECK(MallocHost((void**)&driver_state->strA, 2 * sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
-  ERROR_CHECK(MallocHost((void**)&driver_state->strB, sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE));
+  driver_state->max_size_strA = 2 * sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
+  ERROR_CHECK(MallocHost((void**)&driver_state->strA, driver_state->max_size_strA));
+  driver_state->max_size_strB = sizeof(char) * max_rlen * KLIGN_GPU_BLOCK_SIZE;
+  ERROR_CHECK(MallocHost((void**)&driver_state->strB, driver_state->max_size_strB));
   // elapsed =  clock_now() - t; os << " mallocHost3=" << elapsed.count();
 
   driver_state->gpu_data = new gpu_alignments(KLIGN_GPU_BLOCK_SIZE);  // gpu mallocs
@@ -443,8 +447,21 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
 
   for (int i = 0; i < (int)sequencesA.size(); i++) {
     char* seqptrA = driver_state->strA + offsetSumA;
+    size_t end_pos_A = sequencesA[i].size() + offsetSumA;
+    if (end_pos_A > driver_state->max_size_strA) {
+      std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: overflow on copy: " << end_pos_A << " > "
+                << driver_state->max_size_strA << std::endl;
+      std::abort();
+    }
     memcpy(seqptrA, sequencesA[i].c_str(), sequencesA[i].size());
+
     char* seqptrB = driver_state->strB + offsetSumB;
+    size_t end_pos_B = sequencesB[i].size() + offsetSumB;
+    if (end_pos_B > driver_state->max_size_strB) {
+      std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: overflow on copy: " << end_pos_B << " > "
+                << driver_state->max_size_strB << std::endl;
+      std::abort();
+    }
     memcpy(seqptrB, sequencesB[i].c_str(), sequencesB[i].size());
     offsetSumA += sequencesA[i].size();
     offsetSumB += sequencesB[i].size();

@@ -190,7 +190,7 @@ double Options::setup_output_dir() {
       // could not create the directory
       if (errno == EEXIST) {
         // okay but warn if not restarting
-        if (!restart) SWARN("Output directory ", output_dir, " already exists. May overwrite existing files\n");
+        if (!restart && !post_assm_only) SWARN("Output directory ", output_dir, " already exists. May overwrite existing files\n");
       } else {
         SDIE("Could not create output directory '", output_dir, "': ", strerror(errno), "\n");
       }
