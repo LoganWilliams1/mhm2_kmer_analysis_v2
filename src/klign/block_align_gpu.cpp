@@ -142,8 +142,6 @@ void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty
     SWARN("No GPU will be used for alignments");
   } else {
     double init_time;
-    // FIXME: set the compute_cigar to false because the computation is broken
-    compute_cigar = false;
     gpu_driver =
         new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)match_score, (short)-mismatch_penalty,
                                 (short)-gap_opening_penalty, (short)-gap_extending_penalty, rlen_limit, compute_cigar, init_time);
@@ -192,8 +190,7 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     shared_ptr<AlignBlockData> aln_block_data =
         make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id);
     assert(kernel_alns.empty());
-    // FIXME: the GPU alignment doesn't support cigars properly
-    if (gpu_utils::gpus_present() && !cpu_aligner.ssw_filter.report_cigar) {
+    if (gpu_utils::gpus_present()) {
       active_kernel_fut = gpu_align_block(aln_block_data, alns, cpu_aligner.ssw_filter.report_cigar, klign_timers);
     } else {
       active_kernel_fut = cpu_aligner.ssw_align_block(aln_block_data, alns, klign_timers.aln_kernel);
