@@ -136,7 +136,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
 }
 
 void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty, int gap_extending_penalty, int ambiguity_penalty,
-                  int rlen_limit, int clen_limit, bool compute_cigar) {
+                  int rlen_limit, bool compute_cigar) {
   if (!gpu_utils::gpus_present()) {
     // CPU only
     SWARN("No GPU will be used for alignments");
@@ -144,9 +144,9 @@ void init_aligner(int match_score, int mismatch_penalty, int gap_opening_penalty
     double init_time;
     // FIXME: set the compute_cigar to false because the computation is broken
     compute_cigar = false;
-    gpu_driver = new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)match_score,
-                                         (short)-mismatch_penalty, (short)-gap_opening_penalty, (short)-gap_extending_penalty,
-                                         rlen_limit, clen_limit, compute_cigar, init_time);
+    gpu_driver =
+        new adept_sw::GPUDriver(local_team().rank_me(), local_team().rank_n(), (short)match_score, (short)-mismatch_penalty,
+                                (short)-gap_opening_penalty, (short)-gap_extending_penalty, rlen_limit, compute_cigar, init_time);
     SLOG_VERBOSE("Initialized GPU adept_sw driver in ", init_time, " s\n");
   }
 }

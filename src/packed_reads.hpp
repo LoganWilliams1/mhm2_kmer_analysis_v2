@@ -176,11 +176,11 @@ class PackedReads {
 
   void add_read(const string &read_id, const string &seq, const string &quals);
 
-  void load_reads();
+  upcxx::future<> load_reads_nb(const string &adapter_fname);
 
-  upcxx::future<> load_reads_nb();
+  void load_reads(const string &adapter_fname);
 
-  static void load_reads(PackedReadsList &);
+  static void load_reads_list(PackedReadsList &, const string &adapter_fname);
 
   void report_size();
 

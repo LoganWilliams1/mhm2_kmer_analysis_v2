@@ -170,7 +170,7 @@ template <int MAX_K>
 shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned, int, int, Contigs &, int, bool);
 
 template <int MAX_K>
-void compute_alns(PackedReads *, vector<ReadRecord> &, Alns &, int, int, int, bool, bool, int64_t, int, KlignTimers &);
+void compute_alns(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int, KlignTimers &);
 
 template <int MAX_K>
 void fetch_ctg_maps(KmerCtgDHT<MAX_K> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
@@ -183,7 +183,7 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &, PackedReads *, vector<ReadRecord> &, in
   MODIFIER std::pair<double, double> find_alignments<KMER_LEN>(unsigned, PackedReadsList &, int, int, Contigs &, Alns &, int, int, \
                                                                bool, bool, int, int);                                              \
   MODIFIER shared_ptr<KmerCtgDHT<KMER_LEN>> build_kmer_ctg_dht<KMER_LEN>(unsigned, int, int, Contigs &, int, bool);                \
-  MODIFIER void compute_alns<KMER_LEN>(PackedReads *, vector<ReadRecord> &, Alns &, int, int, int, bool, bool, int64_t, int,       \
+  MODIFIER void compute_alns<KMER_LEN>(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int,            \
                                        KlignTimers &);                                                                             \
   MODIFIER void fetch_ctg_maps<KMER_LEN>(KmerCtgDHT<KMER_LEN> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
 

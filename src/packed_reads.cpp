@@ -337,25 +337,7 @@ void PackedReads::add_read(const string &read_id, const string &seq, const strin
   bases += seq.length();
 }
 
-void PackedReads::load_reads(PackedReadsList &packed_reads_list) {
-  BarrierTimer timer(__FILEFUNC__);
-  upcxx::future<> all_done = upcxx::make_future();
-  vector<string> file_names;
-  for (auto pr : packed_reads_list) {
-    file_names.push_back(pr->fname);
-  }
-  FastqReaders::open_all(file_names);
-  for (auto pr : packed_reads_list) {
-    upcxx::discharge();
-    upcxx::progress();
-    auto fut = pr->load_reads_nb();
-    all_done = when_all(all_done, fut);
-  }
-  FastqReaders::close_all();
-  all_done.wait();
-}
-
-upcxx::future<> PackedReads::load_reads_nb() {
+upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
   // first estimate the number of records
   size_t tot_bytes_read = 0;
   int64_t num_records = 0;
@@ -408,9 +390,27 @@ upcxx::future<> PackedReads::load_reads_nb() {
   return fut_report;
 }
 
-void PackedReads::load_reads() {
+void PackedReads::load_reads_list(PackedReadsList &packed_reads_list, const string &adapter_fname) {
   BarrierTimer timer(__FILEFUNC__);
-  auto fut = load_reads_nb();
+  upcxx::future<> all_done = upcxx::make_future();
+  vector<string> file_names;
+  for (auto pr : packed_reads_list) {
+    file_names.push_back(pr->fname);
+  }
+  FastqReaders::open_all(file_names);
+  for (auto pr : packed_reads_list) {
+    upcxx::discharge();
+    upcxx::progress();
+    auto fut = pr->load_reads_nb(adapter_fname);
+    all_done = when_all(all_done, fut);
+  }
+  FastqReaders::close_all();
+  all_done.wait();
+}
+
+void PackedReads::load_reads(const string &adapter_fname) {
+  BarrierTimer timer(__FILEFUNC__);
+  auto fut = load_reads_nb(adapter_fname);
   Timings::wait_pending();
   fut.wait();
 }

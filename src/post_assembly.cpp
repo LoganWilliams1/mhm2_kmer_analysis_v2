@@ -102,7 +102,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       auto short_name = get_basename(packed_reads->get_fname());
 
       stage_timers.cache_reads->start();
-      packed_reads->load_reads();
+      packed_reads->load_reads(options.adapter_fname);
       auto max_read_len = packed_reads->get_max_read_len();
       rlen_limit = max(rlen_limit, max_read_len);
       DBG("max_read_len=", max_read_len, " rlen_limit=", rlen_limit, "\n");
@@ -118,8 +118,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       Alns alns;
       vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
       fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
-      int max_clen = reduce_all(ctgs.get_max_clen(), op_fast_max).wait();
-      compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, max_clen, report_cigar, true, all_num_ctgs,
+      compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs,
                           options.klign_rget_buf_size, timers);
       stage_timers.alignments->stop();
       LOG_MEM("Aligned Post Assembly Reads " + short_name);
