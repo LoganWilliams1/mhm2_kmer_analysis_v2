@@ -222,6 +222,7 @@ foreach(
   packed_reads
   utils
   options
+  adapters
   merge_reads
   dbjg_traversal
   histogrammer
