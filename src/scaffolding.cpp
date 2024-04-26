@@ -93,9 +93,9 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     int seed_space = KLIGN_SEED_SPACE;
     if (options.dump_gfa && scaff_i == options.scaff_kmer_lens.size() - 1) seed_space = 1;
     begin_gasnet_stats("alignment sk = " + to_string(scaff_kmer_len));
-    auto [kernel_elapsed, aln_comms_elapsed] = find_alignments<MAX_K>(
-        scaff_kmer_len, packed_reads_list, max_kmer_store, options.max_rpcs_in_flight, ctgs, alns, seed_space, rlen_limit, false,
-        options.optimize_for == "contiguity", 0, options.klign_rget_buf_size);
+    auto [kernel_elapsed, aln_comms_elapsed] =
+        find_alignments<MAX_K>(scaff_kmer_len, packed_reads_list, max_kmer_store, options.max_rpcs_in_flight, ctgs, alns,
+                               seed_space, rlen_limit, false, options.optimize_for == "contiguity", 0, options.klign_rget_buf_size);
     end_gasnet_stats();
     stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
     stage_timers.aln_comms->inc_elapsed(aln_comms_elapsed);
@@ -138,7 +138,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
   SLOG(KBLUE, "Completed ", (gfa_iter ? "GFA output" : "scaffolding"), " round k = ", scaff_kmer_len, " in ", setprecision(2),
        fixed, loop_t_elapsed.count(), " s at ", get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)",
        KNORM, "\n");
-  LOG_MEM("Scaffolding completed");
+  LOG_MEM("After scaffolding round k = " + to_string(scaff_kmer_len));
   Timings::wait_pending();
   barrier();
 }

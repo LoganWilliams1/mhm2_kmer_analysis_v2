@@ -188,7 +188,7 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
   SLOG("\n");
   SLOG(KBLUE, "Completed contig round k = ", kmer_len, " in ", setprecision(2), fixed, loop_t_elapsed.count(), " s at ",
        get_current_time(), " (", get_size_str(get_free_mem()), " free memory on node 0)", KNORM, "\n");
-  LOG_MEM("Completed contigging");
+  LOG_MEM("After contig round k = " + to_string(kmer_len));
   Timings::wait_pending();
   barrier();
 }
