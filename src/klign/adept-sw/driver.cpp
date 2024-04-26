@@ -276,11 +276,12 @@ struct adept_sw::DriverState {
 };
 
 adept_sw::GPUDriver::GPUDriver(int upcxx_rank_me, int upcxx_rank_n, short match_score, short mismatch_score,
-                               short gap_opening_score, short gap_extending_score, int max_rlen, int max_clen, bool compute_cigar,
+                               short gap_opening_score, short gap_extending_score, int max_rlen, bool compute_cigar,
                                double& init_time) {
   timepoint_t t = clock_now();
 
   // calculate if the batch will fit into global memory
+  int max_clen = 3 * max_rlen;  // FIXME LL: Hack until I can pass in max_clen
   unsigned maxCIGAR = (max_clen > max_rlen) ? 3 * max_clen : 3 * max_rlen;
 
   int maxMatrixSize = max_rlen * max_clen;
