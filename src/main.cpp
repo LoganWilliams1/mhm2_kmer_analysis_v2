@@ -476,8 +476,8 @@ int main(int argc, char **argv) {
   finalize_timer.stop();
   total_timer.stop();
   if (am_root)
-    cout << "Total time: " << total_timer.get_elapsed() << " s. (upcxx::finalize in " << finalize_timer.get_elapsed() << " s)"
-         << endl;
+    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
+         << finalize_timer.get_elapsed() << " s)" << endl;
 
   return 0;
 }

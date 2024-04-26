@@ -177,7 +177,7 @@ void done_init_devices() {
     }
   }
   auto post_init_dev_free_mem = get_free_mem(true);
-  auto init_t_elapsed = clock_now() - start_t;
+  duration_seconds init_t_elapsed = clock_now() - start_t;
   SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
        " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
 }
