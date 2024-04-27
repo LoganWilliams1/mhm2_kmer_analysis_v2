@@ -54,7 +54,6 @@
 #include <string_view>
 #include <upcxx/upcxx.hpp>
 
-#include "CLI11.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/timers.hpp"
@@ -365,7 +364,7 @@ Options::Options(int argc, char **argv) {
   // MHM2 version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
   string full_version_str = "MHM2 version " + string(MHM2_VERSION) + "-" + string(MHM2_BRANCH) + " with upcxx-utils " +
                             string(UPCXX_UTILS_VERSION) + " built on " + string(MHM2_BUILD_DATE);
-  CLI::App app(full_version_str);
+  app.description(full_version_str);
   app.option_defaults()->always_capture_default();
   // basic options - see user guide
   app.add_option("-r, --reads", reads_fnames,
@@ -562,8 +561,6 @@ Options::Options(int argc, char **argv) {
 
   min_kmer_len = kmer_lens.empty() ? (scaff_kmer_lens.empty() ? -1 : scaff_kmer_lens[scaff_kmer_lens.size() - 1]) : kmer_lens[0];
   // save to per_rank, but hardlink to output_dir
-  string config_file = "per_rank/mhm2.config";
-  string linked_config_file = "mhm2.config";
   if (restart) {
     // use per_rank to read/write this small file, hardlink to top run level
     try {
@@ -641,6 +638,16 @@ Options::Options(int argc, char **argv) {
 #ifdef DEBUG
   SWARN("Running low-performance debug mode");
 #endif
+  write_config_file();
+  upcxx::barrier();
+}
+
+void Options::adjust_config_option(const string &opt_name, const string &new_val) {
+  app.get_option(opt_name)->clear();
+  app.get_option(opt_name)->add_result(new_val);
+}
+
+void Options::write_config_file() {
   if (!upcxx::rank_me()) {
     // write out configuration file for restarts
     ofstream ofs(config_file);
@@ -650,7 +657,6 @@ Options::Options(int argc, char **argv) {
     auto ret = link(config_file.c_str(), linked_config_file.c_str());
     if (ret != 0 && !restart) LOG("Could not hard link config file, continuing\n");
   }
-  upcxx::barrier();
 }
 
 template <typename T>

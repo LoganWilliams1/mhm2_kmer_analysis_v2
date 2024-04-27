@@ -47,6 +47,7 @@
 #include <string>
 #include <vector>
 
+#include "CLI11.hpp"
 #include "version.h"
 
 using std::cout;
@@ -55,6 +56,11 @@ using std::string;
 using std::vector;
 
 class Options {
+  CLI::App app;
+
+  string config_file = "per_rank/mhm2.config";
+  string linked_config_file = "mhm2.config";
+
   vector<string> splitter(string in_pattern, string &content);
 
   bool extract_previous_lens(vector<unsigned> &lens, unsigned k);
@@ -115,6 +121,9 @@ class Options {
   Options() {}
   Options(int argc, char **argv);
   ~Options();
+
+  void write_config_file();
+  void adjust_config_option(const string &opt_name, const string &new_val);
 
   template <typename T>
   static string vec_to_str(const vector<T> &vec, const string &delimiter = ",");
