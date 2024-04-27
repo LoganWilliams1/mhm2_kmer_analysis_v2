@@ -359,7 +359,7 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
   }
   fqr.reset();
 
-  Adapters adapters(31, adapter_fname, false);
+  Adapters adapters(POST_ASM_ALN_K, adapter_fname, false);
 
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;

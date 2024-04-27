@@ -959,7 +959,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
       assert(&alns_for_sample == sh_alns.get());
       alns_for_sample.sort_alns();
       sort_t.stop();
-      LOG("Completed sorting ", alns_for_sample.size(), " alignments\n");
+      LOG("Finished sorting ", alns_for_sample.size(), " alignments\n");
     };
     future<> fut_sort = upcxx_utils::ThreadPool::get_single_pool().enqueue_serially(sort_lambda);
     fut_sort = fut_sort.then([sh_alns, &alns]() {
