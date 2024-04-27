@@ -257,7 +257,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
                " memory on node 0 for reads", KNORM, "\n");
 
   if (avg_read_len < 110 && !options.restart && options.default_kmer_lens) {
-    assert(!options.kmer_lens.empty());
     options.kmer_lens.pop_back();
     if (options.default_scaff_kmer_lens) options.scaff_kmer_lens.front() = options.kmer_lens.back();
     SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
@@ -266,8 +265,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   }
   options.adjust_config_option("--kmer-lens", Options::vec_to_str(options.kmer_lens));
   options.adjust_config_option("--scaff-kmer-lens", Options::vec_to_str(options.scaff_kmer_lens));
-  // options.adjust_config_option("--prev-kmer-len", to_string(options.prev_kmer_len));
-  // options.adjust_config_option("--max-kmer-len", to_string(options.max_kmer_len));
   // keep track of all the changes in the config file
   options.write_config_file();
 

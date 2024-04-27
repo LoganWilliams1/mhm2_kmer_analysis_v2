@@ -467,7 +467,7 @@ int merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapse
       if (id1.compare(0, id1.length() - 2, id2, 0, id2.length() - 2) != 0) DIE("Mismatched pairs ", id1, " ", id2);
       if (id1[id1.length() - 1] != '1' || id2[id2.length() - 1] != '2') DIE("Mismatched pair numbers ", id1, " ", id2);
 
-      adapters.trim(id1, seq1, quals1, id2, seq2, quals2);
+      adapters.trim_pair(id1, seq1, quals1, id2, seq2, quals2);
 
       //  it's possible that really short reads could be merged, but unlikely and they'd still be short, so drop all below min
       //  kmer length

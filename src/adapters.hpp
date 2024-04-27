@@ -71,10 +71,10 @@ class Adapters {
   upcxx_utils::BaseTimer trim_timer_ssw;
 
   void load_adapter_seqs(const string &fname);
-  bool trim_seq(const string &id, string &seq, bool is_read_1);
 
  public:
   Adapters(int adapter_k, const string &fname, bool use_blastn_scores);
   void done(size_t all_bases_read, size_t all_num_pairs);
-  bool trim(const string &id1, string &seq1, string &quals1, const string &id2, string &seq2, string &quals2);
+  bool trim(const string &id, string &seq, string &quals);
+  bool trim_pair(const string &id1, string &seq1, string &quals1, const string &id2, string &seq2, string &quals2);
 };

@@ -145,7 +145,30 @@ void Adapters::load_adapter_seqs(const string &fname) {
   */
 }
 
-bool Adapters::trim_seq(const string &id, string &seq, bool is_read_1) {
+Adapters::Adapters(int adapter_k, const string &fname, bool use_blastn_scores)
+    : adapter_k(adapter_k)
+    , use_blastn_scores(use_blastn_scores) {
+  ssw_aligner.Clear();
+  if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
+    SDIE("Failed to set aln scores");
+  ssw_filter.report_cigar = false;
+  if (!fname.empty()) load_adapter_seqs(fname);
+}
+
+void Adapters::done(size_t all_bases_read, size_t all_num_pairs) {
+  if (adapter_seqs.empty()) return;
+  auto ssw_elapsed_time = trim_timer_ssw.get_elapsed();
+  auto trim_elapsed_time = trim_timer.get_elapsed();
+  auto all_bases_trimmed = reduce_one(bases_trimmed, op_fast_add, 0).wait();
+  auto all_reads_removed = reduce_one(reads_removed, op_fast_add, 0).wait();
+  SLOG_VERBOSE("Adapter trimming:\n");
+  SLOG_VERBOSE("  bases trimmed ", upcxx_utils::perc_str(all_bases_trimmed, all_bases_read), "\n");
+  SLOG_VERBOSE("  reads removed ", upcxx_utils::perc_str(all_reads_removed, all_num_pairs * 2), "\n");
+  SLOG_VERBOSE("  SSW time ", std::fixed, std::setprecision(3), ssw_elapsed_time, " s\n");
+  SLOG_VERBOSE("  total time ", std::fixed, std::setprecision(3), trim_elapsed_time, " s\n");
+}
+
+bool Adapters::trim(const string &id, string &seq, string &quals) {
   trim_timer.start();
   vector<Kmer<MAX_ADAPTER_K>> kmers;
   Kmer<MAX_ADAPTER_K>::get_kmers(adapter_k, seq, kmers, false);
@@ -228,47 +251,23 @@ bool Adapters::trim_seq(const string &id, string &seq, bool is_read_1) {
     if (!best_trim_pos) reads_removed++;
     bases_trimmed += seq.length() - best_trim_pos;
     seq.resize(best_trim_pos);
+    quals.resize(best_trim_pos);
     return true;
   }
   return false;
 }
 
-Adapters::Adapters(int adapter_k, const string &fname, bool use_blastn_scores)
-    : adapter_k(adapter_k)
-    , use_blastn_scores(use_blastn_scores) {
-  ssw_aligner.Clear();
-  if (!ssw_aligner.ReBuild(to_string(use_blastn_scores ? BLASTN_ALN_SCORES : ALTERNATE_ALN_SCORES)))
-    SDIE("Failed to set aln scores");
-  ssw_filter.report_cigar = false;
-  if (!fname.empty()) load_adapter_seqs(fname);
-}
-
-void Adapters::done(size_t all_bases_read, size_t all_num_pairs) {
-  if (adapter_seqs.empty()) return;
-  auto ssw_elapsed_time = trim_timer_ssw.get_elapsed();
-  auto trim_elapsed_time = trim_timer.get_elapsed();
-  auto all_bases_trimmed = reduce_one(bases_trimmed, op_fast_add, 0).wait();
-  auto all_reads_removed = reduce_one(reads_removed, op_fast_add, 0).wait();
-  SLOG_VERBOSE("Adapter trimming:\n");
-  SLOG_VERBOSE("  bases trimmed ", upcxx_utils::perc_str(all_bases_trimmed, all_bases_read), "\n");
-  SLOG_VERBOSE("  reads removed ", upcxx_utils::perc_str(all_reads_removed, all_num_pairs * 2), "\n");
-  SLOG_VERBOSE("  SSW time ", std::fixed, std::setprecision(3), ssw_elapsed_time, " s\n");
-  SLOG_VERBOSE("  total time ", std::fixed, std::setprecision(3), trim_elapsed_time, " s\n");
-}
-
-bool Adapters::trim(const string &id1, string &seq1, string &quals1, const string &id2, string &seq2, string &quals2) {
-  if (!adapter_seqs.empty()) {
-    bool trim1 = trim_seq(id1, seq1, true);
-    bool trim2 = trim_seq(id2, seq2, false);
-    // trim to same length - like the tpe option in bbduk
-    if ((trim1 || trim2) && seq1.length() > 1 && seq2.length() > 1) {
-      auto min_seq_len = min(seq1.length(), seq2.length());
-      seq1.resize(min_seq_len);
-      seq2.resize(min_seq_len);
-      quals1.resize(min_seq_len);
-      quals2.resize(min_seq_len);
-    }
-    return trim1 || trim2;
+bool Adapters::trim_pair(const string &id1, string &seq1, string &quals1, const string &id2, string &seq2, string &quals2) {
+  if (adapter_seqs.empty()) return false;
+  bool trim1 = trim(id1, seq1, quals1);
+  bool trim2 = trim(id2, seq2, quals2);
+  // trim to same length - like the tpe option in bbduk
+  if ((trim1 || trim2) && seq1.length() > 1 && seq2.length() > 1) {
+    auto min_seq_len = min(seq1.length(), seq2.length());
+    seq1.resize(min_seq_len);
+    seq2.resize(min_seq_len);
+    quals1.resize(min_seq_len);
+    quals2.resize(min_seq_len);
   }
-  return false;
+  return trim1 || trim2;
 }

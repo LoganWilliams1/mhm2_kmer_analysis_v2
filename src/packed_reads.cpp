@@ -50,6 +50,7 @@
 #include <upcxx/upcxx.hpp>
 
 #include "fastq.hpp"
+#include "adapters.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/progress_bar.hpp"
@@ -357,6 +358,9 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
     reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
   }
   fqr.reset();
+
+  Adapters adapters(31, adapter_fname, false);
+
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;
   int lines = 0;
@@ -365,11 +369,16 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
     if (!bytes_read) break;
     tot_bytes_read += bytes_read;
     progbar.update(tot_bytes_read);
+    adapters.trim(id, seq, quals);
     add_read(id, seq, quals);
+    lines++;
   }
   DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
   FastqReaders::close(fname);
+  auto all_num_records = reduce_one(packed_reads.size(), upcxx::op_fast_add, 0).wait();
+  auto all_num_bases = reduce_one(bases, upcxx::op_fast_add, 0).wait();
+  adapters.done(all_num_bases, all_num_records);
   auto fut = progbar.set_done();
   int64_t underestimate = estimated_records - packed_reads.size();
   if (underestimate < 0 && reserve_records < packed_reads.size())
@@ -377,12 +386,10 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
   auto &pr = Timings::get_promise_reduce();
   auto all_under_estimated_fut = pr.reduce_one(underestimate < 0 ? 1 : 0, upcxx::op_fast_add, 0);
   auto all_estimated_records_fut = pr.reduce_one(estimated_records, upcxx::op_fast_add, 0);
-  auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
-  auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
   auto fut_report =
-      when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
-          .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records,
-                                                    int64_t all_num_records, int64_t all_num_bases) {
+      when_all(fut, all_under_estimated_fut, all_estimated_records_fut)
+          .then([max_read_len = this->max_read_len, all_num_records, all_num_bases](int64_t all_under_estimated,
+                                                                                    int64_t all_estimated_records) {
             SLOG_VERBOSE("Loaded ", all_num_records, " reads (estimated ", all_estimated_records, " with ", all_under_estimated,
                          " ranks underestimated) max_read=", max_read_len, " tot_bases=", all_num_bases, "\n");
           });
