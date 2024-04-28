@@ -443,6 +443,12 @@ void adept_sw::GPUDriver::run_kernel_forwards(std::vector<std::string>& reads, s
   }
   unsigned totalLengthB = driver_state->half_length_B + driver_state->offsetB_h[sequencesB.size() - 1];
 
+  if (driver_state->max_size_strB < totalLengthB) {
+    std::cerr << "<" << __FILE__ << ":" << __LINE__ << "> ERROR: size_strB " << driver_state->max_size_strB << " < "
+              << "totalLengthB " << totalLengthB << "\n";
+    std::abort();
+  }
+
   unsigned offsetSumA = 0;
   unsigned offsetSumB = 0;
 

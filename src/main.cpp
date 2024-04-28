@@ -144,7 +144,7 @@ void calc_input_files_size(const vector<string> &reads_fnames) {
   }
 }
 
-void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contigs &ctgs, int rlen_limit,
+void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contigs &ctgs, int &rlen_limit,
                     Histogrammer &histogrammer) {
   BarrierTimer("Start Contigging");
 
