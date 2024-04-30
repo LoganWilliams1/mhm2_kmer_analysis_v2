@@ -251,10 +251,18 @@ int main(int argc, char **argv) {
     if (options->default_kmer_lens) {
       if (avg_read_len < 110) {
         SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
-        options->kmer_lens.pop_back();
+        if (!options->kmer_lens.empty()) options->kmer_lens.pop_back();
         SOUT("  kmer-lens = ", Options::vec_to_str(options->kmer_lens), "\n");
         if (options->default_scaff_kmer_lens) {
-          options->scaff_kmer_lens.front() = options->kmer_lens.back();
+          if (options->kmer_lens.empty()) {
+            options->scaff_kmer_lens.front() = options->prev_kmer_len;
+            options->max_kmer_len = options->prev_kmer_len;
+            options->prev_kmer_len = 0;
+            SOUT("  prev-kmer-len = ", options->prev_kmer_len, "\n");
+            SOUT("  max-kmer-len = ", options->max_kmer_len, "\n");
+          } else {
+            options->scaff_kmer_lens.front() = options->kmer_lens.back();
+          }
           SOUT("  scaff-kmer_lens = ", Options::vec_to_str(options->scaff_kmer_lens), "\n");
         }
       }
@@ -288,7 +296,9 @@ int main(int argc, char **argv) {
     SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
          " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
 
-    { BarrierTimer("Start Contigging"); }
+    {
+      BarrierTimer("Start Contigging");
+    }
 
     // contigging loops
     if (options->kmer_lens.size()) {
@@ -326,7 +336,9 @@ int main(int argc, char **argv) {
       }
     }
 
-    { BarrierTimer("Start Scaffolding)"); }
+    {
+      BarrierTimer("Start Scaffolding)");
+    }
 
     // scaffolding loops
     if (options->dump_gfa) {
