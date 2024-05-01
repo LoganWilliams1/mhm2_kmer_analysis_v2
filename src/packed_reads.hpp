@@ -139,7 +139,7 @@ class PackedReads {
   // this is only used when we need to know the actual name of the original reads
   deque<string> read_id_idx_to_str;
   unsigned max_read_len = 0;
-  uint64_t index = 0;
+  uint64_t _index = 0;
   uint64_t bases = 0;
   uint64_t name_bytes = 0;
   int qual_offset;
@@ -153,10 +153,11 @@ class PackedReads {
 
   bool get_next_read(string &id, string &seq, string &quals);
   uint64_t get_read_index() const;
-  void get_read(uint64_t index, string &id, string &seq, string &quals) const;
-  void get_read_seq(uint64_t index, string &seq) const;
+  void get_read(uint64_t i, string &id, string &seq, string &quals) const;
+  string get_full_read_id(uint64_t i);
+  void get_read_seq(uint64_t i, string &seq) const;
 
-  PackedRead &operator[](int index);
+  PackedRead &operator[](int i);
 
   void reset();
 

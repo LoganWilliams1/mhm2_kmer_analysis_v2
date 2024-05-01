@@ -48,6 +48,7 @@
 #include "klign.hpp"
 #include "packed_reads.hpp"
 #include "stage_timers.hpp"
+#include "shuffle_reads.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 
@@ -96,9 +97,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       vector<string> one_file_list;
       one_file_list.push_back(reads_fname);
       FastqReaders::open_all_file_blocking(one_file_list);
-      PackedReadsList packed_reads_list;
-      packed_reads_list.push_back(new PackedReads(options.qual_offset, reads_fname, true));
-      auto packed_reads = packed_reads_list[0];
+      auto packed_reads = new PackedReads(options.qual_offset, reads_fname, true);
       auto short_name = get_basename(packed_reads->get_fname());
 
       stage_timers.cache_reads->start();
@@ -110,13 +109,30 @@ void post_assembly(Contigs &ctgs, Options &options) {
       max_read_len = reduce_all(max_read_len, op_fast_max).wait();
       LOG_MEM("Read " + short_name);
 
-      stage_timers.alignments->start();
+      if (options.shuffle_reads) {
+        PackedReadsList packed_reads_list;
+        packed_reads_list.push_back(packed_reads);
 
+        stage_timers.shuffle_reads->start();
+        shuffle_reads(options.qual_offset, packed_reads_list, ctgs);
+        stage_timers.shuffle_reads->stop();
+        LOG_MEM("Shuffled reads");
+        // need to reset the packed_reads pointer because the values have changed in the shuffle
+        packed_reads = packed_reads_list[0];
+        int64_t num_reads = packed_reads->get_local_num_reads();
+        auto avg_num_reads = reduce_one(num_reads, op_fast_add, 0).wait() / rank_n();
+        auto max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
+        SLOG_VERBOSE("After shuffle: avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (load balance ",
+                     (double)avg_num_reads / max_num_reads, ")\n");
+        rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
+      }
+
+      stage_timers.alignments->start();
       bool report_cigar = true;
       int kmer_len = POST_ASM_ALN_K;
-
       Alns alns;
       vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
+      barrier();
       fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
       compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs,
                           options.klign_rget_buf_size, timers);

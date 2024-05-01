@@ -48,6 +48,7 @@
 #include "klign.hpp"
 #include "kmer_dht.hpp"
 #include "stage_timers.hpp"
+#include "shuffle_reads.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 
@@ -65,8 +66,6 @@ template <int MAX_K>
 void traverse_debruijn_graph(unsigned kmer_len, dist_object<KmerDHT<MAX_K>> &kmer_dht, Contigs &my_uutigs);
 void localassm(int max_kmer_len, int kmer_len, PackedReadsList &packed_reads_list, int insert_avg, int insert_stddev,
                int qual_offset, Contigs &ctgs, const Alns &alns);
-
-void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs &ctgs);
 
 template <int MAX_K>
 void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Contigs &ctgs,

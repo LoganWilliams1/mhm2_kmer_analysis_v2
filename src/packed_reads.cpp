@@ -245,7 +245,7 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
 PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads, const string &fname)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , packed_reads{}
-    , index(0)
+    , _index(0)
     , qual_offset(qual_offset)
     , fname(fname)
     , str_ids(false) {
@@ -266,32 +266,38 @@ PackedReads::~PackedReads() { clear(); }
 
 bool PackedReads::get_next_read(string &id, string &seq, string &quals) {
   assert(qual_offset == 33 || qual_offset == 64);
-  if (index == packed_reads.size()) return false;
-  packed_reads[index].unpack(id, seq, quals, qual_offset);
-  if (str_ids) id = read_id_idx_to_str[index];
-  index++;
+  if (_index == packed_reads.size()) return false;
+  packed_reads[_index].unpack(id, seq, quals, qual_offset);
+  if (str_ids) id = read_id_idx_to_str[_index];
+  _index++;
   return true;
 }
 
 unsigned char *PackedReads::allocate_read(uint16_t read_len) { return (unsigned char *)allocator.Allocate(read_len); }
 
-uint64_t PackedReads::get_read_index() const { return index; }
+uint64_t PackedReads::get_read_index() const { return _index; }
 
-void PackedReads::get_read(uint64_t index, string &id, string &seq, string &quals) const {
-  if (index >= packed_reads.size()) DIE("Invalid get_read(", index, ") - size=", packed_reads.size());
-  packed_reads[index].unpack(id, seq, quals, qual_offset);
-  if (str_ids) id = read_id_idx_to_str[index];
+void PackedReads::get_read(uint64_t i, string &id, string &seq, string &quals) const {
+  if (i >= packed_reads.size()) DIE("Invalid get_read(", i, ") - size=", packed_reads.size());
+  packed_reads[i].unpack(id, seq, quals, qual_offset);
+  if (str_ids) id = read_id_idx_to_str[i];
 }
 
-void PackedReads::get_read_seq(uint64_t index, string &seq) const {
-  if (index >= packed_reads.size()) DIE("Invalid get_read(", index, ") - size=", packed_reads.size());
-  packed_reads[index].unpack_seq(seq);
+string PackedReads::get_full_read_id(uint64_t i) {
+  if (i >= packed_reads.size()) DIE("Invalid get_read(", i, ") - size=", packed_reads.size());
+  if (str_ids) return read_id_idx_to_str[i];
+  return string("");
 }
 
-void PackedReads::reset() { index = 0; }
+void PackedReads::get_read_seq(uint64_t i, string &seq) const {
+  if (i >= packed_reads.size()) DIE("Invalid get_read(", i, ") - size=", packed_reads.size());
+  packed_reads[i].unpack_seq(seq);
+}
+
+void PackedReads::reset() { _index = 0; }
 
 void PackedReads::clear() {
-  index = 0;
+  _index = 0;
   fname.clear();
   PackedReadsContainer().swap(packed_reads);
   allocator.Reset();
@@ -344,9 +350,9 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
   int64_t num_records = 0;
   FastqReader &fqr = FastqReaders::get(fname);
   fqr.advise(true);
-  string id, seq, quals;
+  string id1, id2, seq1, seq2, quals1, quals2;
   for (num_records = 0; num_records < 20000; num_records++) {
-    size_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
+    size_t bytes_read = fqr.get_next_fq_record(id1, seq1, quals1);
     if (!bytes_read) break;
     tot_bytes_read += bytes_read;
   }
@@ -357,21 +363,26 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
     estimated_records = fqr.my_file_size() / bytes_per_record;
     reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
   }
+  // FIXME: we assume paired reads
+  if (!fqr.is_paired()) DIE("Unpaired reads are not supported for loading of reads");
   fqr.reset();
-
+  auto max_num_reads = reduce_all(estimated_records, op_fast_max).wait();
+  auto read_id_block = (max_num_reads + 10000) * 2 * 5;
+  uint64_t read_id = rank_me() * read_id_block;
+  uint64_t start_read_id = read_id;
   Adapters adapters(POST_ASM_ALN_K, adapter_fname, false);
-
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;
-  int lines = 0;
   while (true) {
-    size_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
-    if (!bytes_read) break;
-    tot_bytes_read += bytes_read;
+    size_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
+    size_t bytes_read2 = fqr.get_next_fq_record(id2, seq2, quals2);
+    if (!bytes_read1 || !bytes_read2) break;
+    tot_bytes_read += bytes_read1 + bytes_read2;
     progbar.update(tot_bytes_read);
-    adapters.trim(id, seq, quals);
-    add_read(id, seq, quals);
-    lines++;
+    adapters.trim_pair(id1, seq1, quals1, id2, seq2, quals2);
+    add_read("r" + to_string(read_id) + "/1", seq1, quals1);
+    add_read("r" + to_string(read_id) + "/2", seq2, quals2);
+    read_id += 2;
   }
   DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
@@ -454,9 +465,9 @@ uint64_t PackedReads::get_bases() const {
   return fut.wait();
 }
 
-PackedRead &PackedReads::operator[](int index) {
-  if (index >= packed_reads.size()) DIE("Array index out of bound ", index, " >= ", packed_reads.size());
-  return packed_reads[index];
+PackedRead &PackedReads::operator[](int i) {
+  if (i >= packed_reads.size()) DIE("Array index out of bound ", i, " >= ", packed_reads.size());
+  return packed_reads[i];
 }
 
 uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &packed_reads_list) {

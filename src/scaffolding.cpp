@@ -102,7 +102,7 @@ void scaffolding(int scaff_i, int max_kmer_len, int rlen_limit, PackedReadsList 
     stage_timers.alignments->stop();
     LOG_MEM("Found alignments");
 #ifdef DEBUG
-    alns.dump_single_file("scaff-alns-" + to_string(scaff_kmer_len) + ".blast");
+    alns.dump_single_file("scaff-alns-" + to_string(scaff_kmer_len) + ".blast", Alns::Format::BLAST);
 #endif
     begin_gasnet_stats("alignment_depths sk = " + to_string(scaff_kmer_len));
     AlnDepths aln_depths(ctgs, 0, 1);

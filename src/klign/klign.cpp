@@ -373,7 +373,7 @@ class KmerCtgDHT {
       total_depth += depth;
       // we should never actually exceed this threshold because we limit the number of insertions
       if (KLIGN_MAX_CTGS_PER_KMER > 0 && ctg_locs.size() >= KLIGN_MAX_CTGS_PER_KMER) {
-        DBG("Removing kmer with ", sz, " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
+        DBG("Removing kmer with ", ctg_locs.size(), " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
         to_be_purged.push_back(kmer);
         num_purged++;
         num_ctg_locs_purged += ctg_locs.size();
@@ -977,8 +977,14 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
   BarrierTimer timer(__FILEFUNC__);
   Kmer<MAX_K>::set_k(kmer_len);
   uint64_t num_ctg_kmers = 0;
-  for (auto &ctg : ctgs)
-    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+  size_t num_ctgs = 0;
+  for (auto &ctg : ctgs) {
+    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) {
+      num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+      num_ctgs++;
+    }
+  }
+  SLOG_VERBOSE("Rank 0 built kmer ctg dht with ", num_ctgs, " ctgs\n");
   auto sh_kmer_ctg_dht = make_shared<KmerCtgDHT<MAX_K>>(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   kmer_ctg_dht.build(ctgs, min_ctg_len);
