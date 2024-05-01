@@ -140,7 +140,6 @@ void contigging(int kmer_len, int prev_kmer_len, int &rlen_limit, PackedReadsLis
         max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
         SLOG_VERBOSE("After shuffle: avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (load balance ",
                      (double)avg_num_reads / max_num_reads, ")\n");
-
         rlen_limit = 0;
         for (auto packed_reads : packed_reads_list) {
           rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());

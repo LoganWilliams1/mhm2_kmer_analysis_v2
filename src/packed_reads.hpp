@@ -145,6 +145,7 @@ class PackedReads {
   int qual_offset;
   string fname;
   bool str_ids;
+  bool reads_are_paired;
 
  public:
   PackedReads(int qual_offset, const string &fname, bool str_ids = false);
@@ -184,6 +185,8 @@ class PackedReads {
   static void load_reads_list(PackedReadsList &, const string &adapter_fname);
 
   void report_size();
+
+  bool is_paired();
 
   int64_t get_local_bases() const;
 

@@ -240,7 +240,8 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , qual_offset(qual_offset)
     , fname(fname)
-    , str_ids(str_ids) {}
+    , str_ids(str_ids)
+    , reads_are_paired(true) {}
 
 PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads, const string &fname)
     : allocator(ALLOCATION_BLOCK_SIZE)
@@ -248,7 +249,8 @@ PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads
     , _index(0)
     , qual_offset(qual_offset)
     , fname(fname)
-    , str_ids(false) {
+    , str_ids(false)
+    , reads_are_paired(true) {
   max_read_len = 0;
   // assert(!packed_reads.size());
   LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage fname=", fname,
@@ -363,9 +365,8 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
     estimated_records = fqr.my_file_size() / bytes_per_record;
     reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
   }
-  // FIXME: we assume paired reads
-  if (!fqr.is_paired()) DIE("Unpaired reads are not supported for loading of reads");
   fqr.reset();
+  if (!fqr.is_paired()) reads_are_paired = false;
   auto max_num_reads = reduce_all(estimated_records, op_fast_max).wait();
   auto read_id_block = (max_num_reads + 10000) * 2 * 5;
   uint64_t read_id = rank_me() * read_id_block;
@@ -374,15 +375,22 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;
   while (true) {
-    size_t bytes_read1 = fqr.get_next_fq_record(id1, seq1, quals1);
-    size_t bytes_read2 = fqr.get_next_fq_record(id2, seq2, quals2);
-    if (!bytes_read1 || !bytes_read2) break;
-    tot_bytes_read += bytes_read1 + bytes_read2;
+    size_t bytes_read = fqr.get_next_fq_record(id1, seq1, quals1);
+    if (!bytes_read) break;
+    tot_bytes_read += bytes_read;
+    if (fqr.is_paired()) {
+      bytes_read = fqr.get_next_fq_record(id2, seq2, quals2);
+      if (!bytes_read) break;
+      tot_bytes_read += bytes_read;
+      adapters.trim_pair(id1, seq1, quals1, id2, seq2, quals2);
+      add_read("r" + to_string(read_id) + "/1", seq1, quals1);
+      add_read("r" + to_string(read_id) + "/2", seq2, quals2);
+    } else {
+      adapters.trim(id1, seq1, quals1);
+      add_read("r" + to_string(read_id), seq1, quals1);
+    }
+    read_id++;
     progbar.update(tot_bytes_read);
-    adapters.trim_pair(id1, seq1, quals1, id2, seq2, quals2);
-    add_read("r" + to_string(read_id) + "/1", seq1, quals1);
-    add_read("r" + to_string(read_id) + "/2", seq2, quals2);
-    read_id += 2;
   }
   DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
@@ -454,6 +462,8 @@ void PackedReads::report_size() {
           });
   Timings::set_pending(fut);  // include in reports
 }
+
+bool PackedReads::is_paired() { return reads_are_paired; }
 
 int64_t PackedReads::get_local_bases() const { return bases; }
 upcxx::future<uint64_t> PackedReads::fut_get_bases() const {

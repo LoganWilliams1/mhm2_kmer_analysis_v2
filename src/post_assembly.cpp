@@ -109,7 +109,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
       max_read_len = reduce_all(max_read_len, op_fast_max).wait();
       LOG_MEM("Read " + short_name);
 
-      if (options.shuffle_reads) {
+      if (options.shuffle_reads && packed_reads->is_paired()) {
+        // only shuffle paired reads
         PackedReadsList packed_reads_list;
         packed_reads_list.push_back(packed_reads);
 
@@ -126,6 +127,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
                      (double)avg_num_reads / max_num_reads, ")\n");
         rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
       }
+
+      // now set reads to use original id, not numbered id
 
       stage_timers.alignments->start();
       bool report_cigar = true;
