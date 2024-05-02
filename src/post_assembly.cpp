@@ -178,6 +178,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       read_group_id++;
     }
     stage_timers.kernel_alns->inc_elapsed(timers.aln_kernel.get_elapsed());
+    stage_timers.aln_comms->inc_elapsed(timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed());
     Timings::wait_pending();
   }
 
