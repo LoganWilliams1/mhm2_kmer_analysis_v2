@@ -87,6 +87,7 @@ done
 
 cmds="set -x ; env | grep SLURM ;"
 waits="/bin/true"
+FAILED=
 for arch in gpu cpu
 do
   for r in ${arch}-rel
@@ -100,8 +101,13 @@ done
 
 echo "Submitting $cmds $waits"
 OUT=perlmutter.accuracy.${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}.${dt}.out
-sbatch --output=$OUT --wait --qos=debug --time=30:00 --account=m2865 -C cpu -c 8 --wrap="$cmds $waits"
-cat $OUT
+if ! sbatch --output=$OUT --wait --qos=debug --time=30:00 --account=m2865 -C cpu -c 8 --wrap="$cmds $waits"
+then
+    cat $OUT || /bin/true
+    FAILED="${FAILED} Perlmutter accuracy failed."
+else
+    cat $OUT
+fi
 
 if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
 

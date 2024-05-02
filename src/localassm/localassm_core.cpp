@@ -438,12 +438,12 @@ void process_reads(unsigned kmer_len, PackedReadsList &packed_reads_list, ReadsT
   }
   all_done = when_all(all_done, progbar.set_done());
   auto all_outstanding = flush_outstanding_futures_async();
-  while (!all_outstanding.ready()) {
+  while (!all_outstanding.is_ready()) {
     ctgs_dht.add_reads(ctgs_to_add);
     progress();
   }
   ctgs_dht.add_reads(ctgs_to_add);
-  assert(flush_outstanding_futures_async().ready());
+  assert(flush_outstanding_futures_async().is_ready());
   assert(ctgs_to_add.empty());
   ctgs_dht.flush_read_updates();
 

@@ -14,7 +14,7 @@ then
 	echo $USAGE
 	exit 1
 fi
-UPCXX_VER=${UPCXX_VER:=2023.3.0}
+UPCXX_VER=${UPCXX_VER:=2023.9.0}
 echo "Using upcxx version $UPCXX_VER"
 
 export CI_INSTALL=${CI_INSTALL:=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}}
