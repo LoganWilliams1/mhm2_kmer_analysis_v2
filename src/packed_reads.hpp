@@ -176,7 +176,7 @@ class PackedReads {
 
   static int64_t get_total_local_num_reads(const PackedReadsList &packed_reads_list);
 
-  void add_read(const string &read_id, const string &seq, const string &quals);
+  void add_read(const string &read_id, const string &seq, const string &quals, const string &orig_id = "");
 
   upcxx::future<> load_reads_nb(const string &adapter_fname);
 

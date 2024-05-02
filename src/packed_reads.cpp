@@ -336,11 +336,12 @@ int64_t PackedReads::get_total_local_num_reads(const PackedReadsList &packed_rea
 
 int PackedReads::get_qual_offset() { return qual_offset; }
 
-void PackedReads::add_read(const string &read_id, const string &seq, const string &quals) {
+void PackedReads::add_read(const string &read_id, const string &seq, const string &quals, const string &orig_id) {
   packed_reads.emplace_back(read_id, seq, quals, qual_offset, this);
   if (str_ids) {
-    read_id_idx_to_str.push_back(read_id);
-    name_bytes += sizeof(string) + read_id.size();
+    assert(orig_id.length() > 0);
+    read_id_idx_to_str.push_back(orig_id);
+    name_bytes += sizeof(string) + orig_id.size();
   }
   max_read_len = max(max_read_len, (unsigned)seq.length());
   bases += seq.length();
@@ -383,11 +384,11 @@ upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
       if (!bytes_read) break;
       tot_bytes_read += bytes_read;
       adapters.trim_pair(id1, seq1, quals1, id2, seq2, quals2);
-      add_read("r" + to_string(read_id) + "/1", seq1, quals1);
-      add_read("r" + to_string(read_id) + "/2", seq2, quals2);
+      add_read("r" + to_string(read_id) + "/1", seq1, quals1, id1);
+      add_read("r" + to_string(read_id) + "/2", seq2, quals2, id2);
     } else {
       adapters.trim(id1, seq1, quals1);
-      add_read("r" + to_string(read_id), seq1, quals1);
+      add_read("r" + to_string(read_id), seq1, quals1, id1);
     }
     read_id++;
     progbar.update(tot_bytes_read);

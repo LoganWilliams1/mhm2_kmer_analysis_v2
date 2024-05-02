@@ -63,11 +63,14 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
   LOG_MEM("Starting Post Assembly");
 
+  auto start_t = clock_now();
   // set up output files
   SLOG_VERBOSE("Writing SAM headers\n");
   dist_ofstream sam_of("final_assembly.sam");
   upcxx::future<> fut_sam = make_future();
+  stage_timers.dump_alns->start();
   fut_sam = Alns::write_sam_header(sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
+  stage_timers.dump_alns->stop();
   auto num_read_groups = options.reads_fnames.size();
   SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
   AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
@@ -82,8 +85,10 @@ void post_assembly(Contigs &ctgs, Options &options) {
     auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
     int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
     const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
+    stage_timers.alignments->start();
     auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
                                                      options.min_ctg_print_len, true);
+    stage_timers.alignments->stop();
     auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
     LOG_MEM("After Post Assembly Built Kmer Seeds");
 
@@ -109,6 +114,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
       max_read_len = reduce_all(max_read_len, op_fast_max).wait();
       LOG_MEM("Read " + short_name);
 
+      /*
+      // FIXME: read shuffling here can make the balance worse and actually result in alignment taking longer
       if (options.shuffle_reads && packed_reads->is_paired()) {
         // only shuffle paired reads
         PackedReadsList packed_reads_list;
@@ -127,8 +134,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
                      (double)avg_num_reads / max_num_reads, ")\n");
         rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
       }
-
-      // now set reads to use original id, not numbered id
+      */
 
       stage_timers.alignments->start();
       bool report_cigar = true;
@@ -156,7 +162,9 @@ void post_assembly(Contigs &ctgs, Options &options) {
 #endif
       LOG_MEM("After Post Assembly Alignments Saved");
       // Dump 1 file at a time with proper read groups
+      stage_timers.dump_alns->start();
       auto fut_flush = alns.write_sam_alignments(sam_of, options.min_ctg_print_len);
+      stage_timers.dump_alns->stop();
       fut_sam = when_all(fut_sam, fut_flush);
 
       LOG_MEM("After Post Assembly SAM Saved");
@@ -175,9 +183,24 @@ void post_assembly(Contigs &ctgs, Options &options) {
 
   fut_sam.wait();
   sam_of.close();
+
+  SLOG(KBLUE "_________________________", KNORM, "\n");
+  SLOG("Stage timing:\n");
+  SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
+  SLOG("    ", stage_timers.alignments->get_final(), "\n");
+  SLOG("      -> ", stage_timers.kernel_alns->get_final(), "\n");
+  SLOG("      -> ", stage_timers.aln_comms->get_final(), "\n");
+  SLOG("    ", stage_timers.compute_ctg_depths->get_final(), "\n");
+  SLOG("    ", stage_timers.dump_alns->get_final(), "\n");
+  // if (options.shuffle_reads) SLOG("    ", stage_timers.shuffle_reads->get_final(), "\n");
+  SLOG("    FASTQ total read time: ", FastqReader::get_io_time(), "\n");
+  SLOG(KBLUE "_________________________", KNORM, "\n");
+  std::chrono::duration<double> t_elapsed = clock_now() - start_t;
+  SLOG("Finished in ", std::setprecision(2), std::fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION,
+       "\n");
+
   SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options.output_dir,
        "/final_assembly.sam", KNORM, "\n");
-
   string fname("final_assembly_depths.txt");
   SLOG_VERBOSE("Writing ", fname, "\n");
   aln_depths.done_computing();
