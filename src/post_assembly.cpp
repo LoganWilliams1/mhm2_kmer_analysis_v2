@@ -99,6 +99,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
     LOG_MEM("Read " + short_name);
     barrier();
     ctgs.clear_slices();
+    dist_ofstream sam_ofs(short_name + ".sam");
     for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
       SLOG(KBLUE, "\nContig subset ", subset_i, KNORM, ":\n");
       ctgs.set_next_slice(options.post_assm_subsets);
@@ -133,9 +134,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       LOG_MEM("After Post Assembly Alignments Saved");
       // Dump 1 file at a time with proper read groups
       stage_timers.dump_alns->start();
-      dist_ofstream sam_ofs(short_name + ".sam");
       alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
-      sam_ofs.close();
       stage_timers.dump_alns->stop();
 
       LOG_MEM("After Post Assembly SAM Saved");
@@ -146,6 +145,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       stage_timers.compute_ctg_depths->stop();
       LOG_MEM("After Post Assembly Depths Saved");
     }
+    sam_ofs.close();
     tot_num_reads += packed_reads.get_local_num_reads();
     tot_num_bases += packed_reads.get_local_bases();
     LOG_MEM("Purged Post Assembly Reads" + short_name);
