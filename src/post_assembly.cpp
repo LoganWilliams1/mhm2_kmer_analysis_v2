@@ -66,10 +66,10 @@ void post_assembly(Contigs &ctgs, Options &options) {
   auto start_t = clock_now();
   // set up output files
   SLOG_VERBOSE("Writing SAM headers\n");
-  dist_ofstream sam_of("final_assembly.sam");
-  upcxx::future<> fut_sam = make_future();
+  dist_ofstream sam_header_ofs("final_assembly.header.sam");
   stage_timers.dump_alns->start();
-  fut_sam = Alns::write_sam_header(sam_of, options.reads_fnames, ctgs, options.min_ctg_print_len);
+  Alns::write_sam_header(sam_header_ofs, options.reads_fnames, ctgs, options.min_ctg_print_len).wait();
+  sam_header_ofs.close();
   stage_timers.dump_alns->stop();
   auto num_read_groups = options.reads_fnames.size();
   SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
@@ -163,9 +163,10 @@ void post_assembly(Contigs &ctgs, Options &options) {
       LOG_MEM("After Post Assembly Alignments Saved");
       // Dump 1 file at a time with proper read groups
       stage_timers.dump_alns->start();
-      auto fut_flush = alns.write_sam_alignments(sam_of, options.min_ctg_print_len);
+      dist_ofstream sam_ofs(short_name + ".sam");
+      alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
+      sam_ofs.close();
       stage_timers.dump_alns->stop();
-      fut_sam = when_all(fut_sam, fut_flush);
 
       LOG_MEM("After Post Assembly SAM Saved");
 
@@ -181,10 +182,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
     stage_timers.aln_comms->inc_elapsed(timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed());
     Timings::wait_pending();
   }
-
-  fut_sam.wait();
-  sam_of.close();
-
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Stage timing:\n");
   SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
@@ -200,13 +197,14 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG("Finished in ", std::setprecision(2), std::fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION,
        "\n");
 
-  SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options.output_dir,
-       "/final_assembly.sam", KNORM, "\n");
+  SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly. Files can be found in directory \"", options.output_dir,
+       "\":\n  \"final_assembly.header.sam\" contains header information",
+       "\n  \"*.sam\" files contain alignments per input/read file", "\n  \"final_assembly_depths.text\" contains scaffold depths",
+       KNORM, "\n");
   string fname("final_assembly_depths.txt");
   SLOG_VERBOSE("Writing ", fname, "\n");
   aln_depths.done_computing();
   aln_depths.dump_depths(fname, options.reads_fnames);
-  SLOG(KBLUE, "Contig depths (abundances) can be found at ", options.output_dir, "/", fname, KNORM, "\n");
 
   SLOG(KBLUE, "_________________________", KNORM, "\n");
 }
