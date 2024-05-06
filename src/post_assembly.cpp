@@ -75,81 +75,51 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
   AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
   LOG_MEM("After Post Assembly Ctgs Depths");
-
+  auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
+  const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
+  const bool REPORT_CIGAR = true;
+  const bool USE_BLASTN_SCORES = true;
+  size_t tot_num_reads = 0;
+  size_t tot_num_bases = 0;
+  size_t tot_num_ctgs = ctgs.size();
+  size_t tot_num_ctg_bases = ctgs.get_length();
   SLOG(KBLUE, "Processing contigs in ", options.post_assm_subsets, " subsets", KNORM, "\n");
-  for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
+  for (int read_group_id = 0; read_group_id < options.reads_fnames.size(); read_group_id++) {
+    string &reads_fname = options.reads_fnames[read_group_id];
     SLOG(KBLUE, "_________________________", KNORM, "\n");
-    SLOG(KBLUE, "Contig subset ", subset_i, KNORM, "\n");
-    ctgs.set_next_slice(options.post_assm_subsets);
-
-    auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
-    int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
-    const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
-    stage_timers.alignments->start();
-    auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
-                                                     options.min_ctg_print_len, true);
-    stage_timers.alignments->stop();
-    auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
-    LOG_MEM("After Post Assembly Built Kmer Seeds");
-
-    KlignTimers timers;
-    unsigned rlen_limit = 0;
-    int read_group_id = 0;
-    for (auto &reads_fname : options.reads_fnames) {
-      SLOG("\n");
-      SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
-      SLOG("\n");
-      vector<string> one_file_list;
-      one_file_list.push_back(reads_fname);
-      FastqReaders::open_all_file_blocking(one_file_list);
-      auto packed_reads = new PackedReads(options.qual_offset, reads_fname, true);
-      auto short_name = get_basename(packed_reads->get_fname());
-
-      stage_timers.cache_reads->start();
-      packed_reads->load_reads(options.adapter_fname);
-      auto max_read_len = packed_reads->get_max_read_len();
-      rlen_limit = max(rlen_limit, max_read_len);
-      DBG("max_read_len=", max_read_len, " rlen_limit=", rlen_limit, "\n");
-      stage_timers.cache_reads->stop();
-      max_read_len = reduce_all(max_read_len, op_fast_max).wait();
-      LOG_MEM("Read " + short_name);
-
-      /*
-      // FIXME: read shuffling here can make the balance worse and actually result in alignment taking longer
-      if (options.shuffle_reads && packed_reads->is_paired()) {
-        // only shuffle paired reads
-        PackedReadsList packed_reads_list;
-        packed_reads_list.push_back(packed_reads);
-
-        stage_timers.shuffle_reads->start();
-        shuffle_reads(options.qual_offset, packed_reads_list, ctgs);
-        stage_timers.shuffle_reads->stop();
-        LOG_MEM("Shuffled reads");
-        // need to reset the packed_reads pointer because the values have changed in the shuffle
-        packed_reads = packed_reads_list[0];
-        int64_t num_reads = packed_reads->get_local_num_reads();
-        auto avg_num_reads = reduce_one(num_reads, op_fast_add, 0).wait() / rank_n();
-        auto max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
-        SLOG_VERBOSE("After shuffle: avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (load balance ",
-                     (double)avg_num_reads / max_num_reads, ")\n");
-        rlen_limit = max(rlen_limit, packed_reads->get_max_read_len());
-      }
-      */
-
-      stage_timers.alignments->start();
-      bool report_cigar = true;
-      int kmer_len = POST_ASM_ALN_K;
+    SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
+    vector<string> one_file_list = {reads_fname};
+    FastqReaders::open_all_file_blocking(one_file_list);
+    PackedReads packed_reads(options.qual_offset, reads_fname, true);
+    auto short_name = get_basename(packed_reads.get_fname());
+    stage_timers.cache_reads->start();
+    packed_reads.load_reads(options.adapter_fname);
+    unsigned rlen_limit = packed_reads.get_max_read_len();
+    stage_timers.cache_reads->stop();
+    LOG_MEM("Read " + short_name);
+    barrier();
+    ctgs.clear_slices();
+    for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
+      SLOG(KBLUE, "\nContig subset ", subset_i, KNORM, ":\n");
+      ctgs.set_next_slice(options.post_assm_subsets);
+      int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
+      stage_timers.build_aln_seed_index->start();
+      auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
+                                                       options.min_ctg_print_len, true);
+      stage_timers.build_aln_seed_index->stop();
+      auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
+      LOG_MEM("After Post Assembly Built Kmer Seeds");
       Alns alns;
-      vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
-      barrier();
-      fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
-      compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs,
-                          options.klign_rget_buf_size, timers);
+      stage_timers.alignments->start();
+      KlignTimers aln_timers;
+      vector<ReadRecord> read_records(packed_reads.get_local_num_reads());
+      fetch_ctg_maps(kmer_ctg_dht, &packed_reads, read_records, KLIGN_SEED_SPACE, aln_timers);
+      compute_alns<MAX_K>(&packed_reads, read_records, alns, read_group_id, rlen_limit, REPORT_CIGAR, USE_BLASTN_SCORES,
+                          all_num_ctgs, options.klign_rget_buf_size, aln_timers);
+      stage_timers.kernel_alns->inc_elapsed(aln_timers.aln_kernel.get_elapsed());
+      stage_timers.aln_comms->inc_elapsed(aln_timers.fetch_ctg_maps.get_elapsed() + aln_timers.rget_ctg_seqs.get_elapsed());
       stage_timers.alignments->stop();
       LOG_MEM("Aligned Post Assembly Reads " + short_name);
-
-      delete packed_reads;
-      LOG_MEM("Purged Post Assembly Reads" + short_name);
 
 #ifdef PAF_OUTPUT_FORMAT
       string aln_name("final_assembly-" + short_name + ".paf");
@@ -175,17 +145,49 @@ void post_assembly(Contigs &ctgs, Options &options) {
       aln_depths.compute_for_read_group(alns, read_group_id);
       stage_timers.compute_ctg_depths->stop();
       LOG_MEM("After Post Assembly Depths Saved");
-
-      read_group_id++;
     }
-    stage_timers.kernel_alns->inc_elapsed(timers.aln_kernel.get_elapsed());
-    stage_timers.aln_comms->inc_elapsed(timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed());
-    Timings::wait_pending();
+    tot_num_reads += packed_reads.get_local_num_reads();
+    tot_num_bases += packed_reads.get_local_bases();
+    LOG_MEM("Purged Post Assembly Reads" + short_name);
   }
+  Timings::wait_pending();
+
+  auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
+  auto all_tot_num_bases = reduce_one(tot_num_bases, op_fast_add, 0).wait();
+  auto all_num_ctgs = reduce_one(tot_num_ctgs, op_fast_add, 0).wait();
+  auto all_ctgs_len = reduce_one(tot_num_ctg_bases, op_fast_add, 0).wait();
+
+  SLOG(KBLUE "_________________________", KNORM, "\n");
+  SLOG("Alignment statistics\n");
+  SLOG("  Reads: ", all_tot_num_reads, "\n");
+  SLOG("  Bases: ", all_tot_num_bases, "\n");
+  SLOG("  Mapped reads*: ", 0, "\n");
+  SLOG("  Mapped bases*: ", 0, "\n");
+  SLOG("  Ref scaffolds: ", all_num_ctgs, "\n");
+  SLOG("  Ref bases: ", all_ctgs_len, "\n");
+  /*
+  Reads: 21470321354
+  Mapped reads: 20362450458
+  Mapped bases: 3030227153794
+  Ref scaffolds: 55342847
+  Ref bases: 74970251022
+
+  Percent mapped: 94.840
+  Percent proper pairs: 70.095
+  Average coverage: 40.419
+  Average coverage with deletions: 40.412
+  Standard deviation: 148.923
+  Percent scaffolds with any coverage: 100.00
+  Percent of reference bases covered: 99.76
+  */
+
+  stage_timers.alignments->inc_elapsed(stage_timers.build_aln_seed_index->get_elapsed());
+
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Stage timing:\n");
   SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
   SLOG("    ", stage_timers.alignments->get_final(), "\n");
+  SLOG("      -> ", stage_timers.build_aln_seed_index->get_final(), "\n");
   SLOG("      -> ", stage_timers.kernel_alns->get_final(), "\n");
   SLOG("      -> ", stage_timers.aln_comms->get_final(), "\n");
   SLOG("    ", stage_timers.compute_ctg_depths->get_final(), "\n");

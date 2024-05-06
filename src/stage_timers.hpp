@@ -52,7 +52,8 @@ inline bool _verbose = false;
 
 struct StageTimers {
   IntermittentTimer *merge_reads, *cache_reads, *load_ctgs, *analyze_kmers, *kernel_kmer_analysis, *dbjg_traversal, *alignments,
-      *kernel_alns, *aln_comms, *dump_alns, *localassm, *cgraph, *dump_ctgs, *compute_ctg_depths, *shuffle_reads;
+      *build_aln_seed_index, *kernel_alns, *aln_comms, *dump_alns, *localassm, *cgraph, *dump_ctgs, *compute_ctg_depths,
+      *shuffle_reads;
 };
 
 inline StageTimers stage_timers = {
@@ -63,6 +64,7 @@ inline StageTimers stage_timers = {
     .kernel_kmer_analysis = new IntermittentTimer(__FILENAME__ + string(":") + "Kernel kmer analysis", ""),
     .dbjg_traversal = new IntermittentTimer(__FILENAME__ + string(":") + "Traverse deBruijn graph", "Traversing deBruijn graph"),
     .alignments = new IntermittentTimer(__FILENAME__ + string(":") + "Alignments", "Aligning reads to contigs"),
+    .build_aln_seed_index = new IntermittentTimer(__FILENAME__ + string(":") + "Build seed index", "Building alignment seed index"),
     .kernel_alns = new IntermittentTimer(__FILENAME__ + string(":") + "Kernel alignments", ""),
     .aln_comms = new IntermittentTimer(__FILENAME__ + string(":") + "Alignment communication", ""),
     .dump_alns = new IntermittentTimer(__FILENAME__ + string(":") + "Dump alignments", ""),

@@ -81,6 +81,8 @@ class Contigs {
 
   size_t size() const;
 
+  size_t get_length() const;
+
   std::vector<Contig>::iterator begin();
 
   std::vector<Contig>::iterator end();
@@ -100,6 +102,8 @@ class Contigs {
   int get_max_clen() const;
 
   void set_next_slice(int num_slices);
+
+  void clear_slices();
 
   void sort_by_length();
 };

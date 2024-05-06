@@ -101,6 +101,8 @@ void Contigs::add_contig(Contig &&contig) {
 
 size_t Contigs::size() const { return end_idx - begin_idx; }
 
+size_t Contigs::get_length() const { return tot_length; }
+
 void Contigs::print_stats(unsigned min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
   int64_t tot_len = 0, max_len = 0;
@@ -328,6 +330,11 @@ void Contigs::set_next_slice(int num_slices) {
   SLOG_VERBOSE("Rank 0, expected contig slice size ", expected_slice_size, " actual slice size ", slice_size, " total size ",
                tot_length, "\n");
   SLOG_VERBOSE("All contig slice sizes ", msm_slice_size.to_string(), "\n");
+}
+
+void Contigs::clear_slices() {
+  begin_idx = 0;
+  end_idx = contigs.size();
 }
 
 std::vector<Contig>::iterator Contigs::begin() { return contigs.begin() + begin_idx; }

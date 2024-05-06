@@ -984,7 +984,6 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
       num_ctgs++;
     }
   }
-  SLOG_VERBOSE("Rank 0 built kmer ctg dht with ", num_ctgs, " ctgs\n");
   auto sh_kmer_ctg_dht = make_shared<KmerCtgDHT<MAX_K>>(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   kmer_ctg_dht.build(ctgs, min_ctg_len);
