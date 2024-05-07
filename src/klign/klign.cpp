@@ -905,9 +905,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
-  auto sh_alns = make_shared<Alns>();
-  Alns &alns_for_sample = *sh_alns;
-  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(), string("Computing alignments on ") + short_name);
   for (auto &read_record : read_records) {
@@ -931,10 +929,10 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   // defer reporting
   aligner.log_ctg_bytes_fetched();
   auto &pr = Timings::get_promise_reduce();
-  auto fut_reduce = when_all(
-      pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_reads_aligned, op_fast_add, 0), aligner.fut_get_num_alns(),
-      aligner.fut_get_num_perfect_alns(), pr.reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0),
-      pr.reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0), pr.reduce_one(alns_for_sample.size(), op_fast_add, 0));
+  auto fut_reduce =
+      when_all(pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_reads_aligned, op_fast_add, 0),
+               aligner.fut_get_num_alns(), aligner.fut_get_num_perfect_alns(), pr.reduce_one(alns.get_num_dups(), op_fast_add, 0),
+               pr.reduce_one(alns.get_num_bad(), op_fast_add, 0), pr.reduce_one(alns.size(), op_fast_add, 0));
 
   auto fut_report = fut_reduce.then([short_name](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns,
                                                  auto all_num_perfect, auto all_num_dups, auto all_num_bad, auto all_num_good) {
@@ -947,29 +945,25 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
                  (double)all_num_alns / all_num_reads_aligned, "\n");
   });
   Timings::set_pending(fut_report);
+};  // compute_alns
 
+template <int MAX_K>
+future<> sort_alns(Alns &alns, KlignTimers &timers, const string &reads_fname) {
   // barrier before possibly losing attention for sort & append
   LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
-  BarrierTimer sort_bt("Sorting Alignments for " + short_name);
-  if (!sh_alns->empty()) {
-    LOG("Sorting ", sh_alns->size(), " alignments in a new thread after discharge\n");
-    // wrap expensive sort in thread and keep some attention while waiting
-    auto sort_lambda = [&sort_t = timers.sort_t, &alns_for_sample, sh_alns]() {
-      sort_t.start();
-      assert(&alns_for_sample == sh_alns.get());
-      alns_for_sample.sort_alns();
-      sort_t.stop();
-      LOG("Finished sorting ", alns_for_sample.size(), " alignments\n");
-    };
-    future<> fut_sort = upcxx_utils::ThreadPool::get_single_pool().enqueue_serially(sort_lambda);
-    fut_sort = fut_sort.then([sh_alns, &alns]() {
-      assert(upcxx::master_persona().active_with_caller());
-      alns.append(*sh_alns);
-    });
-    Timings::set_pending(fut_sort);
-  }
+  BarrierTimer sort_bt("Sorting Alignments for " + get_basename(reads_fname));
 
-};  // compute_alns
+  LOG("Sorting ", alns.size(), " alignments in a new thread after discharge\n");
+  // wrap expensive sort in thread and keep some attention while waiting
+  auto sort_lambda = [&sort_t = timers.sort_t, &alns]() {
+    sort_t.start();
+    alns.sort_alns();
+    sort_t.stop();
+    LOG("Finished sorting ", alns.size(), " alignments\n");
+  };
+  future<> fut_sort = upcxx_utils::ThreadPool::get_single_pool().enqueue_serially(sort_lambda);
+  return fut_sort;
+}
 
 template <int MAX_K>
 shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_store_size, int max_rpcs_in_flight, Contigs &ctgs,
@@ -1011,8 +1005,17 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, use_blastn_scores, all_num_ctgs,
-                        rget_buf_size, timers);
+    auto sh_alns = make_shared<Alns>();
+    Alns &alns_for_sample = *sh_alns;
+    compute_alns<MAX_K>(packed_reads, read_records, alns_for_sample, read_group_id, rlen_limit, report_cigar, use_blastn_scores,
+                        all_num_ctgs, rget_buf_size, timers);
+    if (!sh_alns->empty()) {
+      auto fut_sort = sort_alns<MAX_K>(alns_for_sample, timers, packed_reads->get_fname()).then([sh_alns, &alns]() {
+        assert(upcxx::master_persona().active_with_caller());
+        alns.append(*sh_alns);
+      });
+      Timings::set_pending(fut_sort);
+    }
     read_group_id++;
   }
   timers.done_all();

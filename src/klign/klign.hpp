@@ -175,6 +175,9 @@ void compute_alns(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, b
 template <int MAX_K>
 void fetch_ctg_maps(KmerCtgDHT<MAX_K> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
 
+template <int MAX_K>
+upcxx::future<> sort_alns(Alns &, KlignTimers &, const string &);
+
 // Reduce compile time by instantiating templates of common types
 // extern template declarations are in kmer.hpp
 // template instantiations each happen in src/CMakeLists via kmer-extern-template.in.cpp
@@ -185,7 +188,8 @@ void fetch_ctg_maps(KmerCtgDHT<MAX_K> &, PackedReads *, vector<ReadRecord> &, in
   MODIFIER shared_ptr<KmerCtgDHT<KMER_LEN>> build_kmer_ctg_dht<KMER_LEN>(unsigned, int, int, Contigs &, int, bool);                \
   MODIFIER void compute_alns<KMER_LEN>(PackedReads *, vector<ReadRecord> &, Alns &, int, int, bool, bool, int64_t, int,            \
                                        KlignTimers &);                                                                             \
-  MODIFIER void fetch_ctg_maps<KMER_LEN>(KmerCtgDHT<KMER_LEN> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);
+  MODIFIER void fetch_ctg_maps<KMER_LEN>(KmerCtgDHT<KMER_LEN> &, PackedReads *, vector<ReadRecord> &, int, KlignTimers &);         \
+  MODIFIER upcxx::future<> sort_alns<KMER_LEN>(Alns &, KlignTimers &, const string &);
 
 __MACRO_KLIGN__(32, extern template);
 #if MAX_BUILD_KMER >= 64

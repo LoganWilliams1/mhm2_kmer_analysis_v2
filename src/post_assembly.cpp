@@ -81,8 +81,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
   const bool USE_BLASTN_SCORES = true;
   size_t tot_num_reads = 0;
   size_t tot_num_bases = 0;
-  size_t tot_num_ctgs = ctgs.size();
-  size_t tot_num_ctg_bases = ctgs.get_length();
   SLOG(KBLUE, "Processing contigs in ", options.post_assm_subsets, " subsets", KNORM, "\n");
   for (int read_group_id = 0; read_group_id < options.reads_fnames.size(); read_group_id++) {
     string &reads_fname = options.reads_fnames[read_group_id];
@@ -100,6 +98,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
     barrier();
     ctgs.clear_slices();
     dist_ofstream sam_ofs(short_name + ".sam");
+    KlignTimers aln_timers;
+    Alns alns;
     for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
       SLOG(KBLUE, "\nContig subset ", subset_i, KNORM, ":\n");
       ctgs.set_next_slice(options.post_assm_subsets);
@@ -110,9 +110,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       stage_timers.build_aln_seed_index->stop();
       auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
       LOG_MEM("After Post Assembly Built Kmer Seeds");
-      Alns alns;
       stage_timers.alignments->start();
-      KlignTimers aln_timers;
       vector<ReadRecord> read_records(packed_reads.get_local_num_reads());
       fetch_ctg_maps(kmer_ctg_dht, &packed_reads, read_records, KLIGN_SEED_SPACE, aln_timers);
       compute_alns<MAX_K>(&packed_reads, read_records, alns, read_group_id, rlen_limit, REPORT_CIGAR, USE_BLASTN_SCORES,
@@ -121,41 +119,44 @@ void post_assembly(Contigs &ctgs, Options &options) {
       stage_timers.aln_comms->inc_elapsed(aln_timers.fetch_ctg_maps.get_elapsed() + aln_timers.rget_ctg_seqs.get_elapsed());
       stage_timers.alignments->stop();
       LOG_MEM("Aligned Post Assembly Reads " + short_name);
-
-#ifdef PAF_OUTPUT_FORMAT
-      string aln_name("final_assembly-" + short_name + ".paf");
-      alns.dump_single_file(aln_name, Alns::Format::PAF);
-      SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
-#elif BLAST6_OUTPUT_FORMAT
-      string aln_name("final_assembly-" + short_name + ".b6");
-      alns.dump_single_file(aln_name, Alns::Format::BLAST);
-      SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
-#endif
-      LOG_MEM("After Post Assembly Alignments Saved");
-      // Dump 1 file at a time with proper read groups
-      stage_timers.dump_alns->start();
-      alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
-      stage_timers.dump_alns->stop();
-
-      LOG_MEM("After Post Assembly SAM Saved");
-
-      stage_timers.compute_ctg_depths->start();
-      // compute depths 1 column at a time
-      aln_depths.compute_for_read_group(alns, read_group_id);
-      stage_timers.compute_ctg_depths->stop();
-      LOG_MEM("After Post Assembly Depths Saved");
     }
+#ifdef PAF_OUTPUT_FORMAT
+    string aln_name("final_assembly-" + short_name + ".paf");
+    alns.dump_single_file(aln_name, Alns::Format::PAF);
+    SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+    LOG_MEM("After Post Assembly Alignments Saved");
+#elif BLAST6_OUTPUT_FORMAT
+    string aln_name("final_assembly-" + short_name + ".b6");
+    alns.dump_single_file(aln_name, Alns::Format::BLAST);
+    SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+    LOG_MEM("After Post Assembly Alignments Saved");
+#endif
+    // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
+    sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
+    // FIXME: count the total bases aligned and the reads aligned
+    // alns.compute_aln_stats();
+    // Dump 1 file at a time with proper read groups
+    stage_timers.dump_alns->start();
+    alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
+    stage_timers.dump_alns->stop();
+    LOG_MEM("After Post Assembly SAM Saved");
+    stage_timers.compute_ctg_depths->start();
+    // compute depths 1 column at a time
+    aln_depths.compute_for_read_group(alns, read_group_id);
+    stage_timers.compute_ctg_depths->stop();
+    LOG_MEM("After Post Assembly Depths Saved");
     sam_ofs.close();
     tot_num_reads += packed_reads.get_local_num_reads();
     tot_num_bases += packed_reads.get_local_bases();
     LOG_MEM("Purged Post Assembly Reads" + short_name);
   }
   Timings::wait_pending();
+  ctgs.clear_slices();
 
   auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
   auto all_tot_num_bases = reduce_one(tot_num_bases, op_fast_add, 0).wait();
-  auto all_num_ctgs = reduce_one(tot_num_ctgs, op_fast_add, 0).wait();
-  auto all_ctgs_len = reduce_one(tot_num_ctg_bases, op_fast_add, 0).wait();
+  auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
+  auto all_ctgs_len = reduce_one(ctgs.get_length(), op_fast_add, 0).wait();
 
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Alignment statistics\n");
