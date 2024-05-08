@@ -493,22 +493,40 @@ void Alns::sort_alns() {
   LOG("Sorted alns and removed ", num_dups, " duplicates in ", timer.get_elapsed(), " s\n");
 }
 
-std::pair<size_t, size_t> Alns::compute_stats() {
+void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped, size_t &num_proper_pairs) {
+  auto get_read_id = [](const string &read_id) {
+    string pair_id_str = read_id.substr(read_id.length() - 2, 2);
+    int pair_id = 0;
+    if (pair_id_str == "/1") pair_id = 1;
+    if (pair_id_str == "/2") pair_id = 2;
+    if (pair_id == 0) return make_pair(read_id, 0);
+    return make_pair(read_id.substr(0, read_id.length() - 2), pair_id);
+  };
+
   BaseTimer timer(__FILEFUNC__);
-  // FIXME: bitset needs to be defined at compile time and the max paired read length we expect is 250. This means we use 2x the
+  // bitset needs to be defined at compile time and the max paired read length we expect is 250. This means we use 2x the
   // space needed for a read length of 101, with 250 taking 32 and 101 taking 16
   HASH_TABLE<string, bitset<256>> mapped_reads(alns.size());
   for (auto &aln : alns) {
     auto elem = mapped_reads.find(aln.read_id);
-    if (elem == mapped_reads.end()) {
-      elem = mapped_reads.insert({aln.read_id, bitset<256>()}).first;
-    }
+    if (elem == mapped_reads.end()) elem = mapped_reads.insert({aln.read_id, bitset<256>()}).first;
     for (int i = aln.rstart; i < aln.rstop; i++) elem->second[i] = 1;
   }
-  size_t num_bases_mapped = 0;
-  for (auto &mapped_read : mapped_reads) {
-    num_bases_mapped += mapped_read.second.count();
+  num_reads_mapped = mapped_reads.size();
+  num_bases_mapped = 0;
+  for (auto &mapped_read : mapped_reads) num_bases_mapped += mapped_read.second.count();
+
+  num_proper_pairs = 0;
+  // count proper pairs: both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
+  for (size_t i = 1; i < alns.size(); i++) {
+    auto [read_id, pair_id] = get_read_id(alns[i].read_id);
+    if (pair_id != 2) continue;
+    // now at second read pair - check for previous one
+    auto [prev_read_id, prev_pair_id] = get_read_id(alns[i - 1].read_id);
+    if (prev_read_id == read_id && prev_pair_id == 1 && alns[i - 1].cid == alns[i].cid && alns[i - 1].orient != alns[i].orient) {
+      int d = (alns[i - 1].cstart < alns[i].cstart ? alns[i].cstart - alns[i - 1].cstop : alns[i - 1].cstart - alns[i].cstop);
+      if (d < 32000) num_proper_pairs++;
+    }
   }
   LOG_MEM("After alns.compute_stats");
-  return {mapped_reads.size(), num_bases_mapped};
 }

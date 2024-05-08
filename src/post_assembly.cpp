@@ -82,6 +82,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   size_t tot_num_bases = 0;
   size_t tot_reads_aligned = 0;
   size_t tot_bases_aligned = 0;
+  size_t tot_proper_pairs = 0;
   SLOG(KBLUE, "Processing contigs in ", options.post_assm_subsets, " subsets", KNORM, "\n");
   for (int read_group_id = 0; read_group_id < options.reads_fnames.size(); read_group_id++) {
     string &reads_fname = options.reads_fnames[read_group_id];
@@ -134,10 +135,11 @@ void post_assembly(Contigs &ctgs, Options &options) {
 #endif
     // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
     sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
-    // FIXME: count the total bases aligned and the reads aligned
-    auto [num_reads_aligned, num_bases_aligned] = alns.compute_stats();
+    size_t num_reads_aligned, num_bases_aligned, num_proper_pairs;
+    alns.compute_stats(num_reads_aligned, num_bases_aligned, num_proper_pairs);
     tot_reads_aligned += num_reads_aligned;
     tot_bases_aligned += num_bases_aligned;
+    tot_proper_pairs += num_proper_pairs;
     //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
     alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
@@ -166,6 +168,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   auto all_ctgs_len = reduce_one(ctgs.get_length(), op_fast_add, 0).wait();
   auto all_reads_aligned = reduce_one(tot_reads_aligned, op_fast_add, 0).wait();
   auto all_bases_aligned = reduce_one(tot_bases_aligned, op_fast_add, 0).wait();
+  auto all_proper_pairs = reduce_one(tot_proper_pairs, op_fast_add, 0).wait();
   size_t all_unmapped_bases = 0;
 
   SLOG(KBLUE "_________________________", KNORM, "\n");
@@ -179,7 +182,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG("  Percent reads mapped: ", 100.0 * (double)all_reads_aligned / all_tot_num_reads, "\n");
   SLOG("  Percent bases mapped: ", 100.0 * (double)all_bases_aligned / all_tot_num_bases, "\n");
   // a proper pair is where both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
-  SLOG("  Percent proper pairs: ", "\n");
+  SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs / all_tot_num_reads / 2, "\n");
   // average depth per base
   SLOG("  Average coverage: ", "\n");
   SLOG("  Average coverage with deletions: ", "\n");

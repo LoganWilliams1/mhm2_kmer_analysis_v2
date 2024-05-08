@@ -135,5 +135,5 @@ class Alns {
 
   void sort_alns();
 
-  std::pair<size_t, size_t> compute_stats();
+  void compute_stats(size_t &num_reads_aligned, size_t &num_bases_aligned, size_t &num_proper_pairs);
 };  // class Alns
