@@ -48,18 +48,21 @@
 #include <string>
 #include <upcxx/upcxx.hpp>
 #include <unordered_set>
+#include <bitset>
 
 #include "contigs.hpp"
+#include "utils.hpp"
+#include "version.h"
+#include "zstr.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/ofstream.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/thread_pool.hpp"
 #include "upcxx_utils/timers.hpp"
-#include "utils.hpp"
-#include "version.h"
-#include "zstr.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 
 using namespace upcxx_utils;
+using std::bitset;
 using std::ostringstream;
 using std::string;
 
@@ -488,4 +491,24 @@ void Alns::sort_alns() {
   timer.stop();
   auto num_dups = start_size - alns.size();
   LOG("Sorted alns and removed ", num_dups, " duplicates in ", timer.get_elapsed(), " s\n");
+}
+
+std::pair<size_t, size_t> Alns::compute_stats() {
+  BaseTimer timer(__FILEFUNC__);
+  // FIXME: bitset needs to be defined at compile time and the max paired read length we expect is 250. This means we use 2x the
+  // space needed for a read length of 101, with 250 taking 32 and 101 taking 16
+  HASH_TABLE<string, bitset<256>> mapped_reads(alns.size());
+  for (auto &aln : alns) {
+    auto elem = mapped_reads.find(aln.read_id);
+    if (elem == mapped_reads.end()) {
+      elem = mapped_reads.insert({aln.read_id, bitset<256>()}).first;
+    }
+    for (int i = aln.rstart; i < aln.rstop; i++) elem->second[i] = 1;
+  }
+  size_t num_bases_mapped = 0;
+  for (auto &mapped_read : mapped_reads) {
+    num_bases_mapped += mapped_read.second.count();
+  }
+  LOG_MEM("After alns.compute_stats");
+  return {mapped_reads.size(), num_bases_mapped};
 }

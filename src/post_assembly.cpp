@@ -62,7 +62,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
   LOG_MEM("Starting Post Assembly");
-
   auto start_t = clock_now();
   // set up output files
   SLOG_VERBOSE("Writing SAM headers\n");
@@ -81,6 +80,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
   const bool USE_BLASTN_SCORES = true;
   size_t tot_num_reads = 0;
   size_t tot_num_bases = 0;
+  size_t tot_reads_aligned = 0;
+  size_t tot_bases_aligned = 0;
   SLOG(KBLUE, "Processing contigs in ", options.post_assm_subsets, " subsets", KNORM, "\n");
   for (int read_group_id = 0; read_group_id < options.reads_fnames.size(); read_group_id++) {
     string &reads_fname = options.reads_fnames[read_group_id];
@@ -134,8 +135,10 @@ void post_assembly(Contigs &ctgs, Options &options) {
     // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
     sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
     // FIXME: count the total bases aligned and the reads aligned
-    // alns.compute_aln_stats();
-    // Dump 1 file at a time with proper read groups
+    auto [num_reads_aligned, num_bases_aligned] = alns.compute_stats();
+    tot_reads_aligned += num_reads_aligned;
+    tot_bases_aligned += num_bases_aligned;
+    //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
     alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
     stage_timers.dump_alns->stop();
@@ -152,35 +155,39 @@ void post_assembly(Contigs &ctgs, Options &options) {
   }
   Timings::wait_pending();
   ctgs.clear_slices();
+  aln_depths.done_computing();
+  string fname("final_assembly_depths.txt");
+  SLOG_VERBOSE("Writing ", fname, "\n");
+  aln_depths.dump_depths(fname, options.reads_fnames);
 
   auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
   auto all_tot_num_bases = reduce_one(tot_num_bases, op_fast_add, 0).wait();
   auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
   auto all_ctgs_len = reduce_one(ctgs.get_length(), op_fast_add, 0).wait();
+  auto all_reads_aligned = reduce_one(tot_reads_aligned, op_fast_add, 0).wait();
+  auto all_bases_aligned = reduce_one(tot_bases_aligned, op_fast_add, 0).wait();
+  size_t all_unmapped_bases = 0;
 
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Alignment statistics\n");
   SLOG("  Reads: ", all_tot_num_reads, "\n");
   SLOG("  Bases: ", all_tot_num_bases, "\n");
-  SLOG("  Mapped reads*: ", 0, "\n");
-  SLOG("  Mapped bases*: ", 0, "\n");
+  SLOG("  Mapped reads: ", all_reads_aligned, "\n");
+  SLOG("  Mapped bases: ", all_bases_aligned, "\n");
   SLOG("  Ref scaffolds: ", all_num_ctgs, "\n");
   SLOG("  Ref bases: ", all_ctgs_len, "\n");
-  /*
-  Reads: 21470321354
-  Mapped reads: 20362450458
-  Mapped bases: 3030227153794
-  Ref scaffolds: 55342847
-  Ref bases: 74970251022
-
-  Percent mapped: 94.840
-  Percent proper pairs: 70.095
-  Average coverage: 40.419
-  Average coverage with deletions: 40.412
-  Standard deviation: 148.923
-  Percent scaffolds with any coverage: 100.00
-  Percent of reference bases covered: 99.76
-  */
+  SLOG("  Percent reads mapped: ", 100.0 * (double)all_reads_aligned / all_tot_num_reads, "\n");
+  SLOG("  Percent bases mapped: ", 100.0 * (double)all_bases_aligned / all_tot_num_bases, "\n");
+  // a proper pair is where both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
+  SLOG("  Percent proper pairs: ", "\n");
+  // average depth per base
+  SLOG("  Average coverage: ", "\n");
+  SLOG("  Average coverage with deletions: ", "\n");
+  // standard deviation of depth per base
+  SLOG("  Standard deviation: ", "\n");
+  // this will always be 100% because the contigs are created from the reads in the first place
+  SLOG("  Percent scaffolds with any coverage: 100.0\n");
+  SLOG("  Percent of reference bases covered: ", 100.0 * (double)(all_ctgs_len - all_unmapped_bases) / all_ctgs_len, "\n");
 
   stage_timers.alignments->inc_elapsed(stage_timers.build_aln_seed_index->get_elapsed());
 
@@ -204,10 +211,5 @@ void post_assembly(Contigs &ctgs, Options &options) {
        "\":\n  \"final_assembly.header.sam\" contains header information",
        "\n  \"*.sam\" files contain alignments per input/read file", "\n  \"final_assembly_depths.text\" contains scaffold depths",
        KNORM, "\n");
-  string fname("final_assembly_depths.txt");
-  SLOG_VERBOSE("Writing ", fname, "\n");
-  aln_depths.done_computing();
-  aln_depths.dump_depths(fname, options.reads_fnames);
-
   SLOG(KBLUE, "_________________________", KNORM, "\n");
 }

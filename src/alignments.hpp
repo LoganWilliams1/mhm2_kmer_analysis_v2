@@ -134,4 +134,6 @@ class Alns {
   int calculate_unmerged_rlen() const;
 
   void sort_alns();
+
+  std::pair<size_t, size_t> compute_stats();
 };  // class Alns
