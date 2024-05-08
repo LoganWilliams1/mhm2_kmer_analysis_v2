@@ -162,14 +162,27 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG_VERBOSE("Writing ", fname, "\n");
   aln_depths.dump_depths(fname, options.reads_fnames);
 
+  size_t tot_base_depths = 0;
+  for (auto &ctg : ctgs) tot_base_depths += (ctg.depth * ctg.seq.length());
+
   auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
   auto all_tot_num_bases = reduce_one(tot_num_bases, op_fast_add, 0).wait();
   auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
-  auto all_ctgs_len = reduce_one(ctgs.get_length(), op_fast_add, 0).wait();
+  auto all_ctgs_len = reduce_all(ctgs.get_length(), op_fast_add).wait();
   auto all_reads_aligned = reduce_one(tot_reads_aligned, op_fast_add, 0).wait();
   auto all_bases_aligned = reduce_one(tot_bases_aligned, op_fast_add, 0).wait();
+  auto all_tot_base_depths = reduce_all(tot_base_depths, op_fast_add).wait();
   auto all_proper_pairs = reduce_one(tot_proper_pairs, op_fast_add, 0).wait();
   size_t all_unmapped_bases = 0;
+
+  double avg_coverage = (double)all_tot_base_depths / all_ctgs_len;
+  double sum_diffs = 0;
+  for (auto &ctg : ctgs) {
+    double depth_diff = (double)ctg.depth - avg_coverage;
+    sum_diffs += depth_diff * depth_diff * ctg.seq.length();
+  }
+  auto all_sum_diffs = reduce_one(sum_diffs, op_fast_add, 0).wait();
+  auto std_dev_coverage = sqrt(all_sum_diffs / all_ctgs_len);
 
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Alignment statistics\n");
@@ -179,15 +192,15 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG("  Mapped bases: ", all_bases_aligned, "\n");
   SLOG("  Ref scaffolds: ", all_num_ctgs, "\n");
   SLOG("  Ref bases: ", all_ctgs_len, "\n");
-  SLOG("  Percent reads mapped: ", 100.0 * (double)all_reads_aligned / all_tot_num_reads, "\n");
+  SLOG("  Percent mapped: ", 100.0 * (double)all_reads_aligned / all_tot_num_reads, "\n");
   SLOG("  Percent bases mapped: ", 100.0 * (double)all_bases_aligned / all_tot_num_bases, "\n");
-  // a proper pair is where both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
-  SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs / all_tot_num_reads / 2, "\n");
+  //  a proper pair is where both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
+  SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs * 2.0 / all_tot_num_reads, "\n");
   // average depth per base
-  SLOG("  Average coverage: ", "\n");
+  SLOG("  Average coverage: ", avg_coverage, "\n");
   SLOG("  Average coverage with deletions: ", "\n");
   // standard deviation of depth per base
-  SLOG("  Standard deviation: ", "\n");
+  SLOG("  Standard deviation: ", std_dev_coverage, "\n");
   // this will always be 100% because the contigs are created from the reads in the first place
   SLOG("  Percent scaffolds with any coverage: 100.0\n");
   SLOG("  Percent of reference bases covered: ", 100.0 * (double)(all_ctgs_len - all_unmapped_bases) / all_ctgs_len, "\n");
