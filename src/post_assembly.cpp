@@ -246,16 +246,14 @@ void post_assembly(Contigs &ctgs, Options &options) {
   auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
   auto all_ctgs_len = reduce_all(ctgs.get_length(), op_fast_add).wait();
   auto all_reads_aligned = reduce_one(tot_reads_aligned, op_fast_add, 0).wait();
-  auto all_bases_aligned = reduce_one(tot_bases_aligned, op_fast_add, 0).wait();
+  auto all_bases_aligned = reduce_all(tot_bases_aligned, op_fast_add).wait();
   auto all_proper_pairs = reduce_one(tot_proper_pairs, op_fast_add, 0).wait();
   size_t all_unmapped_bases = 0;
 
-  size_t tot_base_depths = 0;
-  for (auto &ctg : ctgs) tot_base_depths += (ctg.depth * ctg.seq.length());
-  auto all_tot_base_depths = reduce_all(tot_base_depths, op_fast_add).wait();
-  double avg_coverage = (double)all_tot_base_depths / all_ctgs_len;
+  // every rank needs the avg coverage to calculate the std deviation
+  double avg_coverage = (double)all_bases_aligned / all_ctgs_len;
   double sum_diffs = 0;
-  for (auto &ctg : ctgs) sum_diffs += pow((double)ctg.depth - avg_coverage, 2.0) * ctg.seq.length();
+  for (auto &ctg : ctgs) sum_diffs += pow((double)ctg.depth - avg_coverage, 2.0) * (double)ctg.seq.length();
   auto all_sum_diffs = reduce_one(sum_diffs, op_fast_add, 0).wait();
   auto std_dev_coverage = sqrt(all_sum_diffs / all_ctgs_len);
 
