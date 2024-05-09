@@ -40,8 +40,9 @@
  form.
 */
 
-#include "post_assembly.hpp"
+#include <bitset>
 
+#include "post_assembly.hpp"
 #include "aln_depths.hpp"
 #include "fastq.hpp"
 #include "gasnet_stats.hpp"
@@ -51,12 +52,85 @@
 #include "shuffle_reads.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/three_tier_aggr_store.hpp"
 
 using namespace upcxx_utils;
+using namespace std;
 
-using std::shared_ptr;
-using std::string;
-using std::vector;
+struct CtgBaseRange {
+  cid_t cid;
+  int clen;
+  int cstart;
+  int cstop;
+};
+
+#define BITSET_SIZE 256
+
+static size_t get_target_rank(cid_t cid) { return std::hash<cid_t>{}(cid) % upcxx::rank_n(); }
+
+struct CtgBasesCovered {
+  int clen;
+  vector<bitset<BITSET_SIZE>> bases_covered;
+
+  int num_bits_set() {
+    int num_bits = 0;
+    for (auto &b : bases_covered) num_bits += b.count();
+    return num_bits;
+  }
+};
+
+class CtgsCovered {
+  using local_ctgs_covered_map_t = HASH_TABLE<cid_t, CtgBasesCovered>;
+  using ctgs_covered_map_t = upcxx::dist_object<local_ctgs_covered_map_t>;
+  ctgs_covered_map_t ctgs_covered;
+  ThreeTierAggrStore<CtgBaseRange> ctg_bases_covered_store;
+
+  void update_ctg_bases(const CtgBaseRange &ctg_base_range) {
+    cid_t cid = ctg_base_range.cid;
+    int clen = ctg_base_range.clen;
+    auto elem = ctgs_covered->find(cid);
+    if (elem == ctgs_covered->end()) {
+      CtgBasesCovered new_elem = {.clen = clen, .bases_covered = {}};
+      new_elem.bases_covered.resize(clen / BITSET_SIZE + (clen % BITSET_SIZE != 0), 0);
+      elem = ctgs_covered->insert({cid, new_elem}).first;
+    }
+    if (elem->second.clen != ctg_base_range.clen) DIE("clens don't match ", elem->second.clen, " != ", ctg_base_range.clen);
+    // update the ranges of covered bases
+    for (int i = ctg_base_range.cstart; i < ctg_base_range.cstop; i++) {
+      elem->second.bases_covered[i / BITSET_SIZE][i % BITSET_SIZE] = 1;
+    }
+  }
+
+ public:
+  CtgsCovered(size_t num_ctgs)
+      : ctgs_covered(local_ctgs_covered_map_t{})
+      , ctg_bases_covered_store() {
+    ctgs_covered->reserve(num_ctgs * 2 + 2000);  // entries for self + distributed calcs
+    int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
+    size_t max_store_bytes = std::max(mem_to_use, (int64_t)sizeof(CtgBasesCovered) * 100);
+    ctg_bases_covered_store.set_size("Ctg Bases Covered", max_store_bytes);
+    ctg_bases_covered_store.set_update_func(
+        [&self = *this](CtgBaseRange ctg_base_range) { self.update_ctg_bases(ctg_base_range); });
+  }
+
+  void add_ctg_range(cid_t cid, int clen, int cstart, int cstop) {
+    CtgBaseRange ctg_base_range = {.cid = cid, .clen = clen, .cstart = cstart, .cstop = cstop};
+    auto tgt = get_target_rank(cid);
+    if (tgt != rank_me()) {
+      ctg_bases_covered_store.update(tgt, ctg_base_range);
+    } else {
+      update_ctg_bases(ctg_base_range);
+    }
+  }
+
+  void done_adding() { ctg_bases_covered_store.flush_updates(); }
+
+  size_t get_covered_bases() {
+    size_t num_covered_bases = 0;
+    for (auto &[key, val] : *ctgs_covered) num_covered_bases += val.num_bits_set();
+    return num_covered_bases;
+  }
+};
 
 void post_assembly(Contigs &ctgs, Options &options) {
   SLOG(KBLUE, "_________________________", KNORM, "\n");
@@ -74,6 +148,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
   AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
   LOG_MEM("After Post Assembly Ctgs Depths");
+  CtgsCovered ctgs_covered(ctgs.size());
   auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
   const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
   const bool REPORT_CIGAR = true;
@@ -140,6 +215,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
     tot_reads_aligned += num_reads_aligned;
     tot_bases_aligned += num_bases_aligned;
     tot_proper_pairs += num_proper_pairs;
+    for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
     //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
     alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
@@ -161,26 +237,25 @@ void post_assembly(Contigs &ctgs, Options &options) {
   string fname("final_assembly_depths.txt");
   SLOG_VERBOSE("Writing ", fname, "\n");
   aln_depths.dump_depths(fname, options.reads_fnames);
+  ctgs_covered.done_adding();
+  auto covered_bases = ctgs_covered.get_covered_bases();
 
-  size_t tot_base_depths = 0;
-  for (auto &ctg : ctgs) tot_base_depths += (ctg.depth * ctg.seq.length());
-
+  auto all_covered_bases = reduce_one(covered_bases, op_fast_add, 0).wait();
   auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
   auto all_tot_num_bases = reduce_one(tot_num_bases, op_fast_add, 0).wait();
   auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
   auto all_ctgs_len = reduce_all(ctgs.get_length(), op_fast_add).wait();
   auto all_reads_aligned = reduce_one(tot_reads_aligned, op_fast_add, 0).wait();
   auto all_bases_aligned = reduce_one(tot_bases_aligned, op_fast_add, 0).wait();
-  auto all_tot_base_depths = reduce_all(tot_base_depths, op_fast_add).wait();
   auto all_proper_pairs = reduce_one(tot_proper_pairs, op_fast_add, 0).wait();
   size_t all_unmapped_bases = 0;
 
+  size_t tot_base_depths = 0;
+  for (auto &ctg : ctgs) tot_base_depths += (ctg.depth * ctg.seq.length());
+  auto all_tot_base_depths = reduce_all(tot_base_depths, op_fast_add).wait();
   double avg_coverage = (double)all_tot_base_depths / all_ctgs_len;
   double sum_diffs = 0;
-  for (auto &ctg : ctgs) {
-    double depth_diff = (double)ctg.depth - avg_coverage;
-    sum_diffs += depth_diff * depth_diff * ctg.seq.length();
-  }
+  for (auto &ctg : ctgs) sum_diffs += pow((double)ctg.depth - avg_coverage, 2.0) * ctg.seq.length();
   auto all_sum_diffs = reduce_one(sum_diffs, op_fast_add, 0).wait();
   auto std_dev_coverage = sqrt(all_sum_diffs / all_ctgs_len);
 
@@ -198,12 +273,12 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs * 2.0 / all_tot_num_reads, "\n");
   // average depth per base
   SLOG("  Average coverage: ", avg_coverage, "\n");
-  SLOG("  Average coverage with deletions: ", "\n");
+  SLOG("  Average coverage with deletions: N/A\n");
   // standard deviation of depth per base
   SLOG("  Standard deviation: ", std_dev_coverage, "\n");
   // this will always be 100% because the contigs are created from the reads in the first place
   SLOG("  Percent scaffolds with any coverage: 100.0\n");
-  SLOG("  Percent of reference bases covered: ", 100.0 * (double)(all_ctgs_len - all_unmapped_bases) / all_ctgs_len, "\n");
+  SLOG("  Percent of reference bases covered: ", 100.0 * (double)all_covered_bases / all_ctgs_len, "\n");
 
   stage_timers.alignments->inc_elapsed(stage_timers.build_aln_seed_index->get_elapsed());
 
@@ -219,9 +294,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
   // if (options.shuffle_reads) SLOG("    ", stage_timers.shuffle_reads->get_final(), "\n");
   SLOG("    FASTQ total read time: ", FastqReader::get_io_time(), "\n");
   SLOG(KBLUE "_________________________", KNORM, "\n");
-  std::chrono::duration<double> t_elapsed = clock_now() - start_t;
-  SLOG("Finished in ", std::setprecision(2), std::fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION,
-       "\n");
+  chrono::duration<double> t_elapsed = clock_now() - start_t;
+  SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
 
   SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly. Files can be found in directory \"", options.output_dir,
        "\":\n  \"final_assembly.header.sam\" contains header information",
