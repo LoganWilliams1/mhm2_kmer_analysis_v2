@@ -189,7 +189,9 @@ void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const stri
   for (auto it = contigs.begin(); it != contigs.end(); ++it) {
     auto ctg = it;
     if (ctg->seq.length() < min_ctg_len) continue;
-    of << ">" << prefix << to_string(ctg->id) << " " << ctg->depth << "\n";
+    of << ">" << prefix << to_string(ctg->id);
+    if (fname != "final_assembly.fasta") of << " " << ctg->depth;
+    of << "\n";
     string rc_uutig = revcomp(ctg->seq);
     string seq = (rc_uutig < ctg->seq ? rc_uutig : ctg->seq);
     // for (int64_t i = 0; i < ctg->seq.length(); i += 50) of << ctg->seq.substr(i, 50) << "\n";
@@ -283,7 +285,7 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
     if (id == prev_id) DIE("Duplicate ids ", prev_id, " in file ", ctgs_fname);
     prev_id = id;
     // depth is the last field in the cname
-    double depth = strtod(endptr, NULL);
+    double depth = (ctgs_fname == "final_assembly.fasta" ? 0 : strtod(endptr, NULL));
     Contig contig = {.id = id, .seq = seq, .depth = depth};
     add_contig(contig);
     max_clen = max(max_clen, (int)seq.length());
