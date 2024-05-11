@@ -181,12 +181,10 @@ void post_assembly(Contigs &ctgs, Options &options) {
       SLOG(KBLUE, "\nContig subset ", subset_i, KNORM, ":\n");
       ctgs.set_next_slice(options.post_assm_subsets);
       int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
-      stage_timers.alignments->start();
       stage_timers.build_aln_seed_index->start();
       auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
                                                        options.min_ctg_print_len, true);
       stage_timers.build_aln_seed_index->stop();
-      stage_timers.alignments->stop();
       auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
       LOG_MEM("After Post Assembly Built Kmer Seeds");
       stage_timers.alignments->start();
@@ -210,18 +208,15 @@ void post_assembly(Contigs &ctgs, Options &options) {
     SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
     LOG_MEM("After Post Assembly Alignments Saved");
 #endif
-    stage_timers.alignments->start();
     // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
     sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
+    stage_timers.alignments->inc_elapsed(aln_timers.sort_t.get_elapsed());
     size_t num_reads_aligned, num_bases_aligned, num_proper_pairs;
     alns.compute_stats(num_reads_aligned, num_bases_aligned, num_proper_pairs);
-    stage_timers.alignments->stop();
     tot_reads_aligned += num_reads_aligned;
     tot_bases_aligned += num_bases_aligned;
     tot_proper_pairs += num_proper_pairs;
-    stage_timers.alignments->start();
     for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
-    stage_timers.alignments->stop();
     //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
     alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
