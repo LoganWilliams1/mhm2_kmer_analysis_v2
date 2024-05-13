@@ -150,6 +150,9 @@ add_definitions(-DLASSM_RATING_THRES=0)
 # limit to restrict the computational overhead
 add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
+
+# Seed space for post assembly: decreasing this value increases the alignment computation time, but generates a few more alignments
+add_definitions(-DPOST_ASM_ALN_SEED_SPACE=8)
 # seed length used for post assembly alignment
 add_definitions(-DPOST_ASM_ALN_K=31)
 # also dump alignments from post assembly in PAF format (in addition to SAM)
