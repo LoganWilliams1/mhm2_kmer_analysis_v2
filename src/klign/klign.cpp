@@ -230,7 +230,7 @@ class KmerCtgDHT {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
     auto fut_rpc = rpc(
         target_rank,
-        [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
+        [](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
           BaseTimer t("with get_ctgs_with_kmers rpc");
           t.start();
           vector<CtgLocAndKmerIdx> ctg_locs;
@@ -241,9 +241,7 @@ class KmerCtgDHT {
             assert(kmer.is_valid());
             const auto it = kmer_map->find(kmer);
             if (it == kmer_map->end()) continue;
-            for (auto &ctg_loc : it->second) {
-              ctg_locs.push_back({ctg_loc, i});
-            }
+            for (auto &ctg_loc : it->second) ctg_locs.push_back({ctg_loc, i});
           }
           t.stop();
           // For Issue137 tracking
@@ -988,11 +986,14 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
 template <int MAX_K>
 pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size,
                                      int max_rpcs_in_flight, Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit,
-                                     bool report_cigar, bool use_blastn_scores, int min_ctg_len, int rget_buf_size) {
+                                     bool use_blastn_scores, int min_ctg_len, int rget_buf_size) {
   BarrierTimer timer(__FILEFUNC__);
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
 
-  auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(kmer_len, max_store_size, max_rpcs_in_flight, ctgs, min_ctg_len, report_cigar);
+  const bool ALLOW_MULTI_KMERS = false;
+  const bool REPORT_CIGAR = false;
+  auto sh_kmer_ctg_dht =
+      build_kmer_ctg_dht<MAX_K>(kmer_len, max_store_size, max_rpcs_in_flight, ctgs, min_ctg_len, ALLOW_MULTI_KMERS);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   KlignTimers timers;
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
@@ -1007,7 +1008,7 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
     auto sh_alns = make_shared<Alns>();
     Alns &alns_for_sample = *sh_alns;
-    compute_alns<MAX_K>(packed_reads, read_records, alns_for_sample, read_group_id, rlen_limit, report_cigar, use_blastn_scores,
+    compute_alns<MAX_K>(packed_reads, read_records, alns_for_sample, read_group_id, rlen_limit, REPORT_CIGAR, use_blastn_scores,
                         all_num_ctgs, rget_buf_size, timers);
     if (!sh_alns->empty()) {
       auto fut_sort = sort_alns<MAX_K>(alns_for_sample, timers, packed_reads->get_fname()).then([sh_alns, &alns]() {

@@ -153,6 +153,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
   const bool REPORT_CIGAR = true;
   const bool USE_BLASTN_SCORES = true;
+  const bool ALLOW_MULTI_KMERS = true;
   size_t tot_num_reads = 0;
   size_t tot_num_bases = 0;
   size_t tot_reads_aligned = 0;
@@ -183,13 +184,13 @@ void post_assembly(Contigs &ctgs, Options &options) {
       int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
       stage_timers.build_aln_seed_index->start();
       auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
-                                                       options.min_ctg_print_len, true);
+                                                       options.min_ctg_print_len, ALLOW_MULTI_KMERS);
       stage_timers.build_aln_seed_index->stop();
       auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
       LOG_MEM("After Post Assembly Built Kmer Seeds");
       stage_timers.alignments->start();
       vector<ReadRecord> read_records(packed_reads.get_local_num_reads());
-      fetch_ctg_maps(kmer_ctg_dht, &packed_reads, read_records, KLIGN_SEED_SPACE, aln_timers);
+      fetch_ctg_maps(kmer_ctg_dht, &packed_reads, read_records, POST_ASM_ALN_SEED_SPACE, aln_timers);
       compute_alns<MAX_K>(&packed_reads, read_records, alns, read_group_id, rlen_limit, REPORT_CIGAR, USE_BLASTN_SCORES,
                           all_num_ctgs, options.klign_rget_buf_size, aln_timers);
       stage_timers.kernel_alns->inc_elapsed(aln_timers.aln_kernel.get_elapsed());
@@ -284,8 +285,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Stage timing:\n");
   SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
+  SLOG("    ", stage_timers.build_aln_seed_index->get_final(), "\n");
   SLOG("    ", stage_timers.alignments->get_final(), "\n");
-  SLOG("      -> ", stage_timers.build_aln_seed_index->get_final(), "\n");
   SLOG("      -> ", stage_timers.kernel_alns->get_final(), "\n");
   SLOG("      -> ", stage_timers.aln_comms->get_final(), "\n");
   SLOG("    ", stage_timers.compute_ctg_depths->get_final(), "\n");
