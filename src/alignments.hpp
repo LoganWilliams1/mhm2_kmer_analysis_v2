@@ -58,6 +58,7 @@ struct Aln {
   int rstart, rstop, rlen;  // TODO can these be int16_t (for short reads only)?
   int score1, score2;       // TODO can this be uint16_t (for short reads only)?
   int mismatches;           // TODO can this be uint16_t (for short reads only)?
+  int identity;
   string sam_string;
   string cigar;
   int16_t read_group_id;
@@ -136,4 +137,6 @@ class Alns {
   void sort_alns();
 
   void compute_stats(size_t &num_reads_aligned, size_t &num_bases_aligned, size_t &num_proper_pairs);
+
+  void select_pairs();
 };  // class Alns

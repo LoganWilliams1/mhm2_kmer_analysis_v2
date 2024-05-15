@@ -114,6 +114,8 @@ class CtgsCovered {
   }
 
   void add_ctg_range(cid_t cid, int clen, int cstart, int cstop) {
+    // cid is -1 if the aln was dropped in favor of better alignments
+    if (cid == -1) return;
     CtgBaseRange ctg_base_range = {.cid = cid, .clen = clen, .cstart = cstart, .cstop = cstop};
     auto tgt = get_target_rank(cid);
     if (tgt != rank_me()) {
@@ -198,6 +200,20 @@ void post_assembly(Contigs &ctgs, Options &options) {
       stage_timers.alignments->stop();
       LOG_MEM("Aligned Post Assembly Reads " + short_name);
     }
+    // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
+    sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
+    stage_timers.alignments->inc_elapsed(aln_timers.sort_t.get_elapsed());
+    if (packed_reads.is_paired()) alns.select_pairs();
+    size_t num_reads_aligned, num_bases_aligned, num_proper_pairs;
+    alns.compute_stats(num_reads_aligned, num_bases_aligned, num_proper_pairs);
+    tot_reads_aligned += num_reads_aligned;
+    tot_bases_aligned += num_bases_aligned;
+    tot_proper_pairs += num_proper_pairs;
+    for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
+    //  Dump 1 file at a time with proper read groups
+    stage_timers.dump_alns->start();
+    alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
+    stage_timers.dump_alns->stop();
 #ifdef PAF_OUTPUT_FORMAT
     string aln_name("final_assembly-" + short_name + ".paf");
     alns.dump_single_file(aln_name, Alns::Format::PAF);
@@ -209,19 +225,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
     SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
     LOG_MEM("After Post Assembly Alignments Saved");
 #endif
-    // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
-    sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
-    stage_timers.alignments->inc_elapsed(aln_timers.sort_t.get_elapsed());
-    size_t num_reads_aligned, num_bases_aligned, num_proper_pairs;
-    alns.compute_stats(num_reads_aligned, num_bases_aligned, num_proper_pairs);
-    tot_reads_aligned += num_reads_aligned;
-    tot_bases_aligned += num_bases_aligned;
-    tot_proper_pairs += num_proper_pairs;
-    for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
-    //  Dump 1 file at a time with proper read groups
-    stage_timers.dump_alns->start();
-    alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
-    stage_timers.dump_alns->stop();
     LOG_MEM("After Post Assembly SAM Saved");
     stage_timers.compute_ctg_depths->start();
     // compute depths 1 column at a time

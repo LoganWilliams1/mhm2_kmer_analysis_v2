@@ -430,12 +430,13 @@ class CtgsDepths {
     SLOG_VERBOSE("Computing aln depths for ctgs\n");
     ProgressBar progbar(alns.size(), "Processing alignments");
     for (auto &aln : alns) {
+      if (aln.cid == -1) continue;
       progbar.update();
       // read_group_id could be one of multiple groups, so we set it to -1
       assert(read_group_id == -1 || aln.read_group_id == read_group_id);
       // aln.check_quality();
       //  this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
-      if (min_ctg_len && aln.calc_identity() < 97) {
+      if (min_ctg_len && aln.identity < 97) {
         num_bad_alns++;
         continue;
       }
