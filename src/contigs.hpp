@@ -42,6 +42,7 @@
  form.
 */
 
+#include <stdint.h>
 #include <array>
 #include <string>
 #include <vector>

@@ -70,7 +70,8 @@ struct Aln {
 
   void set(int ref_begin, int ref_end, int query_begin, int query_end, int top_score, int next_best_score, int aln_mismatches,
            int aln_read_group_id);
-  void set_sam_string(std::string_view read_seq, string cigar);
+  void set_sam_string(string cigar);
+  void add_cigar_pair_info(int64_t other_cid, int other_aln_cstart);
   // writes out in the format meraligner uses
   string to_paf_string() const;
   string to_blast6_string() const;

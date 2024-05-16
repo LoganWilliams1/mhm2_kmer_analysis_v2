@@ -124,7 +124,7 @@ void CPUAligner::ssw_align_read(StripedSmithWaterman::Aligner &ssw_aligner, Stri
                     max((int)(rseq.length() / 2), 15));
   aln.set(ssw_aln.ref_begin, ssw_aln.ref_end, ssw_aln.query_begin, ssw_aln.query_end, ssw_aln.sw_score, ssw_aln.sw_score_next_best,
           ssw_aln.mismatches, read_group_id);
-  if (ssw_filter.report_cigar) aln.set_sam_string(rseq, ssw_aln.cigar_string);
+  if (ssw_filter.report_cigar) aln.set_sam_string(ssw_aln.cigar_string);
   alns->add_aln(aln);
   /*
   if (ssw_filter.report_cigar && (aln.read_id == "CP000510.1-101195/2")) {

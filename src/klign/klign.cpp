@@ -465,7 +465,7 @@ class Aligner {
       int score1 = overlap_len * cpu_aligner.ssw_aligner.get_match_score();
       Aln aln(rname, cid, rstart, rstop, rlen, cstart, cstop, clen, orient, score1, 0, 0, read_group_id);
       assert(aln.is_valid());
-      if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(rseq, to_string(overlap_len) + "=");
+      if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(to_string(overlap_len) + "=");
       alns->add_aln(aln);
     } else {
       max_clen = max((int64_t)cseq.size(), max_clen);

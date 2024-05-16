@@ -120,7 +120,7 @@ static upcxx::future<> gpu_align_block(shared_ptr<AlignBlockData> aln_block_data
           cig += aln_results.cigar[k];
           k++;
         }
-        aln.set_sam_string(aln_block_data->read_seqs[i], cig);
+        aln.set_sam_string(cig);
         // cig = "GPU_CIGAR: "; //use this to calculate which percentage of traceback is being done on GPU
         cig = "";
       }
