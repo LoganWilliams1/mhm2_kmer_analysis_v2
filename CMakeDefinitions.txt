@@ -154,7 +154,7 @@ add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 # Seed space for post assembly: decreasing this value increases the alignment computation time, but generates a few more alignments
 add_definitions(-DPOST_ASM_ALN_SEED_SPACE=8)
 # seed length used for post assembly alignment
-add_definitions(-DPOST_ASM_ALN_K=31)
+add_definitions(-DPOST_ASM_ALN_K=21)
 # also dump alignments from post assembly in PAF format (in addition to SAM)
 # add_definitions(-DPAF_OUTPUT_FORMAT)
 # also dump alignments from post assembly in Blast6 format

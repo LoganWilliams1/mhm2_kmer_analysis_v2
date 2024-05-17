@@ -665,6 +665,7 @@ bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
 }
 
 void Alns::select_pairs(size_t &num_proper_pairs) {
+  BarrierTimer timer(__FILEFUNC__);
   vector<size_t> read1_aln_indexes;
   vector<size_t> read2_aln_indexes;
   string curr_read_id = "";
