@@ -71,7 +71,7 @@ struct Aln {
   void set(int ref_begin, int ref_end, int query_begin, int query_end, int top_score, int next_best_score, int aln_mismatches,
            int aln_read_group_id);
   void set_sam_string(string cigar);
-  void add_cigar_pair_info(int64_t other_cid, int other_aln_cstart);
+  void add_cigar_pair_info(int64_t other_cid, int other_aln_cstart, char other_orient, int read_len);
   // writes out in the format meraligner uses
   string to_paf_string() const;
   string to_blast6_string() const;
@@ -89,11 +89,16 @@ class Alns {
   alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
+  int read_len;
+
+  void set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes,
+                     size_t &num_alns_cleared);
 
  public:
   enum class Format { PAF, BLAST, SAM };
 
   Alns();
+  Alns(int read_len);
 
   void clear();
 

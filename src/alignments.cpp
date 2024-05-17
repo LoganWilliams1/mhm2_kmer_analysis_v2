@@ -62,12 +62,17 @@
 #include "upcxx_utils/mem_profile.hpp"
 
 using namespace upcxx_utils;
-using std::bitset;
-using std::ostringstream;
-using std::string;
+using namespace std;
 
 using upcxx::future;
 
+static int get_pair_id(const string &read_id) {
+  string pair_id_str = read_id.substr(read_id.length() - 2, 2);
+  int pair_id = 0;
+  if (pair_id_str == "/1") pair_id = 1;
+  if (pair_id_str == "/2") pair_id = 2;
+  return pair_id;
+}
 //
 // class Aln
 //
@@ -131,43 +136,40 @@ void Aln::set(int ref_begin, int ref_end, int query_begin, int query_end, int to
   identity = calc_identity();
 }
 
-static string construct_sam_string(const string &read_id, char orient, int64_t cid, int cstart, int mapq, const string &cigar,
+static string construct_sam_string(const string &read_id, int flags, int64_t cid, int map_pos, int mapq, const string &cigar,
                                    string pair_read_id, int pair_pos, int tlen, int score1, int mismatches, int read_group_id,
                                    int identity) {
   string sam_string = "";
   // query name
   sam_string = read_id + "\t";
   // flags: https://www.samformat.info/sam-format-flag
-  if (orient == '-')
-    sam_string += "16\t";
-  else
-    sam_string += "0\t";
+  sam_string += to_string(flags) + "\t";
   // reference name
-  sam_string += "scaffold_" + std::to_string(cid) + "\t";
+  sam_string += "scaffold_" + to_string(cid) + "\t";
   // first mapping position in reference
-  sam_string += std::to_string(cstart + 1) + "\t";
+  sam_string += to_string(map_pos) + "\t";
   // mapping quality score
-  sam_string += std::to_string(mapq) + "\t";
+  sam_string += to_string(mapq) + "\t";
   // cigar
   sam_string += cigar + "\t";
   // reference name that mate read maps to
   sam_string += pair_read_id + "\t";
   // position of mate read in reference
-  sam_string += std::to_string(pair_pos) + "\t";
+  sam_string += to_string(pair_pos) + "\t";
   // template length (should be aln length)
-  sam_string += std::to_string(tlen) + "\t";
+  sam_string += to_string(tlen) + "\t";
   // read sequence - empty to save space
   sam_string += "*\t";
   // read quals - empty to save space
   sam_string += "*\t";
   // tag - alignment score
-  sam_string += "AS:i:" + std::to_string(score1) + "\t";
+  sam_string += "AS:i:" + to_string(score1) + "\t";
   // tag - number of mismatches
-  sam_string += "NM:i:" + std::to_string(mismatches) + "\t";
+  sam_string += "NM:i:" + to_string(mismatches) + "\t";
   // tag - read group (sample)
-  sam_string += "RG:Z:" + std::to_string(read_group_id) + "\t";
+  sam_string += "RG:Z:" + to_string(read_group_id) + "\t";
   // tag - identity
-  sam_string += "YI:f:" + std::to_string(identity);
+  sam_string += "YI:f:" + to_string(identity);
   return sam_string;
 }
 
@@ -210,18 +212,38 @@ void Aln::set_sam_string(string cigar) {
   }
   */
 
-  sam_string = construct_sam_string(read_id, orient, cid, cstart, mapq, cigar, "*", 0, cstop - cstart + 1, score1, mismatches,
-                                    read_group_id, identity);
+  int flags = (orient == '-' ? 16 : 0);
+  sam_string =
+      construct_sam_string(read_id, flags, cid, cstart + 1, mapq, cigar, "*", 0, 0, score1, mismatches, read_group_id, identity);
 }
 
-void Aln::add_cigar_pair_info(int64_t other_cid, int other_aln_cstart) {
+void Aln::add_cigar_pair_info(int64_t other_cid, int other_aln_cstart, char other_orient, int read_len) {
+  int pair_id = get_pair_id(read_id);
+  int flags = 0;
+  // read paired
+  if (pair_id != 0) flags = 1;
+  // read mapped in proper pair
+  if (other_cid == cid && orient != other_orient) flags |= 2;
+  // mate unmapped
+  if (other_cid == -1) flags |= 8;
+  // read reverse strand
+  if (orient == '-') flags |= 16;
+  // mate reverse strand
+  if (other_orient == '-') flags |= 32;
+  // first in pair
+  if (pair_id == 1) flags |= 64;
+  // second in pair
+  if (pair_id == 2) flags |= 128;
+  int mapq = 255;
   string other_cid_str = "*";
-  if (other_cid == cid)
+  if (other_cid == cid || other_cid == -1)
     other_cid_str = "=";
-  else if (other_cid > -1)
-    other_cid_str = "scaffold_" + std::to_string(other_cid);
-  sam_string = construct_sam_string(read_id, orient, cid, cstart, 255, cigar, other_cid_str, other_aln_cstart, cstop - cstart + 1,
-                                    score1, mismatches, read_group_id, identity);
+  else
+    other_cid_str = "scaffold_" + to_string(other_cid);
+  int tlen = (other_cid != cid ? 0 : abs(cstart - other_aln_cstart) + read_len);
+  if (pair_id == 2) tlen *= -1;
+  sam_string = construct_sam_string(read_id, flags, cid, cstart + 1, mapq, cigar, other_cid_str, other_aln_cstart + 1, tlen, score1,
+                                    mismatches, read_group_id, identity);
 }
 
 // minimap2 PAF output format
@@ -239,9 +261,9 @@ string Aln::to_blast6_string() const {
   ostringstream os;
   // we don't track gap opens
   int gap_opens = 0;
-  int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
+  int aln_len = max(rstop - rstart, abs(cstop - cstart));
   os << read_id << "\t"
-     << "Contig" << cid << "\t" << std::fixed << std::setprecision(3) << identity << "\t" << aln_len << "\t" << mismatches << "\t"
+     << "Contig" << cid << "\t" << fixed << setprecision(3) << identity << "\t" << aln_len << "\t" << mismatches << "\t"
      << gap_opens << "\t" << rstart + 1 << "\t" << rstop << "\t";
   // subject start and end reversed when orientation is minus
   if (orient == '+')
@@ -262,16 +284,16 @@ bool Aln::is_valid() const {
   return read_group_id >= 0 && (orient == '+' || orient == '-') && mismatches >= 0 && cid >= 0 && read_id.size() > 0;
 }
 
-std::pair<int, int> Aln::get_unaligned_overlaps() const {
+pair<int, int> Aln::get_unaligned_overlaps() const {
   int fwd_cstart = cstart, fwd_cstop = cstop;
   if (orient == '-') switch_orient(fwd_cstart, fwd_cstop, clen);
-  int unaligned_left = std::min(rstart, fwd_cstart);
-  int unaligned_right = std::min(rlen - rstop, clen - fwd_cstop);
+  int unaligned_left = min(rstart, fwd_cstart);
+  int unaligned_right = min(rlen - rstop, clen - fwd_cstop);
   return {unaligned_left, unaligned_right};
 }
 
 double Aln::calc_identity() const {
-  int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
+  int aln_len = max(rstop - rstart, abs(cstop - cstart));
   int num_matches = aln_len - mismatches;
   auto [unaligned_left, unaligned_right] = get_unaligned_overlaps();
   aln_len += unaligned_left + unaligned_right;
@@ -279,7 +301,7 @@ double Aln::calc_identity() const {
 }
 
 bool Aln::check_quality() const {
-  int aln_len = std::max(rstop - rstart, abs(cstop - cstart));
+  int aln_len = max(rstop - rstart, abs(cstop - cstart));
   double perc_id = 100.0 * (aln_len - mismatches) / aln_len;
   int cigar_aln_len = 0;
   int cigar_mismatches = 0;
@@ -358,7 +380,13 @@ bool operator!=(const Aln &aln1, const Aln &aln2) { return (!(aln1 == aln2)); }
 
 Alns::Alns()
     : num_dups(0)
-    , num_bad(0) {}
+    , num_bad(0)
+    , read_len(0) {}
+
+Alns::Alns(int read_len)
+    : num_dups(0)
+    , num_bad(0)
+    , read_len(read_len) {}
 
 void Alns::clear() {
   alns.clear();
@@ -406,7 +434,7 @@ void Alns::add_aln(Aln &aln) {
   // Only filter out if the SAM string is not set, i.e. we are using the alns internally rather than for post processing output
   auto [unaligned_left, unaligned_right] = aln.get_unaligned_overlaps();
   auto unaligned = unaligned_left + unaligned_right;
-  // int aln_len = std::max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
+  // int aln_len = max(aln.rstop - aln.rstart + unaligned, abs(aln.cstop - aln.cstart + unaligned));
   if (!aln.sam_string.empty() || (unaligned_left <= KLIGN_UNALIGNED_THRES && unaligned_right <= KLIGN_UNALIGNED_THRES))
     alns.push_back(aln);
   else
@@ -417,7 +445,7 @@ void Alns::append(Alns &more_alns) {
   DBG("Appending ", more_alns.size(), " alignments to ", alns.size(), "\n");
   reserve(alns.size() + more_alns.alns.size());
   for (auto &a : more_alns.alns) {
-    alns.emplace_back(std::move(a));
+    alns.emplace_back(move(a));
   }
   num_dups += more_alns.num_dups;
   num_bad += more_alns.num_bad;
@@ -474,7 +502,7 @@ upcxx::future<> Alns::write_sam_header(dist_ofstream &of, const vector<string> &
   for (const auto &ctg : ctgs) {
     if (ctg.seq.length() < min_ctg_len) continue;
     assert(ctg.id >= 0);
-    of << "@SQ\tSN:scaffold_" << std::to_string(ctg.id) << "\tLN:" << std::to_string(ctg.seq.length()) << "\n";
+    of << "@SQ\tSN:scaffold_" << to_string(ctg.id) << "\tLN:" << to_string(ctg.seq.length()) << "\n";
   }
   // all @SQ headers aggregated to the top of the file
   auto all_done = of.flush_collective();
@@ -484,7 +512,7 @@ upcxx::future<> Alns::write_sam_header(dist_ofstream &of, const vector<string> &
     // add ReadGroup tags - @RG ID:[0-n] DS:filename
     for (int i = 0; i < read_group_names.size(); i++) {
       string basefilename = upcxx_utils::get_basename(read_group_names[i]);
-      of << "@RG\tID:" << std::to_string(i) << "\tDS:" << basefilename << "\n";
+      of << "@RG\tID:" << to_string(i) << "\tDS:" << basefilename << "\n";
     }
     // add program information
     of << "@PG\tID:MHM2\tPN:MHM2\tVN:" << string(MHM2_VERSION) << "\n";
@@ -540,7 +568,7 @@ void Alns::sort_alns() {
   BaseTimer timer(__FILEFUNC__);
   timer.start();
   // sort the alns by name and then for the read from best score to worst - this is needed in later stages
-  std::sort(alns.begin(), alns.end(), Aln::cmp);
+  sort(alns.begin(), alns.end(), Aln::cmp);
   // now purge any duplicates
   auto start_size = alns.size();
   auto ip = unique(alns.begin(), alns.end());
@@ -552,10 +580,7 @@ void Alns::sort_alns() {
 
 void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped, size_t &num_proper_pairs) {
   auto get_read_id = [](const string &read_id) {
-    string pair_id_str = read_id.substr(read_id.length() - 2, 2);
-    int pair_id = 0;
-    if (pair_id_str == "/1") pair_id = 1;
-    if (pair_id_str == "/2") pair_id = 2;
+    int pair_id = get_pair_id(read_id);
     if (pair_id == 0) return make_pair(read_id, 0);
     return make_pair(read_id.substr(0, read_id.length() - 2), pair_id);
   };
@@ -590,9 +615,8 @@ void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped, siz
   LOG_MEM("After alns.compute_stats");
 }
 
-#define PRINT_READ_ID "CP000510.1-10145 X"
-
-void Alns::select_pairs() {
+void Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes,
+                         size_t &num_alns_cleared) {
   auto get_highest_ri = [&alns = this->alns](vector<size_t> read_aln_indexes, const string &read_id) {
     if (read_aln_indexes.empty()) return (int64_t)-1;
     int64_t highest_ri = read_aln_indexes[0];
@@ -603,9 +627,6 @@ void Alns::select_pairs() {
       else if (alns[ri].score1 == alns[highest_ri].score1 && alns[ri].cid < alns[highest_ri].cid)
         highest_ri = ri;
     }
-    if (read_id == PRINT_READ_ID)
-      WARN("found highest aln for read ", alns[highest_ri].read_id, " cid ", alns[highest_ri].cid, " score ",
-           alns[highest_ri].score1);
     return highest_ri;
   };
 
@@ -617,6 +638,42 @@ void Alns::select_pairs() {
     if (highest_ri == -1) num_cleared++;
   };
 
+  size_t highest_r1 = get_highest_ri(read1_aln_indexes, read_id);
+  size_t highest_r2 = get_highest_ri(read2_aln_indexes, read_id);
+  if (highest_r1 != -1 && highest_r2 != -1) {
+    if (alns[highest_r1].cid != alns[highest_r2].cid) {
+      // find highest scoring pair
+      int max_score = 0;
+      for (auto aln_r1 : read1_aln_indexes) {
+        for (auto aln_r2 : read2_aln_indexes) {
+          // int score = alns[aln_r1].score1 + alns[aln_r2].score1;
+          int score = alns[aln_r1].score1 * alns[aln_r1].identity + alns[aln_r2].score1 * alns[aln_r2].identity;
+          if (score > max_score) {
+            highest_r1 = aln_r1;
+            highest_r2 = aln_r2;
+            max_score = score;
+          }
+        }
+      }
+    }
+  }
+  if (highest_r1 != -1) {
+    if (highest_r2 != -1)
+      alns[highest_r1].add_cigar_pair_info((alns[highest_r2].cid), alns[highest_r2].cstart, alns[highest_r2].orient, read_len);
+    else
+      alns[highest_r1].add_cigar_pair_info(-1, 0, ' ', read_len);
+  }
+  if (highest_r2 != -1) {
+    if (highest_r1 != -1)
+      alns[highest_r2].add_cigar_pair_info((alns[highest_r1].cid), alns[highest_r1].cstart, alns[highest_r1].orient, read_len);
+    else
+      alns[highest_r2].add_cigar_pair_info(-1, 0, ' ', read_len);
+  }
+  clear_other_alns(highest_r1, read1_aln_indexes, num_alns_cleared);
+  clear_other_alns(highest_r2, read2_aln_indexes, num_alns_cleared);
+}
+
+void Alns::select_pairs() {
   vector<size_t> read1_aln_indexes;
   vector<size_t> read2_aln_indexes;
   string curr_read_id = "";
@@ -630,54 +687,23 @@ void Alns::select_pairs() {
     }
     string read_id = aln.read_id.substr(0, aln.read_id.length() - 2);
     if (i == 0) curr_read_id = read_id;
-    if (read_id == PRINT_READ_ID) WARN(aln.sam_string);
     if (read_id != curr_read_id) {
-      size_t highest_r1 = get_highest_ri(read1_aln_indexes, curr_read_id);
-      size_t highest_r2 = get_highest_ri(read2_aln_indexes, curr_read_id);
-      if (highest_r1 != -1 && highest_r2 != -1) {
-        if (alns[highest_r1].cid != alns[highest_r2].cid) {
-          // find highest scoring pair
-          int max_score = 0;
-          for (auto aln_r1 : read1_aln_indexes) {
-            for (auto aln_r2 : read2_aln_indexes) {
-              // int score = alns[aln_r1].score1 + alns[aln_r2].score1;
-              int score = alns[aln_r1].score1 * alns[aln_r1].identity + alns[aln_r2].score1 * alns[aln_r2].identity;
-              if (score > max_score) {
-                highest_r1 = aln_r1;
-                highest_r2 = aln_r2;
-                max_score = score;
-              }
-            }
-          }
-        }
-      }
-      if (highest_r1 != -1) {
-        if (highest_r2 != -1)
-          alns[highest_r1].add_cigar_pair_info((alns[highest_r2].cid), alns[highest_r2].cstart + 1);
-        else
-          alns[highest_r1].add_cigar_pair_info(-1, 0);
-      }
-      if (highest_r2 != -1) {
-        if (highest_r1 != -1)
-          alns[highest_r2].add_cigar_pair_info((alns[highest_r1].cid), alns[highest_r1].cstart + 1);
-        else
-          alns[highest_r2].add_cigar_pair_info(-1, 0);
-      }
-      clear_other_alns(highest_r1, read1_aln_indexes, num_alns_cleared);
-      clear_other_alns(highest_r2, read2_aln_indexes, num_alns_cleared);
+      set_pair_info(curr_read_id, read1_aln_indexes, read2_aln_indexes, num_alns_cleared);
       read1_aln_indexes.clear();
       read2_aln_indexes.clear();
       i--;
       curr_read_id = read_id;
       continue;
     }
-    char pair = aln.read_id[aln.read_id.length() - 1];
+    int pair = get_pair_id(aln.read_id);
     switch (pair) {
-      case '1': read1_aln_indexes.push_back(i); break;
-      case '2': read2_aln_indexes.push_back(i); break;
+      case 1: read1_aln_indexes.push_back(i); break;
+      case 2: read2_aln_indexes.push_back(i); break;
       default: DIE("Incorrect pair information for read ", aln.read_id, " found '", pair, "'");
     }
   }
+  if (!read1_aln_indexes.empty() || !read2_aln_indexes.empty())
+    set_pair_info(curr_read_id, read1_aln_indexes, read2_aln_indexes, num_alns_cleared);
   auto all_num_alns_cleared = reduce_one(num_alns_cleared, op_fast_add, 0).wait();
   SLOG(KLGREEN, "Number other alns dropped ", all_num_alns_cleared, KNORM, "\n");
 }

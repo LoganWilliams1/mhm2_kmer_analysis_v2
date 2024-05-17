@@ -179,7 +179,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
     ctgs.clear_slices();
     dist_ofstream sam_ofs(short_name + ".sam");
     KlignTimers aln_timers;
-    Alns alns;
+    Alns alns(rlen_limit);
     for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
       SLOG(KBLUE, "\nContig subset ", subset_i, KNORM, ":\n");
       ctgs.set_next_slice(options.post_assm_subsets);
