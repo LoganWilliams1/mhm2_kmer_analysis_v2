@@ -578,7 +578,7 @@ void Alns::sort_alns() {
   LOG("Sorted alns and removed ", num_dups, " duplicates in ", timer.get_elapsed(), " s\n");
 }
 
-void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped, size_t &num_proper_pairs) {
+void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped) {
   auto get_read_id = [](const string &read_id) {
     int pair_id = get_pair_id(read_id);
     if (pair_id == 0) return make_pair(read_id, 0);
@@ -599,24 +599,10 @@ void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped, siz
   num_bases_mapped = 0;
   for (auto &mapped_read : mapped_reads) num_bases_mapped += mapped_read.second.count();
 
-  num_proper_pairs = 0;
-  // count proper pairs: both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
-  for (size_t i = 1; i < alns.size(); i++) {
-    if (alns[i].cid == -1) continue;
-    auto [read_id, pair_id] = get_read_id(alns[i].read_id);
-    if (pair_id != 2) continue;
-    // now at second read pair - check for previous one
-    auto [prev_read_id, prev_pair_id] = get_read_id(alns[i - 1].read_id);
-    if (prev_read_id == read_id && prev_pair_id == 1 && alns[i - 1].cid == alns[i].cid && alns[i - 1].orient != alns[i].orient) {
-      int d = (alns[i - 1].cstart < alns[i].cstart ? alns[i].cstart - alns[i - 1].cstop : alns[i - 1].cstart - alns[i].cstop);
-      if (d < 32000) num_proper_pairs++;
-    }
-  }
   LOG_MEM("After alns.compute_stats");
 }
 
-void Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes,
-                         size_t &num_alns_cleared) {
+bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes) {
   auto get_highest_ri = [&alns = this->alns](vector<size_t> read_aln_indexes, const string &read_id) {
     if (read_aln_indexes.empty()) return (int64_t)-1;
     int64_t highest_ri = read_aln_indexes[0];
@@ -630,12 +616,10 @@ void Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
     return highest_ri;
   };
 
-  auto clear_other_alns = [&alns = this->alns](int64_t highest_ri, vector<size_t> read_aln_indexes, size_t &num_cleared) {
+  auto clear_other_alns = [&alns = this->alns](int64_t highest_ri, vector<size_t> read_aln_indexes) {
     for (auto ri : read_aln_indexes) {
       if (ri != highest_ri) alns[ri].cid = -1;
     }
-    num_cleared += read_aln_indexes.size() - 1;
-    if (highest_ri == -1) num_cleared++;
   };
 
   size_t highest_r1 = get_highest_ri(read1_aln_indexes, read_id);
@@ -669,15 +653,22 @@ void Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
     else
       alns[highest_r2].add_cigar_pair_info(-1, 0, ' ', read_len);
   }
-  clear_other_alns(highest_r1, read1_aln_indexes, num_alns_cleared);
-  clear_other_alns(highest_r2, read2_aln_indexes, num_alns_cleared);
+  clear_other_alns(highest_r1, read1_aln_indexes);
+  clear_other_alns(highest_r2, read2_aln_indexes);
+  if (highest_r1 != -1 && highest_r2 != -1 && alns[highest_r1].cid == alns[highest_r2].cid &&
+      alns[highest_r1].orient != alns[highest_r2].orient) {
+    if (alns[highest_r1].cstop < alns[highest_r2].cstart - 32000) return false;
+    if (alns[highest_r2].cstop < alns[highest_r1].cstart - 32000) return false;
+    return true;
+  }
+  return false;
 }
 
-void Alns::select_pairs() {
+void Alns::select_pairs(size_t &num_proper_pairs) {
   vector<size_t> read1_aln_indexes;
   vector<size_t> read2_aln_indexes;
   string curr_read_id = "";
-  size_t num_alns_cleared = 0;
+  num_proper_pairs = 0;
   // chose only one pair of alns per read pair
   for (size_t i = 0; i < alns.size(); i++) {
     Aln &aln = alns[i];
@@ -688,7 +679,7 @@ void Alns::select_pairs() {
     string read_id = aln.read_id.substr(0, aln.read_id.length() - 2);
     if (i == 0) curr_read_id = read_id;
     if (read_id != curr_read_id) {
-      set_pair_info(curr_read_id, read1_aln_indexes, read2_aln_indexes, num_alns_cleared);
+      if (set_pair_info(curr_read_id, read1_aln_indexes, read2_aln_indexes)) num_proper_pairs++;
       read1_aln_indexes.clear();
       read2_aln_indexes.clear();
       i--;
@@ -702,8 +693,7 @@ void Alns::select_pairs() {
       default: DIE("Incorrect pair information for read ", aln.read_id, " found '", pair, "'");
     }
   }
-  if (!read1_aln_indexes.empty() || !read2_aln_indexes.empty())
-    set_pair_info(curr_read_id, read1_aln_indexes, read2_aln_indexes, num_alns_cleared);
-  auto all_num_alns_cleared = reduce_one(num_alns_cleared, op_fast_add, 0).wait();
-  SLOG(KLGREEN, "Number other alns dropped ", all_num_alns_cleared, KNORM, "\n");
+  if (!read1_aln_indexes.empty() || !read2_aln_indexes.empty()) {
+    if (set_pair_info(curr_read_id, read1_aln_indexes, read2_aln_indexes)) num_proper_pairs++;
+  }
 }

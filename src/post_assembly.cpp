@@ -203,12 +203,13 @@ void post_assembly(Contigs &ctgs, Options &options) {
     // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
     sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
     stage_timers.alignments->inc_elapsed(aln_timers.sort_t.get_elapsed());
-    if (packed_reads.is_paired()) alns.select_pairs();
-    size_t num_reads_aligned, num_bases_aligned, num_proper_pairs;
-    alns.compute_stats(num_reads_aligned, num_bases_aligned, num_proper_pairs);
+    size_t num_proper_pairs = 0;
+    if (packed_reads.is_paired()) alns.select_pairs(num_proper_pairs);
+    tot_proper_pairs += num_proper_pairs;
+    size_t num_reads_aligned, num_bases_aligned;
+    alns.compute_stats(num_reads_aligned, num_bases_aligned);
     tot_reads_aligned += num_reads_aligned;
     tot_bases_aligned += num_bases_aligned;
-    tot_proper_pairs += num_proper_pairs;
     for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
     //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
@@ -273,7 +274,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
   SLOG("  Percent mapped: ", 100.0 * (double)all_reads_aligned / all_tot_num_reads, "\n");
   SLOG("  Percent bases mapped: ", 100.0 * (double)all_bases_aligned / all_tot_num_bases, "\n");
   //  a proper pair is where both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
-  SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs * 2.0 / all_tot_num_reads, "\n");
+  SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs / (all_tot_num_reads / 2), "\n");
   // average depth per base
   SLOG("  Average coverage: ", avg_coverage, "\n");
   SLOG("  Average coverage with deletions: N/A\n");

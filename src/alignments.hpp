@@ -91,8 +91,7 @@ class Alns {
   int64_t num_bad;
   int read_len;
 
-  void set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes,
-                     size_t &num_alns_cleared);
+  bool set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes);
 
  public:
   enum class Format { PAF, BLAST, SAM };
@@ -142,7 +141,7 @@ class Alns {
 
   void sort_alns();
 
-  void compute_stats(size_t &num_reads_aligned, size_t &num_bases_aligned, size_t &num_proper_pairs);
+  void compute_stats(size_t &num_reads_aligned, size_t &num_bases_aligned);
 
-  void select_pairs();
+  void select_pairs(size_t &num_proper_pairs);
 };  // class Alns
