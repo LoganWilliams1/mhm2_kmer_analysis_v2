@@ -548,6 +548,7 @@ def main():
     _start_time = time.time()
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_interrupt)
+    default_shared_heap = "10%"
 
     argparser = argparse.ArgumentParser(
         add_help=False,
@@ -561,7 +562,7 @@ def main():
         help="Automatically resume after a failure",
     )
     argparser.add_argument(
-        "--shared-heap", default="10%", help="Shared heap as a percentage of memory"
+        "--shared-heap", default=default_shared_heap, help="Shared heap as a percentage of memory"
     )
     # argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument(
@@ -643,7 +644,6 @@ def main():
 
     if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
         cmd.extend(["-shared-heap", options.shared_heap])
-        # os.environ['UPCXX_SHARED_HEAP_SIZE'] = options.shared_heap
 
     # special spawning for perlmutter GPU nodes that requires srun, not upcxx-run for now
     if (
@@ -663,7 +663,7 @@ def main():
             os.path.split(sys.argv[0])[0] + "/mhm2-mps-wrapper-perlmutter.sh",
         ]
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB"
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ[
             "MHM2_PIN"
         ] = "none"  # default of numa is suboptimal on perlmutter gpu
@@ -690,7 +690,7 @@ def main():
             "--bcast=/tmp/",
         ]
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB"
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal on crusher
         print(
             "This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
@@ -718,7 +718,7 @@ def main():
             "--bcast=/tmp/",
         ]
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB"
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal on crusher
         print(
             "This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
@@ -728,15 +728,18 @@ def main():
         )
 
     if (
-        "UPCXX_SHARED_HEAP_SIZE" in os.environ
-        and "GASNET_MAX_SEGSIZE" not in os.environ
+        "GASNET_MAX_SEGSIZE" not in os.environ
     ):
+        if "UPCXX_SHARED_HEAP_SIZE" in os.environ and "MB" in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
+            os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
+        else:
+            os.environ["GASNET_MAX_SEGSIZE"] = "0.5/H"
+
+
         print(
-            "Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ",
-            os.environ["UPCXX_SHARED_HEAP_SIZE"],
-            " to avoid gasnet memory probe",
+            "Setting GASNET_MAX_SEGSIZE == ", os.environ["GASNET_MAX_SEGSIZE"], " and ", "UPCXX_SHARED_HEAP_SIZE == " +
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] if "UPCXX_SHARED_HEAP_SIZE" in os.environ else " -shared-heap = " + options.shared_heap, " to avoid gasnet memory probe",
         )
-        os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
