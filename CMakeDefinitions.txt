@@ -90,7 +90,7 @@ add_definitions(-DKLIGN_UNALIGNED_THRES=1)
 # threshold in percent identity for considering an alignment good
 add_definitions(-DKLIGN_ALN_IDENTITY_CUTOFF=95)
 # the block size of alignments to be dispatched to the GPU
-add_definitions(-DKLIGN_GPU_BLOCK_SIZE=20000)
+add_definitions(-DKLIGN_GPU_BLOCK_SIZE=5000)
 # number of rget requests buffered together for a target rank
 add_definitions(-DKLIGN_RGET_BUF_SIZE=10000)
 # maximum message size of KLIGN aggregated messages buffers

@@ -59,6 +59,7 @@ struct Aln {
   int score1, score2;       // TODO can this be uint16_t (for short reads only)?
   int mismatches;           // TODO can this be uint16_t (for short reads only)?
   int identity;
+  int mapq;
   string sam_string;
   string cigar;
   int16_t read_group_id;
