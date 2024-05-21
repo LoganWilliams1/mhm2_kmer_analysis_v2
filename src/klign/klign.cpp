@@ -474,7 +474,7 @@ class Aligner {
       int64_t tot_mem_est = num_kernel_alns * (max_clen + max_rlen + 2 * sizeof(int) + 5 * sizeof(short));
       // contig is the ref, read is the query - done this way so that we can potentially do multiple alns to each read
       // this is also the way it's done in meraligner
-      kernel_alns.emplace_back(rname, cid, 0, 0, rlen, cstart, 0, clen, orient);
+      kernel_alns.emplace_back(rname, cid, rlen, cstart, clen, orient);
       ctg_seqs.emplace_back(cseq);
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {

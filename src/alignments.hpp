@@ -66,8 +66,9 @@ struct Aln {
   char orient;  // TODO can this be bool?
 
   Aln();
-  Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, int cstart, int cstop, int clen, char orient,
-      int score1 = 0, int score2 = 0, int mismatches = 0, int read_group_id = -1);
+  Aln(const string &read_id, int64_t cid, int rlen, int cstart, int clen, char orient);
+  Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, int cstart, int cstop, int clen, char orient, int score1,
+      int score2, int mismatches, int read_group_id);
 
   void set(int ref_begin, int ref_end, int query_begin, int query_end, int top_score, int next_best_score, int aln_mismatches,
            int aln_read_group_id);
@@ -78,7 +79,7 @@ struct Aln {
   string to_blast6_string() const;
   bool is_valid() const;
   std::pair<int, int> get_unaligned_overlaps() const;
-  double calc_identity() const;
+  void set_identity();
   bool check_quality() const;
   static bool cmp(const Aln &aln1, const Aln &aln2);
   friend bool operator==(const Aln &aln1, const Aln &aln2);

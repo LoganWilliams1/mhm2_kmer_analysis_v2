@@ -112,8 +112,26 @@ Aln::Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, in
     , cigar({})
     , read_group_id(read_group_id)
     , orient(orient) {
-  // DBG_VERBOSE(read_id, " cid=", cid, " RG=", read_group_id, " mismatches=", mismatches, "\n");
+  set_identity();
 }
+
+Aln::Aln(const string &read_id, int64_t cid, int rlen, int cstart, int clen, char orient)
+    : read_id(read_id)
+    , cid(cid)
+    , cstart(cstart)
+    , cstop(0)
+    , clen(clen)
+    , rstart(0)
+    , rstop(0)
+    , rlen(rlen)
+    , score1(0)
+    , score2(0)
+    , mismatches(0)
+    , identity(0)
+    , sam_string({})
+    , cigar({})
+    , read_group_id(-1)
+    , orient(orient) {}
 
 void Aln::set(int ref_begin, int ref_end, int query_begin, int query_end, int top_score, int next_best_score, int aln_mismatches,
               int aln_read_group_id) {
@@ -124,16 +142,9 @@ void Aln::set(int ref_begin, int ref_end, int query_begin, int query_end, int to
   if (orient == '-') switch_orient(rstart, rstop, rlen);
   score1 = top_score;
   score2 = next_best_score;
-  // auto [unaligned_left, unaligned_right] = get_unaligned_overlaps();
-  //  FIXME: mismatches should include unaligned overlaps
-  mismatches = aln_mismatches;  // + unaligned_left + unaligned_right;
-  // FIXME: need to increase the start and stop values to include the unaligned overlap
-  // cstart -= unaligned_left;
-  // cstop += unaligned_right;
-  // rstart -= unaligned_left;
-  // rstop += unaligned_right;
+  mismatches = aln_mismatches;
   read_group_id = aln_read_group_id;
-  identity = calc_identity();
+  set_identity();
 }
 
 static string construct_sam_string(const string &read_id, int flags, int64_t cid, int map_pos, int mapq, const string &cigar,
@@ -169,39 +180,69 @@ static string construct_sam_string(const string &read_id, int flags, int64_t cid
   // tag - read group (sample)
   sam_string += "RG:Z:" + to_string(read_group_id) + "\t";
   // tag - identity
-  sam_string += "YI:f:" + to_string(identity);
+  sam_string += "YI:i:" + to_string(identity);
   return sam_string;
+}
+
+void Aln::set_identity() {
+  // calculate id from actual aligned length plus overlaps, not from cigar string
+  auto [left_overlap, right_overlap] = get_unaligned_overlaps();
+  auto overlap = left_overlap + right_overlap;
+  int aln_len = max(abs(rstop - rstart), abs(cstop - cstart)) + overlap;
+  identity = round(100.0 * (double)(aln_len - mismatches - overlap) / aln_len);
+}
+
+static double calc_identity_from_cigar(const string &cigar) {
+  int mismatches = 0;
+  // need to count the number of mismatches because these are not available from the GPU computation
+  string count_str = "";
+  int aln_len = 0;
+  int matches = 0;
+  char c;
+  for (int i = 0; i < cigar.length(); i++) {
+    c = cigar[i];
+    if (isdigit(c)) {
+      count_str += c;
+    } else {
+      int count = std::stoi(count_str);
+      if (c == 'X' || c == 'I' || c == 'D')
+        mismatches += count;
+      else if (c == '=')
+        matches += count;
+      if (c != 'D') aln_len += count;
+      count_str = "";
+    }
+  }
+  // calculate aln length from cigar string. Identity is just then number of matches divided by alignment length
+  return 100.0 * (double)matches / aln_len;
+}
+
+static int calc_mismatches_from_cigar(const string &cigar) {
+  int mismatches = 0;
+  // need to count the number of mismatches because these are not available from the GPU computation
+  string count_str = "";
+  char c;
+  for (int i = 0; i < cigar.length(); i++) {
+    c = cigar[i];
+    if (isdigit(c)) {
+      count_str += c;
+    } else {
+      int count = std::stoi(count_str);
+      if (c == 'X' || c == 'I' || c == 'D') mismatches += count;
+      count_str = "";
+    }
+  }
+  return mismatches;
 }
 
 void Aln::set_sam_string(string cigar) {
   assert(is_valid());
-  mismatches = 0;
-  // need to count the number of mismatches because these are not available from the GPU computation
-  string count_str = "";
-  int aln_len = 0;
-  int first_trim = 0, last_trim = cigar.length();
-  for (int i = 0; i < cigar.length(); i++) {
-    if (isdigit(cigar[i])) {
-      count_str += cigar[i];
-    } else {
-      if (cigar[i] == 'X' || cigar[i] == 'I' || cigar[i] == 'D') {
-        mismatches += std::stoi(count_str);
-      } else if (cigar[i] == 'S') {
-        if (i == cigar.length() - 1)
-          last_trim = i - count_str.length();
-        else
-          first_trim = i + 1;
-      } else {
-        aln_len++;
-      }
-      count_str = "";
-    }
-  }
-  this->cigar = cigar.substr(first_trim, last_trim - first_trim);
-  identity = calc_identity();
-  // This mapq is calculated in a similar way to how it is done in bbmap (current/stream/SamLine.java:1958), assuming no penalizing
-  // ambiguity. For compatibility, the bbmap scores max out at 100 per perfect match base, so we convert using our match score
-  // value for the MHM local alignment
+  this->cigar = cigar;
+  int aln_len;
+  mismatches = calc_mismatches_from_cigar(cigar);
+  //  This mapq is calculated in a similar way to how it is done in bbmap (current/stream/SamLine.java:1958), assuming no penalizing
+  //  ambiguity. For compatibility, the bbmap scores max out at 100 per perfect match base, so we convert using our match score
+  //  value for the MHM local alignment
   int match_score = (int)(to_string(BLASTN_ALN_SCORES)[0] - '0');
   double other_score = 1.6 * ((double)score1 - (double)rlen * match_score * 0.4);
   double max_val = 1.5 * log2(rlen) + 36;
@@ -236,8 +277,27 @@ void Aln::add_cigar_pair_info(int64_t other_cid, int other_aln_cstart, char othe
     other_cid_str = "scaffold_" + to_string(other_cid);
   int tlen = (other_cid != cid ? 0 : abs(cstart - other_aln_cstart) + read_len);
   if (pair_id == 2) tlen *= -1;
+  // calculate id from actual aligned length plus overlaps, not from cigar string
+  auto [left_overlap, right_overlap] = get_unaligned_overlaps();
+  auto overlap = left_overlap + right_overlap;
+  int aln_len = max(abs(rstop - rstart), abs(cstop - cstart)) + overlap;
+  identity = round(100.0 * (double)(aln_len - mismatches - overlap) / aln_len);
   sam_string = construct_sam_string(read_id, flags, cid, cstart + 1, mapq, cigar, other_cid_str, other_aln_cstart + 1, tlen, score1,
                                     mismatches, read_group_id, identity);
+  // for debugging
+  // sam_string += "\t";
+  /*sam_string += "YII:i:" + to_string(identity) + "\t";
+  sam_string += "YRB:i:" + to_string(rstart) + "\t";
+  sam_string += "YRE:i:" + to_string(rstop) + "\t";
+  sam_string += "YCB:i:" + to_string(cstart) + "\t";
+  sam_string += "YCE:i:" + to_string(cstop) + "\t";
+  sam_string += "YCL:i:" + to_string(clen) + "\t";
+  sam_string += "YO:c:";
+  sam_string += orient;
+  sam_string += "\t";
+  sam_string += "YAL:i:" + to_string(aln_len) + "\t";
+  sam_string += "YLO:i:" + to_string(left_overlap) + "\t";
+  sam_string += "YRO:i:" + to_string(right_overlap);*/
 }
 
 // minimap2 PAF output format
@@ -284,14 +344,6 @@ pair<int, int> Aln::get_unaligned_overlaps() const {
   int unaligned_left = min(rstart, fwd_cstart);
   int unaligned_right = min(rlen - rstop, clen - fwd_cstop);
   return {unaligned_left, unaligned_right};
-}
-
-double Aln::calc_identity() const {
-  int aln_len = max(rstop - rstart, abs(cstop - cstart));
-  int num_matches = aln_len - mismatches;
-  auto [unaligned_left, unaligned_right] = get_unaligned_overlaps();
-  aln_len += unaligned_left + unaligned_right;
-  return 100.0 * (double)num_matches / aln_len;
 }
 
 bool Aln::check_quality() const {
@@ -388,25 +440,22 @@ void Alns::clear() {
 }
 
 void Alns::add_aln(Aln &aln) {
-  auto new_identity = aln.calc_identity();
-  // This is not done in bbmap - poorer alns are kept. This filtering is done when computing aln depths
-  // if (new_identity < 97) {
-  //   num_bad++;
-  //   return;
-  // }
-  //  check for multiple read-ctg alns. Check backwards from most recent entry, since all alns for a read are grouped
+  // aln.set_identity();
+  //  This is not done in bbmap - poorer alns are kept. This filtering is done when computing aln depths
+  //  if (new_identity < 97) {
+  //    num_bad++;
+  //    return;
+  //  }
+  //   check for multiple read-ctg alns. Check backwards from most recent entry, since all alns for a read are grouped
   for (auto it = alns.rbegin(); it != alns.rend();) {
     // we have no more entries for this read
     if (it->read_id != aln.read_id) break;
     if (it->cid == aln.cid) {
       num_dups++;
       auto old_identity = it->identity;
-      auto new_identity = aln.calc_identity();
-      // SLOG("multi aln: ", it->read_id, " ", it->cid, " ", it->score1, " ", aln.score1, " ", old_identity, " ", new_identity, "
-      // ", num_dups, "\n");
       auto old_aln_len = it->rstop - it->rstart;
       it++;
-      if ((new_identity > old_identity) || (new_identity == old_identity && (aln.rstop - aln.rstart > old_aln_len))) {
+      if ((aln.identity > old_identity) || (aln.identity == old_identity && (aln.rstop - aln.rstart > old_aln_len))) {
         // new one is better - erase the old one
         auto fit = it.base();
         if (fit != alns.end()) alns.erase(fit);
@@ -667,12 +716,9 @@ void Alns::select_pairs(size_t &num_proper_pairs) {
   // chose only one pair of alns per read pair
   for (size_t i = 0; i < alns.size(); i++) {
     Aln &aln = alns[i];
-    /*
-    if (aln.identity < 50) {
-      aln.cid = -1;
-      continue;
-    }*/
-    if (aln.mapq < 10) {
+    // bbmap can drop alns for low identity, but note that we calculate identity a bit differently, so the results will be a bit
+    // different
+    if (aln.identity < POST_ASM_MIN_IDENT) {
       aln.cid = -1;
       continue;
     }
