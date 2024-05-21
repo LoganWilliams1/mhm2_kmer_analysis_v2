@@ -32,7 +32,8 @@ our @metrics = qw {Date Operator DataSetName GBofFASTQ NumReads MinDepth ContigK
                    MinDepthKmers Assembled>5kbp Version HipmerWorkflow Nodes Threads CoresPerNode NumRestarts 
                    ManualRestarts TotalTime NodeHours CalculatedTotalTime NumStages StageTime };
 our @fields = (@metrics, @modules, "RunDir", "RunOptions", "NumRawReads", "RawGbp", "NumMergedReads", 
-                "NumRawPairs", "MergedGbp", "TotalAssembled");
+                "NumRawPairs", "MergedGbp", "TotalAssembled", "InitialFreeMemGB", "PeakMemGB", 
+                "InitialFreeGPUGB", "PeakGPUGB", "PeakKmerCountLoadFactor");
 foreach my $module (@modules) {
     $stats{$module} = 0;
 }
@@ -63,9 +64,17 @@ $stats{"RawGbp"} = 0;
 $stats{'MergedGbp'} = 0;
 $stats{'NumMergedReads'} = 0;
 
-our %h_units = ( 'B' => 1./1024./1024./1024., 'K' => 1./1024./1024., 'M' => 1./1024., 'G' => 1., 'T' => 1024.);
+our %h_units = ( 
+'B' => 1./1024./1024./1024., ' B' => 1./1024./1024./1024., 
+'K' => 1./1024./1024., 'KB' => 1./1024./1024., 
+'M' => 1./1024., 'MB' => 1./1024.,
+'G' => 1., 'GB' => 1.,
+'T' => 1024., 'TB' => 1024.);
 my $stage_pat = '\w+\.[hc]pp';
 
+my $completed = 0;
+my $num_gpus = 0;
+my $since_read_kmers = 0;
 my $post_processing = 0;
 my $knowGB = 0;
 my $firstUFX = 1;
@@ -162,8 +171,33 @@ while (<>) {
         $stats{"Date"} = "20" . $4 . "-" . $2 . "-" . $3;
         $stats{"CalculatedTotalTime"} = $1;
     }
+    if (/Initial free memory across all .*, ([\d\.]+)(.?B) max/) {
+        $stats{"InitialFreeMemGB"} = $1 * $h_units{$2};
+    }
+    if (/Peak memory used across all .*, ([\d\.]+)(.?B) max/) {
+        $stats{"PeakMemGB"} = $1 * $h_units{$2};
+    }
+    if (/read kmers in hash/ || /stats for read kmers pass/) {
+        $since_read_kmers = 0;
+    }
+    if ($since_read_kmers++ < 4 && / load factor.* avg,? ([\d\.]+) max/) {
+        if ((not defined $stats{"PeakKmerCountLoadFactor"}) || $stats{"PeakKmerCountLoadFactor"} < $1) {
+            $stats{"PeakKmerCountLoadFactor"} = $1;
+        }
+    }
+
+    if (/GPU read kmers hash table used ([\d\.]+)(.?B) memory on GPU out of ([\d\.]+)(.?B)/) {
+        my $gb = $1 * $h_units{$2};
+        my $max = $3 * $h_units{$4};
+        if ((not defined $stats{'PeakGPUGB'}) || $stats{'PeakGPUGB'} < $gb) {
+            $stats{'PeakGPUGB'} = $gb
+        }
+        if ((not defined $stats{'InitialFreeGPUGB'}) || $stats{'InitialFreeGPUGB'} < $max) {
+            $stats{'InitialFreeGPUGB'} = $max;
+        }
+    }
     
-    if (/Overall time taken (including any restarts): ([\d\.]+) s/) { # fixme is not printed in mhm2.log!
+    if (/ Finished in ([\d\.]+) s/) {
         $stats{"TotalTime"} += $1;
     }
 
@@ -239,12 +273,19 @@ while (<>) {
     if ((not defined $stats{'MinDepthKmers'}) && (defined $stats{'DistinctKmersWithFP'} && defined $stats{'Purged'})) {
         $stats{'MinDepthKmers'} = $stats{'DistinctKmersWithFP'} - $stats{'Purged'};
     }
+    if (/Available number of GPUs on this node (\d+)/) {
+        $num_gpus = $1;
+    }
+    if (/Total time before close and finalize/) {
+        $completed = 1;
+    }
 }
 $stats{"CoresPerNode"} = $stats{"Threads"} / $stats{"Nodes"};
 
-if (not defined $stats{"TotalTime"}) {
+if ((not defined $stats{"TotalTime"}) || $stats{"CalculatedTotalTime"} > $stats{"TotalTime"}) {
     $stats{"TotalTime"} = $stats{"CalculatedTotalTime"};
 }
+
 $stats{"TotalMinusIO"} = $stats{"TotalTime"} - $stats{"ReadFastq"} - $stats{"WriteOutputs"};
 
 $stats{"TotalTime"} =~ s/\..*//;
@@ -270,9 +311,34 @@ if (not defined $stats{'NumReads'}) {
   $stats{'NumReads'} = $stats{'tmpMergedReads'} + $stats{'tmpLoadedReads'} - $stats{'tmpMergedReads'}
 }
 
+if ($num_gpus == 0) {
+    $stats{'InitialFreeGPUGB'} = '';
+    $stats{'PeakGPUGB'} = '';
+}
+
 printStats();
 
-print "MHM2, version " . $stats{"Version"} . ", was executed on " . $stats{"NumReads"} . " reads" . " and " 
-       . $stats{"GBofFASTQ"} . " GB of fastq " . "for " . $stats{"TotalTime"} . " seconds in a job over " 
-       . $stats{"Nodes"} . " nodes (" . $stats{"Threads"} . " threads) using the " . $stats{"HipmerWorkflow"} . " workflow.\n";
+if ($completed) {
+    print "MHM2, version " . $stats{"Version"} . ", was executed on " . $stats{"NumReads"} . " reads" . " and " 
+        . $stats{"GBofFASTQ"} . " GB of fastq " . "for " . $stats{"TotalTime"} . " seconds in a job over " 
+        . $stats{"Nodes"} . " nodes (" . $stats{"Threads"} . " threads and " . $num_gpus . " gpus) using the " 
+        . $stats{"HipmerWorkflow"} . " workflow.\n";
+    if (defined $stats{'PeakKmerCountLoadFactor'} && $stats{'PeakKmerCountLoadFactor'} < 0.667) {
+        my $mem_utility =($stats{'PeakKmerCountLoadFactor'} / 0.667);
+        if ($num_gpus == 0 && defined $stats{'PeakMemGB'} && defined $stats{'InitialFreeMemGB'}
+            && $stats{'PeakMemGB'} < $stats{'InitialFreeMemGB'}) {
+            $mem_utility *= ($stats{'PeakMemGB'} / $stats{'InitialFreeMemGB'});
+        } elsif ($num_gpus > 0 && defined $stats{'PeakGPUGB'} && defined $stats{'InitialFreeGPUGB'}) {
+            $mem_utility *= ($stats{'PeakGPUGB'} / $stats{'InitialFreeGPUGB'});
+        }
+        my $tgt_nodes = ($stats{'Nodes'} * (1.+2.*$mem_utility)/3.); # 2/3 of the way to mem_utility target
+        if ($tgt_nodes < $stats{'Nodes'}) {
+            print "This " . $stats{'Nodes'} . " node job had enough memory and might run more efficiently on fewer nodes (Mem utility = " 
+                . int($mem_utility * 100. + 0.5) . "\%). Suggestion: " . int($tgt_nodes*10)/10. 
+                . " nodes for max " . int($stats{TotalTime} / $mem_utility+0.5) . " s.\n";
+        }
+    }
+} else {
+    print "MHM2 failed after running for " . $stats{"TotalTime"} . " seconds\n";
+}
 
