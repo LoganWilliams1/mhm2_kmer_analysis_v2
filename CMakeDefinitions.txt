@@ -151,10 +151,15 @@ add_definitions(-DLASSM_RATING_THRES=0)
 add_definitions(-DLASSM_MAX_COUNT_MERS_READS=3000)
 
 
-# Seed space for post assembly: decreasing this value increases the alignment computation time, but generates a few more alignments
-add_definitions(-DPOST_ASM_ALN_SEED_SPACE=8)
-# seed length used for post assembly alignment
-add_definitions(-DPOST_ASM_ALN_K=21)
+# Seed space for post assembly: decreasing this value increases the alignment computation time, but generates a few more alignments.
+# To increase sensitivity, reducing the POST_ASM_ALN_K value is more effective that decreasing the seed space.
+add_definitions(-DPOST_ASM_ALN_SEED_SPACE=16)
+# Seed length used for post assembly alignment. Note that bbmap uses 13 by default, but that will result in much slower processing
+# by MHM, so its best to use at least 21. This will miss around 0.1% of alignments compared to bbmap with a seed space of 8.
+# Alternatively, a seed space of 16 with seed size of 17 will give similar results to 8 with 21, and similar performance/memory use.
+add_definitions(-DPOST_ASM_ALN_K=17)
+# cut-off for alignment ID value for post assembly. Note that bbmap uses 76 by default, but it calculates identity a bit differently
+add_definitions(-DPOST_ASM_MIN_IDENT=50)
 # also dump alignments from post assembly in PAF format (in addition to SAM)
 # add_definitions(-DPAF_OUTPUT_FORMAT)
 # also dump alignments from post assembly in Blast6 format
@@ -165,7 +170,6 @@ add_definitions(-DUSE_PACKED_READS_LINEAR_ALLOCATOR=1)
 
 # Disabled by default. enable to have each rank read every fastq file
 # add_definitions(-DNO_FASTQ_GLOBAL_BLOCKING)
-
 # Disabled by default. When reading fastqs within merge_reads, only read from 1 file at a time
 # ...will be very inefficient without also setting NO_FASTQ_GLOBAL_BLOCKING
 # add_definitions(-DONE_FASTQ_AT_A_TIME)
