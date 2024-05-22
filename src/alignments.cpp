@@ -645,16 +645,25 @@ void Alns::compute_stats(size_t &num_reads_mapped, size_t &num_bases_mapped) {
   LOG_MEM("After alns.compute_stats");
 }
 
+static int get_insert_size(const Aln &aln1, const Aln &aln2) { return max(aln1.cstop, aln2.cstop) - min(aln1.cstart, aln2.cstart); }
+
+static bool is_proper_pair(const Aln &aln1, const Aln &aln2) {
+  if (aln1.cid == aln2.cid && aln1.orient != aln2.orient && get_insert_size(aln1, aln2) < 2000) return true;
+  return false;
+}
+
 bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes) {
-  auto get_highest_ri = [&alns = this->alns](vector<size_t> read_aln_indexes, const string &read_id) {
+  auto get_highest_ri = [&alns = this->alns](const vector<size_t> &read_aln_indexes) {
     if (read_aln_indexes.empty()) return (int64_t)-1;
-    int64_t highest_ri = read_aln_indexes[0];
-    for (int i = 1; i < read_aln_indexes.size(); i++) {
+    int64_t highest_ri = -1;
+    int highest_score = 0;
+    for (int i = 0; i < read_aln_indexes.size(); i++) {
       int64_t ri = read_aln_indexes[i];
-      if (alns[ri].score1 > alns[highest_ri].score1)
+      Aln &aln = alns[ri];
+      if (aln.score1 > highest_score) {
+        highest_score = aln.score1;
         highest_ri = ri;
-      else if (alns[ri].score1 == alns[highest_ri].score1 && alns[ri].cid < alns[highest_ri].cid)
-        highest_ri = ri;
+      }
     }
     return highest_ri;
   };
@@ -665,25 +674,38 @@ bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
     }
   };
 
-  size_t highest_r1 = get_highest_ri(read1_aln_indexes, read_id);
-  size_t highest_r2 = get_highest_ri(read2_aln_indexes, read_id);
-  if (highest_r1 != -1 && highest_r2 != -1) {
-    if (alns[highest_r1].cid != alns[highest_r2].cid) {
-      // find highest scoring pair
-      int max_score = 0;
-      for (auto aln_r1 : read1_aln_indexes) {
-        for (auto aln_r2 : read2_aln_indexes) {
-          // int score = alns[aln_r1].score1 + alns[aln_r2].score1;
-          int score = alns[aln_r1].score1 * alns[aln_r1].identity + alns[aln_r2].score1 * alns[aln_r2].identity;
-          if (score > max_score) {
-            highest_r1 = aln_r1;
-            highest_r2 = aln_r2;
-            max_score = score;
-          }
+  // bbmap chooses alns by highest score
+  size_t highest_r1 = get_highest_ri(read1_aln_indexes);
+  size_t highest_r2 = get_highest_ri(read2_aln_indexes);
+  // if the highest scoring pair is not a proper pair, then see if we can find a proper pair with a boosted higher average score
+  // bbmap supposedly gives a boost to properly paired alignments, but we get closer to bbmap results if we don't actually do
+  // any boosting
+  /*
+  if (highest_r1 != -1 && highest_r2 != -1 && !is_proper_pair(alns[highest_r1], alns[highest_r2])) {
+    // find highest average scoring proper pair
+    int max_score1 = alns[highest_r1].score1;
+    int max_score2 = alns[highest_r2].score1;
+    for (auto aln_r1 : read1_aln_indexes) {
+      Aln &aln1 = alns[aln_r1];
+      for (auto aln_r2 : read2_aln_indexes) {
+        Aln &aln2 = alns[aln_r2];
+        if (!is_proper_pair(aln1, aln2)) continue;
+        // boost if this is close to the average insert size
+        // FIXME: need to pass in the average insert size here
+        double boost = max(0.0, 0.5 - abs((double)get_insert_size(aln1, aln2) - 270) / 1080);
+        int score1 = aln1.score1 + aln2.score1 * boost;
+        int score2 = aln2.score1 + aln1.score1 * boost;
+        if (score1 > max_score1) {
+          highest_r1 = aln_r1;
+          max_score1 = score1;
+        }
+        if (score2 > max_score2) {
+          highest_r2 = aln_r2;
+          max_score2 = score2;
         }
       }
     }
-  }
+  }*/
   if (highest_r1 != -1) {
     if (highest_r2 != -1)
       alns[highest_r1].add_cigar_pair_info((alns[highest_r2].cid), alns[highest_r2].cstart, alns[highest_r2].orient, read_len);
@@ -698,12 +720,7 @@ bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
   }
   clear_other_alns(highest_r1, read1_aln_indexes);
   clear_other_alns(highest_r2, read2_aln_indexes);
-  if (highest_r1 != -1 && highest_r2 != -1 && alns[highest_r1].cid == alns[highest_r2].cid &&
-      alns[highest_r1].orient != alns[highest_r2].orient) {
-    if (alns[highest_r1].cstop < alns[highest_r2].cstart - 32000) return false;
-    if (alns[highest_r2].cstop < alns[highest_r1].cstart - 32000) return false;
-    return true;
-  }
+  if (highest_r1 != -1 && highest_r2 != -1) return is_proper_pair(alns[highest_r1], alns[highest_r2]);
   return false;
 }
 
