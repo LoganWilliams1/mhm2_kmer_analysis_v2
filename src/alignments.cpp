@@ -678,9 +678,7 @@ bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
   size_t highest_r1 = get_highest_ri(read1_aln_indexes);
   size_t highest_r2 = get_highest_ri(read2_aln_indexes);
   // if the highest scoring pair is not a proper pair, then see if we can find a proper pair with a boosted higher average score
-  // bbmap supposedly gives a boost to properly paired alignments, but we get closer to bbmap results if we don't actually do
-  // any boosting
-  /*
+  // bbmap supposedly gives a boost to properly paired alignments, but this doesn't seem to make any difference on arcticsyth
   if (highest_r1 != -1 && highest_r2 != -1 && !is_proper_pair(alns[highest_r1], alns[highest_r2])) {
     // find highest average scoring proper pair
     int max_score1 = alns[highest_r1].score1;
@@ -705,7 +703,7 @@ bool Alns::set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexe
         }
       }
     }
-  }*/
+  }
   if (highest_r1 != -1) {
     if (highest_r2 != -1)
       alns[highest_r1].add_cigar_pair_info((alns[highest_r2].cid), alns[highest_r2].cstart, alns[highest_r2].orient, read_len);
