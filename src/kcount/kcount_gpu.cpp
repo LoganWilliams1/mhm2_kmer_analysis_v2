@@ -204,7 +204,8 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   DBG("Finding available memory on GPU ", gpu_utils::get_gpu_uuid(), "\n");
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   auto gpu_avail_mem_per_rank = (get_gpu_avail_mem_per_rank() - bytes_for_pnp) * 0.9;
-  SLOG_GPU("Available GPU memory per rank for kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), "\n");
+  SLOG_GPU("Available GPU memory per rank for kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), 
+           " accounting for PnP of ", get_size_str(bytes_for_pnp/0.9), "\n");
   SLOG_GPU("Initializing read kmers hash table with max ", max_elems, " elems (with max ", max_ctg_elems,
            " elems for ctg hash table}\n");
   assert(state != nullptr);
@@ -219,6 +220,7 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   SLOG_GPU("Initialized hash table GPU driver in ", fixed, setprecision(3), t.get_elapsed(), " s\n");
   barrier(local_team());
   auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();
+  barrier(local_team());
   SLOG_GPU("GPU read kmers hash table used ", get_size_str(gpu_used_mem), " memory on GPU out of ",
            get_size_str(gpu_utils::get_gpu_tot_mem()), "\n");
 }
@@ -236,6 +238,7 @@ void HashTableInserter<MAX_K>::init_ctg_kmers(size_t max_elems) {
   SLOG_GPU("GPU ctg kmers hash table has capacity per rank of ", state->ht_gpu_driver.get_capacity(), "\n");
   barrier(local_team());
   auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();
+  barrier(local_team());
   SLOG_GPU("GPU ctg kmers hash table used ", get_size_str(gpu_used_mem), " memory on GPU out of ",
            get_size_str(gpu_utils::get_gpu_tot_mem()), "\n");
 }

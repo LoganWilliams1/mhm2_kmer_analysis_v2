@@ -74,6 +74,7 @@ my $stage_pat = '\w+\.[hc]pp';
 
 my $completed = 0;
 my $num_gpus = 0;
+my $gpu_peak_is_more_accurate = 0;
 my $since_read_kmers = 0;
 my $post_processing = 0;
 my $knowGB = 0;
@@ -186,12 +187,20 @@ while (<>) {
         }
     }
 
+    if (/Available GPU memory per rank for kmers hash table is .* accounting for PnP of ([\d\.]+)(.?B)/) {
+        $gpu_peak_is_more_accurate = $1 * $h_units{$2};
+    }
     if (/GPU read kmers hash table used ([\d\.]+)(.?B) memory on GPU out of ([\d\.]+)(.?B)/) {
         my $gb = $1 * $h_units{$2};
         my $max = $3 * $h_units{$4};
+        if ($gpu_peak_is_more_accurate > 0) {
+            $gb += $gpu_peak_is_more_accurate;
+        }
+        
         if ((not defined $stats{'PeakGPUGB'}) || $stats{'PeakGPUGB'} < $gb) {
             $stats{'PeakGPUGB'} = $gb
         }
+        
         if ((not defined $stats{'InitialFreeGPUGB'}) || $stats{'InitialFreeGPUGB'} < $max) {
             $stats{'InitialFreeGPUGB'} = $max;
         }
@@ -328,7 +337,7 @@ if ($completed) {
         if ($num_gpus == 0 && defined $stats{'PeakMemGB'} && defined $stats{'InitialFreeMemGB'}
             && $stats{'PeakMemGB'} < $stats{'InitialFreeMemGB'}) {
             $mem_utility *= ($stats{'PeakMemGB'} / $stats{'InitialFreeMemGB'});
-        } elsif ($num_gpus > 0 && defined $stats{'PeakGPUGB'} && defined $stats{'InitialFreeGPUGB'}) {
+        } elsif ($num_gpus > 0 && $gpu_peak_is_more_accurate && defined $stats{'PeakGPUGB'} && defined $stats{'InitialFreeGPUGB'}) {
             $mem_utility *= ($stats{'PeakGPUGB'} / $stats{'InitialFreeGPUGB'});
         }
         my $tgt_nodes = ($stats{'Nodes'} * (1.+2.*$mem_utility)/3.); # 2/3 of the way to mem_utility target
