@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
    printf("Usage :  %s <Read1_Fastq_file_name>[.gz] <Read2_Fastq_file_name>[.gz] <Interleaved_Fastq_file_name>\n", argv[0]);
    printf("Input file: Read1_Fastq_file_name[.gz]\n");
    printf("Input file: Read2_Fastq_file_name[.gz]\n");
-   printf("Output file: Quality_file_name \n");
+   printf("Output file: Interleaved_file_name \n");
    if (argc <= 1 || !strcmp(argv[1], "-h") ||  !strcmp(argv[1], "-help")) exit(0);
    else exit(1);
   }
