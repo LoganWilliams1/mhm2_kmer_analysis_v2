@@ -513,6 +513,13 @@ bool Options::load(int argc, char **argv) {
     app.get_option("--restart")->default_val("false");
   }
 
+ if (restart && (!*output_dir_opt || !file_exists(output_dir+string("/mhm2.log")))) {
+    if (!rank_me())
+      cerr << "\nWARNING --restart was requested but no output directory was specified or mhm2.log is missing.  Ignoring --restart request.\n";
+    restart = false;
+    app.get_option("--restart")->default_val("false");
+  }
+
   if (!restart && reads_fnames.empty()) {
     if (!rank_me())
       cerr << "\nError in command line:\nRequire read names if not restarting\nRun with --help for more information\n";

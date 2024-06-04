@@ -617,7 +617,9 @@ def main():
         show_mhm2_help(mhm2_binary_path)
         die("You must specify at least the reads to include for the assembly")
 
+    is_output_option = False
     is_input = False
+    is_checkpointed = False
     for x in unknown_options:
         print("Checking option ", x)
         if x[0] == '-':
@@ -633,10 +635,23 @@ def main():
             show_mhm2_help(mhm2_binary_path)
             die("Detected a gzipped file as input: ", x, "\n", 
                 "You cannot include any gzipped files as input reads -- please uncompress them first!\n")
-            
+        if x == '-o' or '--output' == x:
+            is_output_option = True
+            next
+        elif is_output_option:
+            _output_dir = x
+        is_output_option = False
+        if x == "--restart" and not options.auto_resume:
+            options.auto_resume = True
+            print("Detected --restart. Setting --auto-resume so that mhm2.py will attempt to re-run a failed run")
+        if x == "--checkpoint":
+            is_checkpointed = True
 
     if options.auto_resume:
         print("--auto-resume is enabled: will try to restart if run fails")
+        if not is_checkpointed:
+            unknown_options.extend(["--checkpoint"])
+            print("Appending --checkpoint to mhm2 options as this run will be automatically resumed, if possible")
 
     check_exec("upcxx-run", "-h", "UPC++")
 
@@ -781,7 +796,7 @@ def main():
     cmd.extend(["--adapter-refs", adapters_path])
 
     print("Executing mhm2 with " + get_job_desc() + " on " + str(num_nodes) + " nodes.")
-    print("Executing as: " + " ".join(sys.argv))
+    print("Executed as: " + " ".join(sys.argv))
 
     cores = get_job_cores_per_node()
     noderanks = "0"
@@ -963,9 +978,10 @@ def main():
                     print_red("Trying to restart with output directory ", _output_dir)
                     restarting = True
                     err_msgs = []
-                    cmd.append("--restart")
-                    if _output_dir[:-1] not in cmd:
-                        cmd.extend(["-o", _output_dir])
+                    if '--restart' not in cmd:
+                        cmd.extend(["--restart"])
+                    if '-o' not in cmd and '--output' not in cmd:
+                        cmd.extend(["--output", _output_dir])
                     time.sleep(5)
                 else:
                     if options.auto_resume:
