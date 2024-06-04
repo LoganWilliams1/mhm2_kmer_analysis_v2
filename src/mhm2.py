@@ -98,7 +98,6 @@ _output_dir = ""
 _err_thread = None
 _stop_thread = False
 _start_time = None
-_show_help = False
 
 
 def print_red(*args):
@@ -411,10 +410,17 @@ def check_exec(cmd, args, expected):
     try:
         result = subprocess.check_output([test_exec, args]).decode()
         if expected not in result:
-            die(test_exec, " failed to execute")
+            die(test_exec, " failed to execute: ", test_exec, " ", args)
+        return result
     except subprocess.CalledProcessError as err:
         die("Could not execute ", test_exec + ": ", err)
 
+
+def show_mhm2_help(mhm2_binary_path):
+    try:
+        print(check_exec(mhm2_binary_path, '-h', 'MHM2 version'))
+    except e:
+        print("WARNING: Could not execute '", mhm2_binary_path, " -h' to determine its help: ", e)
 
 def capture_err(err_msgs):
     global _proc
@@ -594,19 +600,45 @@ def main():
 
     options, unknown_options = argparser.parse_known_args()
 
+    # expect mhm2 to be in same directory as mhm2.py
+    mhm2_binary_path = os.path.split(sys.argv[0])[0] + "/" + options.binary
+    if not (os.path.exists(mhm2_binary_path) or which(mhm2_binary_path)):
+        die("Cannot find binary ", options.binary + " in '", mhm2_binary_path, "'")
+
     if "-h" in unknown_options or "--help" in unknown_options:
-        _show_help = True
         argparser.print_help()
         print()
+        show_mhm2_help(mhm2_binary_path)
+        exit()
+
+    if len(unknown_options) == 0:
+        argparser.print_help()
+        print()
+        show_mhm2_help(mhm2_binary_path)
+        die("You must specify at least the reads to include for the assembly")
+
+    is_input = False
+    for x in unknown_options:
+        print("Checking option ", x)
+        if x[0] == '-':
+            is_input = False
+            if len(x) == 2 and (x[1] == 'r' or x[1] == 'p' or x[1] == 'u'):
+                is_input = True
+                next
+            if '--paired' in x or '--unpaired' in x or '--reads' == x:
+                is_input = True
+                next
+        if is_input and x.endswith('.gz'):
+            argparser.print_help()
+            show_mhm2_help(mhm2_binary_path)
+            die("Detected a gzipped file as input: ", x, "\n", 
+                "You cannot include any gzipped files as input reads -- please uncompress them first!\n")
+            
 
     if options.auto_resume:
         print("--auto-resume is enabled: will try to restart if run fails")
 
     check_exec("upcxx-run", "-h", "UPC++")
-    # expect mhm2 to be in same directory as mhm2.py
-    mhm2_binary_path = os.path.split(sys.argv[0])[0] + "/" + options.binary
-    if not (os.path.exists(mhm2_binary_path) or which(mhm2_binary_path)):
-        die("Cannot find binary ", options.binary + " in '", mhm2_binary_path, "'")
 
     # cores_per_node = int(options.procs_per_node)
     # if cores_per_node == 0:

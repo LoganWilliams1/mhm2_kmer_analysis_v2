@@ -458,6 +458,12 @@ bool Options::load(int argc, char **argv) {
 
   try {
     app.parse(argc, argv);
+  } catch (const CLI::CallForHelp &e) {
+    app.exit(e);
+    exit(0);
+  } catch (const CLI::CallForAllHelp &e) {
+    app.exit(e);
+    exit(0);
   } catch (const CLI::ParseError &e) {
     if (upcxx::rank_me() == 0) {
       if (e.get_exit_code() != 0) cerr << "\nError (" << e.get_exit_code() << ") in command line:\n";
@@ -466,26 +472,37 @@ bool Options::load(int argc, char **argv) {
     return false;
   }
 
-  if (!paired_fnames.empty()) {
-    // convert pairs to colon ':' separated unpaired/single files for FastqReader to process
-    if (paired_fnames.size() % 2 != 0) {
-      if (!rank_me()) cerr << "Did not get pairs of files in -p: " << paired_fnames.size() << endl;
-      return false;
+  {
+    std::unordered_set<std::string> check_input_files;
+    for (auto name : reads_fnames) {
+      if (!check_input_files.insert(name).second) SDIE("Duplicate read file detected: ", name);
     }
-    while (paired_fnames.size() >= 2) {
-      reads_fnames.push_back(paired_fnames[0] + ":" + paired_fnames[1]);
-      paired_fnames.erase(paired_fnames.begin());
-      paired_fnames.erase(paired_fnames.begin());
-    }
-  }
 
-  if (!unpaired_fnames.empty()) {
-    // append a ':' to the file name, signaling to FastqReader that this is a unpaired/sinngle file
-    // a paired file would have another name after the ':'
-    for (auto name : unpaired_fnames) {
-      reads_fnames.push_back(name + ":");
+    if (!paired_fnames.empty()) {
+      // convert pairs to colon ':' separated unpaired/single files for FastqReader to process
+      if (paired_fnames.size() % 2 != 0) {
+        if (!rank_me()) cerr << "Did not get pairs of files in -p: " << paired_fnames.size() << endl;
+        return false;
+      }
+      while (paired_fnames.size() >= 2) {
+        if (!check_input_files.insert(paired_fnames[0]).second) SDIE("Duplicate first paired-read file detected: ", paired_fnames[0]);
+        if (!check_input_files.insert(paired_fnames[1]).second) SDIE("Duplicate second paired-read file detected: ", paired_fnames[1]);
+        
+        reads_fnames.push_back(paired_fnames[0] + ":" + paired_fnames[1]);
+        paired_fnames.erase(paired_fnames.begin());
+        paired_fnames.erase(paired_fnames.begin());
+      }
     }
-    unpaired_fnames.clear();
+
+    if (!unpaired_fnames.empty()) {
+      // append a ':' to the file name, signaling to FastqReader that this is a unpaired/sinngle file
+      // a paired file would have another name after the ':'
+      for (auto name : unpaired_fnames) {
+        if (!check_input_files.insert(name).second) SDIE("Duplicate unpaired-read file detected: ", name);
+        reads_fnames.push_back(name + ":");
+      }
+      unpaired_fnames.clear();
+    }
   }
 
   if (!adapter_trim) adapter_fname.clear();

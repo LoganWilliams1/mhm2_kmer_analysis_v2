@@ -172,6 +172,29 @@ bool FastqReader::is_sep(const char &sep) const {
   return ((sep == '/') | (sep == '.') | (sep == 'R') | (sep == ':'));  // possible paired read separators
 }
 
+bool FastqReader::check_is_fastq() {
+    // Issue222 verify this is a valid fastq file
+    unsigned char b[5];
+    read_io_t.start();
+    auto pos = in->tellg();
+    assert(pos == 0);
+    in->read((char*)b, 4);
+    if (!in->good()) DIE("Could not read the first few bytes of ", get_fname());
+    // rewind
+    in->seekg(pos);
+    if (!in->good()) DIE("Could not rewind / seekg in ", get_fname());
+    read_io_t.stop();
+    
+    if (b[0] != '@') {
+      // This is not a fastq file
+      if (b[0] == 0x1f && b[1] == 0x8b) WARN("Input fastq ", get_fname(), " appears to be compressed with gzip. Please uncompress before using MHM2!");
+      else if (b[0] == '>') WARN("Input fastq ", get_fname(), " is not a fastq file but appears to be a fasta file!");
+      else WARN("Input fastq ", get_fname(), " does not start with '@'");
+      return false;
+    }
+    return true;
+}
+
 int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // first record is the first record, include it.  Every other partition will be at least 1 full record after offset.
   // but read the first few lines anyway
@@ -188,6 +211,8 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   read_io_t.stop();
   if (!in->good() || in->tellg() != offset)
     DIE("Could not seekg to ", offset, " fname=", get_ifstream_state(), ": ", strerror(errno));
+
+  if (offset == 0 && !check_is_fastq()) DIE("Input file is not a valid fastq ", get_fname(), "\n");
 
   if (offset != 0) {
     // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
@@ -459,6 +484,7 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     in = std::make_unique<ifstream>(fname);
     buf.reserve(BUF_SIZE);
     DBG("Found file_size=", file_size, " for ", fname, "\n");
+    if (!check_is_fastq()) DIE("Input file ", fname, " is not a valid fastq!");
   }
 
   future<> file_size_fut = upcxx::broadcast(file_size, query_rank).then([&self = *this](int64_t sz) {
