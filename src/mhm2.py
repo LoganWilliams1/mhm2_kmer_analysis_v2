@@ -568,7 +568,7 @@ def main():
         help="Automatically resume after a failure",
     )
     argparser.add_argument(
-        "--shared-heap", default=default_shared_heap, help="Shared heap as a percentage of memory"
+        "--shared-heap", default=default_shared_heap, help="Shared heap as a percentage of memory with '%' or MB, per rank optionall with 'MB'"
     )
     # argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument(
@@ -777,7 +777,7 @@ def main():
     if (
         "GASNET_MAX_SEGSIZE" not in os.environ
     ):
-        if "UPCXX_SHARED_HEAP_SIZE" in os.environ and "MB" in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
+        if "UPCXX_SHARED_HEAP_SIZE" in os.environ and 'B' in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
             os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
         else:
             os.environ["GASNET_MAX_SEGSIZE"] = "0.5/H"
