@@ -58,6 +58,7 @@ echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
 if [ ! -f ./test-arctic-sample0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta on rel" ; fi
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
+rm -rf ${RUN_PREFIX}/rel-test-arctic-sample0
 mv test-arctic-sample0 ${RUN_PREFIX}/rel-test-arctic-sample0
 
 #${REL}/ci_asm_qual_test-full.sh || FAILED="${FAILED} Could not run ci_asm_qual_test-full"
