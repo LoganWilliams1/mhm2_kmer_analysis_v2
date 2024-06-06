@@ -250,7 +250,8 @@ Bacteria:validation:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -289,6 +290,7 @@ Bacteria:accuracy:
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
         ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -302,6 +304,7 @@ Bacteria:accuracy:
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
         ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -372,7 +375,8 @@ Fungi:validation:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -411,9 +415,11 @@ Fungi:accuracy:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-       ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
+      END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Extra full CI run on both fungi and bacteria CPU only scheduled via the batch system"
@@ -423,7 +429,8 @@ Fungi:accuracy:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-       ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
