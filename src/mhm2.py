@@ -568,7 +568,7 @@ def main():
         help="Automatically resume after a failure",
     )
     argparser.add_argument(
-        "--shared-heap", default=default_shared_heap, help="Shared heap as a percentage of memory with '%' or MB, per rank optionall with 'MB'"
+        "--shared-heap", default=default_shared_heap, help="Shared heap as a percentage of memory with %% or MB, per rank optionall with MB"
     )
     # argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument(
