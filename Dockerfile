@@ -19,7 +19,8 @@ RUN cd /var/tmp/mhm2-build && \
     git submodule init && \
     git submodule update
 
-ENV UPCXXVER=2023.9.0
+ENV UPCXX_VER=2023.9.0
+ENV GASNET_VER=2024.5.0
 ENV GASNET_PHYSMEM_MAX=1/2
 ENV GASNET_PHYSMEM_PROBE=NO
 
