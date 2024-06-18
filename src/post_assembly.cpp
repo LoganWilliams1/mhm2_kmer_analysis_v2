@@ -214,6 +214,8 @@ void post_assembly(Contigs &ctgs, Options &options) {
     //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
     alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
+    // the above does not guarantee that the I/O is finished, so to get accurate stage info we need to have a barrier here
+    barrier();
     stage_timers.dump_alns->stop();
 #ifdef PAF_OUTPUT_FORMAT
     string aln_name("final_assembly-" + short_name + ".paf");
