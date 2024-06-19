@@ -94,6 +94,7 @@ class Alns {
   int read_len;
 
   bool set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes);
+  upcxx::future<> write_sam_alignments(dist_ofstream &of, int min_contig_len) const;
 
  public:
   enum class Format { PAF, BLAST, SAM };
@@ -135,8 +136,8 @@ class Alns {
   void dump_single_file(const string fname, Format fmt) const;
   static upcxx::future<> write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
                                           int min_ctg_len);
-  upcxx::future<> write_sam_alignments(dist_ofstream &of, int min_contig_len) const;
   void dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_contig_len = 0) const;
+  void dump_sam_file(const string fname, int min_ctg_len) const;
   void dump_rank_file(const string fname, Format fmt) const;
 
   int calculate_unmerged_rlen() const;

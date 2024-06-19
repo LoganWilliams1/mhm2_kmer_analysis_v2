@@ -177,7 +177,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
     LOG_MEM("Read " + short_name);
     barrier();
     ctgs.clear_slices();
-    dist_ofstream sam_ofs(short_name + ".sam");
     KlignTimers aln_timers;
     Alns alns(rlen_limit);
     for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
@@ -213,9 +212,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
     for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
     //  Dump 1 file at a time with proper read groups
     stage_timers.dump_alns->start();
-    alns.write_sam_alignments(sam_ofs, options.min_ctg_print_len).wait();
-    // the above does not guarantee that the I/O is finished, so to get accurate stage info we need to have a barrier here
-    barrier();
+    alns.dump_sam_file(short_name + ".sam", options.min_ctg_print_len);
     stage_timers.dump_alns->stop();
 #ifdef PAF_OUTPUT_FORMAT
     string aln_name("final_assembly-" + short_name + ".paf");
@@ -234,7 +231,6 @@ void post_assembly(Contigs &ctgs, Options &options) {
     aln_depths.compute_for_read_group(alns, read_group_id);
     stage_timers.compute_ctg_depths->stop();
     LOG_MEM("After Post Assembly Depths Saved");
-    sam_ofs.close();
     tot_num_reads += packed_reads.get_local_num_reads();
     tot_num_bases += packed_reads.get_local_bases();
     LOG_MEM("Purged Post Assembly Reads" + short_name);
