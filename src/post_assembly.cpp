@@ -41,6 +41,7 @@
 */
 
 #include <bitset>
+#include <filesystem>
 
 #include "post_assembly.hpp"
 #include "aln_depths.hpp"
@@ -166,10 +167,11 @@ void post_assembly(Contigs &ctgs, Options &options) {
     string &reads_fname = options.reads_fnames[read_group_id];
     SLOG(KBLUE, "_________________________", KNORM, "\n");
     SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
+    auto short_name = get_basename(reads_fname);
+    string sam_fname = short_name + ".sam";
     vector<string> one_file_list = {reads_fname};
     FastqReaders::open_all_file_blocking(one_file_list);
     PackedReads packed_reads(options.qual_offset, reads_fname, true);
-    auto short_name = get_basename(packed_reads.get_fname());
     stage_timers.cache_reads->start();
     packed_reads.load_reads(options.adapter_fname);
     unsigned rlen_limit = packed_reads.get_max_read_len();
@@ -210,22 +212,27 @@ void post_assembly(Contigs &ctgs, Options &options) {
     tot_reads_aligned += num_reads_aligned;
     tot_bases_aligned += num_bases_aligned;
     for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
-    //  Dump 1 file at a time with proper read groups
-    stage_timers.dump_alns->start();
-    alns.dump_sam_file(short_name + ".sam", options.min_ctg_print_len);
-    stage_timers.dump_alns->stop();
+    // check for existence of SAM file - if so don't write again. This can be the slowest component on HPC systems, and we still
+    // need to do the other computations to obtain the global avg depth information
+    if (filesystem::exists(filesystem::path(sam_fname))) {
+      SLOG("SAM file \"", sam_fname, "\" exists: will not write again\n");
+    } else {
+      stage_timers.dump_alns->start();
+      alns.dump_sam_file(sam_fname, options.min_ctg_print_len);
+      stage_timers.dump_alns->stop();
+      LOG_MEM("After Post Assembly SAM Saved");
+    }
 #ifdef PAF_OUTPUT_FORMAT
     string aln_name("final_assembly-" + short_name + ".paf");
     alns.dump_single_file(aln_name, Alns::Format::PAF);
     SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
-    LOG_MEM("After Post Assembly Alignments Saved");
+    LOG_MEM("After Post Assembly PAF Alignments Saved");
 #elif BLAST6_OUTPUT_FORMAT
     string aln_name("final_assembly-" + short_name + ".b6");
     alns.dump_single_file(aln_name, Alns::Format::BLAST);
     SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
-    LOG_MEM("After Post Assembly Alignments Saved");
+    LOG_MEM("After Post Assembly BLAST Alignments Saved");
 #endif
-    LOG_MEM("After Post Assembly SAM Saved");
     stage_timers.compute_ctg_depths->start();
     // compute depths 1 column at a time
     aln_depths.compute_for_read_group(alns, read_group_id);
