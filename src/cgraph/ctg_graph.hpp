@@ -326,4 +326,6 @@ class CtgGraph {
   void print_gfa2(const string &gfa_fname, int min_ctg_print_len);
 
   void print_graph(const string &fname);
+
+  void print_edges(const string &fname);
 };

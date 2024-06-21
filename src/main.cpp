@@ -192,7 +192,8 @@ void run_scaffolding(Options &options, PackedReadsList &packed_reads_list, Conti
     if (options.scaff_kmer_lens.size())
       options.scaff_kmer_lens.push_back(options.scaff_kmer_lens.back());
     else
-      options.scaff_kmer_lens.push_back(options.kmer_lens[0]);
+      //options.scaff_kmer_lens.push_back(options.kmer_lens[0]);
+      options.scaff_kmer_lens.push_back(options.kmer_lens.back());
   }
   if (options.scaff_kmer_lens.size()) {
     int max_kmer_len = 0;
