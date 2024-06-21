@@ -16,8 +16,9 @@ then
 	echo $USAGE
 	exit 1
 fi
-UPCXX_VER=${UPCXX_VER:=2023.3.0}
-echo "Using upcxx version $UPCXX_VER"
+UPCXX_VER=${UPCXX_VER:=2023.9.0}
+GASNET_VER=${GASNET_VER:=2024.5.0}
+echo "Using upcxx version $UPCXX_VER and gasnet ${GASNET_VER}"
 
 CI_CMAKE_OPTS=${CI_CMAKE_OPTS}
 echo "Using CI_CMAKE_OPTS=${CI_CMAKE_OPTS}"
@@ -28,7 +29,7 @@ git submodule update
 git describe --always
 ( cd upcxx-utils ; git describe --always )
 
-export CI_INSTALL=${CI_INSTALL:=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}}
+export CI_INSTALL=${CI_INSTALL:=$BASE/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}}
 export HIPMER_DATA=${HIPMER_DATA:=${BASE}/scratch/}
 export CI_SCRATCH=${CI_SCRATCH:=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}}
 export RUN_PREFIX=${RUN_PREFIX:=${CI_SCRATCH}/runs}

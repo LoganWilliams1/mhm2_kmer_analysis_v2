@@ -486,7 +486,7 @@ class Aligner {
   }
 
   void clear() {
-    if (kernel_alns.size() || !active_kernel_fut.ready())
+    if (kernel_alns.size() || !active_kernel_fut.is_ready())
       DIE("clear called with alignments in the buffer or active kernel - was flush_remaining called before destrutor?\n");
     clear_aln_bufs();
   }
@@ -600,7 +600,7 @@ class Aligner {
                          timers);
       clear_aln_bufs();
     }
-    bool is_ready = active_kernel_fut.ready();
+    bool is_ready = active_kernel_fut.is_ready();
     active_kernel_fut.wait();
     t.stop();
   }
@@ -680,7 +680,7 @@ class Aligner {
     assert(upcxx::master_persona().active_with_caller());
     DBG(__FILEFUNC__);
     if (!kernel_alns.empty()) DIE("sort_alns called while alignments are still pending to be processed - ", kernel_alns.size());
-    if (!active_kernel_fut.ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
+    if (!active_kernel_fut.is_ready()) SWARN("Waiting for active_kernel - has flush_remaining() been called?\n");
     wait_wrapper(active_kernel_fut);
   }
 

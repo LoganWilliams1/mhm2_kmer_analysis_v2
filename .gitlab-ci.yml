@@ -10,7 +10,8 @@ variables:
   APPLICATION: mhm2
   TEST_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:latest
   RELEASE_IMAGE: $REGISTRY/$REGISTRY_USER/$APPLICATION:$CI_BUILD_REF_NAME
-  UPCXX_VER: 2023.3.0
+  UPCXX_VER: 2023.9.0
+  GASNET_VER: 2024.5.0
 
 stages:
   - build
@@ -117,7 +118,7 @@ HULK:build:
     - set -e
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -143,7 +144,7 @@ HULK:validation:
     - set -e
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - echo "Adding ci-install to PATH"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -166,7 +167,7 @@ HULK:accuracy:
     - set -e
     - export BASE=/work/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install to PATH"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
@@ -202,7 +203,7 @@ Bacteria:build:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -229,7 +230,7 @@ Bacteria:validation:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -250,7 +251,8 @@ Bacteria:validation:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -266,7 +268,7 @@ Bacteria:accuracy:
     - set -e
     - export BASE=/scratch-bacteria/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install, cuda and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/usr/local/cuda/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -289,6 +291,7 @@ Bacteria:accuracy:
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
         ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -302,6 +305,7 @@ Bacteria:accuracy:
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
         ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -325,7 +329,7 @@ Fungi:build:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -351,7 +355,7 @@ Fungi:validation:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
     - export PATH=${CI_EXTRA_PATH}:$PATH
@@ -372,7 +376,8 @@ Fungi:validation:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.validation.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem on ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log
@@ -388,7 +393,7 @@ Fungi:accuracy:
     - set -e
     - export BASE=/scratch-fungi/gitlab-ci
     - export CI_SCRATCH=${BASE}/scratch/${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_TAG}-${CI_PIPELINE_ID}
-    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}
+    - export CI_INSTALL=${BASE}/ci-install-${CI_PROJECT_NAME}-upcxx-${UPCXX_VER}-${GASNET_VER}
     - export RUN_PREFIX=${CI_SCRATCH}/runs
     - echo "Adding ci-install and quast to path"
     - export CI_EXTRA_PATH="/usr/bin:${CI_INSTALL}/bin:/scratch-fungi/quast-quast_5.2.0"
@@ -411,9 +416,11 @@ Fungi:accuracy:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-       ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >> ${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ${CI_SCRATCH}/ubuntu.accuracy.sh ${BASE} >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
+      END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
-    - cat ${test_file}
+    - cat ${test_file} ${test_file}.log
     - grep Success ${test_file} || FAILED="${FAILED} Could not run ${test_file}"
     - if [ -z "$FAILED" ] ; then echo "OK" ; else echo "Something failed somehow - ${FAILED}" ; false ; fi
     - echo "Extra full CI run on both fungi and bacteria CPU only scheduled via the batch system"
@@ -423,7 +430,8 @@ Fungi:accuracy:
       batch << END_TEXT
         export PATH=${PATH} # keep CI path within batch
         date >> ${test_file}.log
-       ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        ./mhm2-rel/bin/ci_asm_qual_test-full.sh --procs=32 --nodes=2 >>${test_file}.log 2>&1 && echo Success > ${test_file} || echo Failed > ${test_file}
+        touch ${test_file}
       END_TEXT
     - while [ ! -f ${test_file} ] ; do echo "Waiting for job to complete via batch subsystem ${test_file}"; date; uptime ; sleep 60  ; done
     - cat ${test_file} ${test_file}.log

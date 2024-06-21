@@ -162,7 +162,7 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
   auto num = kernel_alns.size();
   // steal work from this kernel block if the previous kernel is still active
   // if true, this balances the block size that will be sent to the kernel
-  while ((!gpu_utils::gpus_present() || !active_kernel_fut.ready()) && !kernel_alns.empty()) {
+  while ((!gpu_utils::gpus_present() || !active_kernel_fut.is_ready()) && !kernel_alns.empty()) {
     assert(!ctg_seqs.empty());
     assert(!read_seqs.empty());
 #ifndef NO_KLIGN_CPU_WORK_STEAL
@@ -185,7 +185,7 @@ void kernel_align_block(CPUAligner &cpu_aligner, vector<Aln> &kernel_alns, vecto
     LOG("Waited ", steal_secs, "s for previous block to complete\n");
   }
   if (!kernel_alns.empty()) {
-    assert(active_kernel_fut.ready() && "active_kernel_fut should already be ready");
+    assert(active_kernel_fut.is_ready() && "active_kernel_fut should already be ready");
     active_kernel_fut.wait();  // should be ready already
     shared_ptr<AlignBlockData> aln_block_data =
         make_shared<AlignBlockData>(kernel_alns, ctg_seqs, read_seqs, max_clen, max_rlen, read_group_id);

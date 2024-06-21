@@ -153,7 +153,7 @@ void FastqReader::seekg(int64_t pos) {
   }
 }
 
-bool FastqReader::is_open() { return open_fut.ready(); }
+bool FastqReader::is_open() { return open_fut.is_ready(); }
 
 bool FastqReader::is_open(bool wait_for_open) {
   if (wait_for_open) {
@@ -424,10 +424,10 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
   assert(!upcxx::in_progress());
   Timer construction_timer("FastqReader construct " + get_basename(fname));
   construction_timer.initiate_entrance_reduction();
-  bool need_wait = first_wait.ready();
+  bool need_wait = first_wait.is_ready();
   string fname2;
   size_t pos;
-  LOG("Constructed FastqReader with fname=", fname, " first_wait=", (first_wait.ready() ? "Ready" : "NOT READY"), "\n");
+  LOG("Constructed FastqReader with fname=", fname, " first_wait=", (first_wait.is_ready() ? "Ready" : "NOT READY"), "\n");
 
   shared_ptr<dist_object<PromStartStop>> sh_promstartstop1, sh_promstartstop2;
   shared_ptr<upcxx_utils::PromiseBarrier> sh_prombarrier;
@@ -700,7 +700,7 @@ future<> FastqReader::continue_open_default_per_rank_boundaries() {
   AsyncTimer t_continue_open_default_per_rank_boundaries("continue_open_default_per_rank_boundaries: " + get_basename(fname));
   t_continue_open_default_per_rank_boundaries.start();
   assert(upcxx::master_persona().active_with_caller());
-  assert(know_file_size.get_future().ready());
+  assert(know_file_size.get_future().is_ready());
   assert(block_size == -1);
   LOG("Opening ", fname, " over all ranks, not by global blocks - IO performance may suffer\n");
   auto sz = INT_CEIL(file_size, rank_n());
@@ -812,7 +812,7 @@ void FastqReader::set_block(int64_t start, int64_t size) {
 
 void FastqReader::seek_start() {
   // seek to first record
-  assert(know_file_size.get_future().ready());
+  assert(know_file_size.get_future().is_ready());
   if (start_read >= file_size || start_read >= end_read) {
     DBG("Not reading this file as start is at the end\n");
     return;
@@ -836,7 +836,7 @@ FastqReader::~FastqReader() {
 
 void FastqReader::close() {
   DBG("Closing FQR on ", fname, " - ", (void *)this, "\n");
-  if (!open_fut.ready()) {
+  if (!open_fut.is_ready()) {
     WARN("Close called before opening completed\n");
     open_fut.wait();
   }
@@ -914,7 +914,7 @@ future<int64_t> FastqReader::get_file_size(bool include_file_2) const {
 }
 
 size_t FastqReader::get_next_fq_record(string &id, string &seq, string &quals, bool wait_open) {
-  if (wait_open && !open_fut.ready()) {
+  if (wait_open && !open_fut.is_ready()) {
     WARN("Attempt to read ", fname, " before it is ready. wait on open_fut first to avoid this warning!\n");
     open_fut.wait();
   }
@@ -1040,7 +1040,7 @@ double FastqReader::get_io_time() { return overall_io_t; }
 
 void FastqReader::reset() {
   DBG("reset on FQR of ", fname, "\n");
-  if (!open_fut.ready()) {
+  if (!open_fut.is_ready()) {
     open_fut.wait();
   }
   if (block_size > 0 && start_read < file_size && start_read < end_read) {
@@ -1093,7 +1093,7 @@ size_t FastqReaders::get_open_file_size(const string fname, bool include_file_2)
   auto it = me.readers.find(fname);
   assert(it != me.readers.end());
   auto fut_sz = it->second->get_file_size(include_file_2);
-  assert(fut_sz.ready());
+  assert(fut_sz.is_ready());
   return fut_sz.wait();
 }
 
