@@ -87,7 +87,8 @@ void check_alns_gpu(vector<Alignment> &alns, vector<int> qstart, vector<int> qen
       EXPECT_TRUE(aln.sw_score <= 4);
       EXPECT_TRUE(aln.sw_score_next_best == 0);
     } else {
-      EXPECT_EQ(aln.ref_begin, rstart[i]) << "adept.ref_begin:" << aln.ref_begin << "\t" << "correct ref_begin:" << rstart[i];
+      EXPECT_EQ(aln.ref_begin, rstart[i]) << "adept.ref_begin:" << aln.ref_begin << "\t"
+                                          << "correct ref_begin:" << rstart[i];
       EXPECT_EQ(aln.ref_end, rend[i]) << "\tadept.ref_end:" << aln.ref_end << "\tcorrect ref_end:" << rend[i];
       EXPECT_EQ(aln.query_begin, qstart[i]) << "\tadept.query_begin:" << aln.query_begin << "\tcorrect query_begin:" << qstart[i];
       EXPECT_EQ(aln.query_end, qend[i]) << "\tadept.query_end:" << aln.query_end << "\tcorrect query end:" << qend[i];
@@ -256,7 +257,7 @@ TEST(MHMTest, AdeptSW) {
 
   double init_time = 0;
   adept_sw::GPUDriver gpu_driver(0, 1, (short)aln_scoring.match, (short)-aln_scoring.mismatch, (short)-aln_scoring.gap_opening,
-                                 (short)-aln_scoring.gap_extending, 300, 1000, false, init_time);
+                                 (short)-aln_scoring.gap_extending, 300, false, init_time);
   // std::cout << "Initialized gpu in " << time_to_initialize << "s and " << init_time << "s\n";
 #endif
 
