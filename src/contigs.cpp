@@ -83,6 +83,8 @@ void Contigs::clear() {
   vector<Contig>().swap(contigs);
   begin_idx = 0;
   end_idx = 0;
+  max_clen = 0;
+  tot_length = 0;
 }
 
 void Contigs::set_capacity(int64_t sz) { contigs.reserve(sz); }
@@ -232,7 +234,7 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
 
   SLOG_VERBOSE("Loading contigs from fasta file ", ctgs_fname, "\n");
   BarrierTimer timer(__FILEFUNC__);
-  contigs.clear();
+  clear();
   dist_object<upcxx::promise<size_t>> dist_stop_prom(world());
   string line;
   string ctg_prefix = ">" + prefix;

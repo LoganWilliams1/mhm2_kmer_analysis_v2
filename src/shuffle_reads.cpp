@@ -105,6 +105,7 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
   kmer_cid_store.set_size("kmer cid store", max_store_bytes, local_n * 2, num_updates);
   for (auto &ctg : ctgs) {
     vector<kmer_t> kmers;
+    assert(ctg.seq.length() > 0);
     kmer_t::get_kmers(SHUFFLE_KMER_LEN, ctg.seq, kmers);
     // can skip kmers to make it more efficient
     for (int i = 0; i < kmers.size(); i += 1) {
