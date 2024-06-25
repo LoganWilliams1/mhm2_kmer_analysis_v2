@@ -407,7 +407,7 @@ string init_upcxx(BaseTimer &total_timer) {
   return fut_report_init_timings.wait();
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv, char **envp) {
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
 
@@ -429,6 +429,14 @@ int main(int argc, char **argv) {
   // if we don't load, return "command not found"
   if (!options.load(argc, argv)) return 127;
   print_exec_cmd(argc, argv);
+  SLOG_VERBOSE(KLGREEN, "----------\n");
+  SLOG_VERBOSE("GASNet/UPCXX/OFI environment variables:\n");
+  for (char **env = envp; *env != 0; env++) {
+    if (!strncmp(*env, "GASNET", strlen("GASNET"))) SLOG_VERBOSE("  ", *env, "\n");
+    if (!strncmp(*env, "UPCXX", strlen("UPCXX"))) SLOG_VERBOSE("  ", *env, "\n");
+    if (!strncmp(*env, "FI_", strlen("FI_"))) SLOG_VERBOSE("  ", *env, "\n");
+  }
+  SLOG_VERBOSE("----------", KNORM, '\n');
   SLOG_VERBOSE(KLCYAN, "Timing reported as min/my/average/max, balance", KNORM, "\n");
   // only write them here to honor the verbose flag in options
   SLOG_VERBOSE(init_timings);
