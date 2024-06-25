@@ -19,7 +19,7 @@ Total length                 95433785
 Reference length             102521842     
 N50                          103089
 N75                          24954         
-L50                          201           
+L50                          204           
 L75                          660           
 # misassemblies              103           
 # misassembled contigs       100           

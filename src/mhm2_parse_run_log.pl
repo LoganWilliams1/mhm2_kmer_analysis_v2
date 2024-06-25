@@ -182,9 +182,7 @@ while (<>) {
         $since_read_kmers = 0;
     }
     if ($since_read_kmers++ < 4 && / load factor.* avg,? ([\d\.]+) max/) {
-        if ((not defined $stats{"PeakKmerCountLoadFactor"}) || $stats{"PeakKmerCountLoadFactor"} < $1) {
-            $stats{"PeakKmerCountLoadFactor"} = $1;
-        }
+        $stats{"PeakKmerCountLoadFactor"} = $1;
     }
 
     if (/Available GPU memory per rank for kmers hash table is .* accounting for PnP of ([\d\.]+)(.?B)/) {

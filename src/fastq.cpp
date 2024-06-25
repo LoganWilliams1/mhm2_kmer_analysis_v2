@@ -172,6 +172,117 @@ bool FastqReader::is_sep(const char &sep) const {
   return ((sep == '/') | (sep == '.') | (sep == 'R') | (sep == ':'));  // possible paired read separators
 }
 
+bool FastqReader::check_is_fastq() {
+  // Issue222 verify this is a valid fastq file
+  buf.clear();
+  buf.reserve(BUF_SIZE);
+  read_io_t.start();
+  auto pos = in->tellg();
+  if (pos != 0) DIE("check_is_fastq called on file in the middle of the file at pos ", pos, "\n!");
+
+  std::stringstream msg;
+  msg << "Input fastq " << get_fname() << ": ";
+  bool pass = true;
+  do {
+    int seq_len = 0;
+    // read first few bytes
+    char b[8]{};
+    in->read((char *)b, 7);
+
+    if (!in->good()) DIE("Could not read the first few bytes of ", get_fname());
+
+    if (b[0] != '@') {
+      // This is not a fastq file
+      if ((uint8_t)b[0] == 31 && (uint8_t)b[1] == 139)
+        msg << "appears to be compressed with gzip. Please uncompress before using MHM2!";
+      else if ((uint8_t)b[1] == 31 && (uint8_t)b[0] == 139)
+        msg << "appears to be compressed with gzip, little endian. Please uncompress before using MHM2!";
+      else if ((char)b[0] == '>')
+        msg << "is not a fastq file but appears to be a fasta file!";
+      else
+        msg << "does not start with '@', but rather (int) " << (uint8_t)b[0] << " and " << (uint8_t)b[1];
+
+      if ((uint8_t)b[0] > 31 && (uint8_t)b[0] < 126) msg << " first char: '" << b[0] << "'";
+      msg << "\n";
+      pass = false;
+      break;
+    }
+
+    // rewind;
+    in->seekg(pos);
+    if (!in->good()) DIE("Could rewind ", get_fname());
+    buf.clear();
+
+    // read first line of header
+    std::getline(*in, buf);
+    if (!in->good() || buf[0] != '@') {
+      msg << "Could not read the first few bytes!\n";
+      pass = false;
+      break;
+    }
+
+    // read second line of sequence
+    std::getline(*in, buf);
+    seq_len = buf.size();
+    if (!in->good() || seq_len == 0) {
+      msg << "has zero length sequence in first record!\n";
+      pass = false;
+      break;
+    }
+    // check for ACGTNactg
+    for (auto c : buf) {
+      switch (c) {
+        case ('a'):
+        case ('c'):
+        case ('g'):
+        case ('t'):
+        case ('A'):
+        case ('C'):
+        case ('G'):
+        case ('T'):
+        case ('N'): break;
+        default:
+          if (pass) msg << "Found incompatible char in first fastq record of (int)" << (int)c << "\n";
+          pass = false;
+      }
+    }
+    if (!pass) break;
+
+    // read third line
+    std::getline(*in, buf);
+    // check for '+'
+    if (buf[0] != '+') {
+      pass = false;
+      msg << "Third line does not start with '+'\n";
+      break;
+    }
+
+    // read fourth line of quals
+    std::getline(*in, buf);
+    // check for quals
+    if (buf.size() != seq_len) {
+      msg << "has different sized sequence and quality " << seq_len << " vs " << buf.size() << "!\n";
+      pass = false;
+      break;
+    }
+
+    for (auto c : buf) {
+      if ((int)c < 33 || (int)c > 126) {
+        msg << "has invalid quality score of (int) " << (int)c << "\n";
+        pass = false;
+        break;
+      }
+    }
+  } while (false);
+
+  // rewind
+  in->seekg(pos);
+  if (!in->good()) DIE("Could not rewind / seekg in ", get_fname());
+  read_io_t.stop();
+  if (!pass) WARN(msg.str());
+  return pass;
+}
+
 int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   // first record is the first record, include it.  Every other partition will be at least 1 full record after offset.
   // but read the first few lines anyway
@@ -188,6 +299,8 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
   read_io_t.stop();
   if (!in->good() || in->tellg() != offset)
     DIE("Could not seekg to ", offset, " fname=", get_ifstream_state(), ": ", strerror(errno));
+
+  if (offset == 0 && !check_is_fastq()) DIE("Input file is not a valid fastq ", get_fname(), "\n");
 
   if (offset != 0) {
     // skip first (likely partial) line after this offset to ensure we start at the beginning of a line
@@ -460,6 +573,7 @@ FastqReader::FastqReader(const string &_fname, future<> first_wait, bool is_seco
     in = std::make_unique<ifstream>(fname);
     buf.reserve(BUF_SIZE);
     DBG("Found file_size=", file_size, " for ", fname, "\n");
+    if (!check_is_fastq()) DIE("Input file ", fname, " is not a valid fastq!");
   }
 
   future<> file_size_fut = upcxx::broadcast(file_size, query_rank).then([&self = *this](int64_t sz) {
