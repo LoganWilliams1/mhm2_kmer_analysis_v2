@@ -1019,6 +1019,7 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
     }
     read_group_id++;
   }
+  Timings::wait_pending();
   timers.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   double aln_comms_elapsed = timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed();
