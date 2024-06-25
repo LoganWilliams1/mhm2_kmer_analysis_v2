@@ -621,10 +621,10 @@ def main():
             is_checkpointed = True
 
     if options.auto_resume:
-        print("--auto-resume is enabled: will try to restart if run fails")
+        print_not_help("--auto-resume is enabled: will try to restart if run fails")
         if not is_checkpointed:
             unknown_options.extend(["--checkpoint"])
-            print("Appending --checkpoint to mhm2 options as this run will be automatically resumed, if possible")
+            print_not_help("Appending --checkpoint to mhm2 options as this run will be automatically resumed, if possible")
 
     check_exec("upcxx-run", "-h", "UPC++")
 
@@ -678,7 +678,7 @@ def main():
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
             os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal on perlmutter gpu
-        print(
+        print_not_help(
             "This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=",
             os.environ["UPCXX_SHARED_HEAP_SIZE"],
             ":",
@@ -703,7 +703,7 @@ def main():
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
             os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal on crusher
-        print(
+        print_not_help(
             "This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
             os.environ["UPCXX_SHARED_HEAP_SIZE"],
             ":",
@@ -728,7 +728,7 @@ def main():
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
             os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal on crusher
-        print(
+        print_not_help(
             "This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
             os.environ["UPCXX_SHARED_HEAP_SIZE"],
             ":",
