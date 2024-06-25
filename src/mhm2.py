@@ -403,24 +403,29 @@ def die(*args):
     exit_all(1)
 
 
-def check_exec(cmd, args, expected):
+def check_exec(cmd, args, expected, die_on_fail=True):
     test_exec = which(cmd)
     if not test_exec:
-        die("Cannot find ", cmd)
+        if die_on_fail:
+            die("Cannot find ", cmd)
+        return None
     try:
         result = subprocess.check_output([test_exec, args]).decode()
-        if expected not in result:
+        if expected not in result and die_on_fail:
             die(test_exec, " failed to execute: ", test_exec, " ", args)
         return result
     except subprocess.CalledProcessError as err:
-        die("Could not execute ", test_exec + ": ", err)
+        if die_on_fail:
+            die("Could not execute ", test_exec + ": ", err)
+        return None
 
 
 def show_mhm2_help(mhm2_binary_path):
     try:
-        print(check_exec(mhm2_binary_path, '-h', 'MHM2 version'))
-    except e:
-        print("WARNING: Could not execute '", mhm2_binary_path, " -h' to determine its help: ", e)
+        h = check_exec(mhm2_binary_path, '-h', 'MHM2 version', die_if_failed=False)
+        print(h)
+    except:
+        print("WARNING: Could not execute '", mhm2_binary_path, " -h' to determine its help: ")
 
 def capture_err(err_msgs):
     global _proc
