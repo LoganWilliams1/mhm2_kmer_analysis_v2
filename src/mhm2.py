@@ -397,7 +397,7 @@ def check_exec(cmd, args, expected):
 def show_mhm2_help(mhm2_binary_path):
     try:
         print(check_exec(mhm2_binary_path, '-h', 'MHM2 version'))
-    except e:
+    except Exception as e:
         print("WARNING: Could not execute '", mhm2_binary_path, " -h' to determine its help: ", e)
 
 
