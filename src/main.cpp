@@ -429,14 +429,17 @@ int main(int argc, char **argv, char **envp) {
   // if we don't load, return "command not found"
   if (!options.load(argc, argv)) return 127;
   print_exec_cmd(argc, argv);
-  SLOG_VERBOSE(KLGREEN, "----------\n");
-  SLOG_VERBOSE("GASNet/UPCXX/OFI environment variables:\n");
+  vector<string> envvars;
   for (char **env = envp; *env != 0; env++) {
-    if (!strncmp(*env, "GASNET", strlen("GASNET"))) SLOG_VERBOSE("  ", *env, "\n");
-    if (!strncmp(*env, "UPCXX", strlen("UPCXX"))) SLOG_VERBOSE("  ", *env, "\n");
-    if (!strncmp(*env, "FI_", strlen("FI_"))) SLOG_VERBOSE("  ", *env, "\n");
+    if (!strncmp(*env, "GASNET", strlen("GASNET"))) envvars.push_back(string(*env));
+    if (!strncmp(*env, "UPCXX", strlen("UPCXX"))) envvars.push_back(string(*env));
+    if (!strncmp(*env, "FI_", strlen("FI_"))) envvars.push_back(string(*env));
   }
-  SLOG_VERBOSE("----------", KNORM, '\n');
+  sort(envvars.begin(), envvars.end());
+  SLOG_VERBOSE(KBLUE "_________________________", KNORM, "\n");
+  SLOG_VERBOSE(KLBLUE "GASNet/UPCXX/OFI environment variables:", KNORM, "\n");
+  for (auto envvar : envvars) SLOG_VERBOSE(KBLUE, "  ", envvar, KNORM, "\n");
+  SLOG_VERBOSE(KBLUE "_________________________", KNORM, "\n");
   SLOG_VERBOSE(KLCYAN, "Timing reported as min/my/average/max, balance", KNORM, "\n");
   // only write them here to honor the verbose flag in options
   SLOG_VERBOSE(init_timings);
