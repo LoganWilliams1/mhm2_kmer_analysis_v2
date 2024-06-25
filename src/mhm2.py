@@ -104,12 +104,6 @@ def print_red(*args):
     print("\033[91m", *args, end="\033[00m\n", sep="", file=sys.stderr)
 
 
-def print_not_help(*args):
-    global _show_help
-    if not _show_help:
-        print(*args)
-
-
 _defaultCores = None
 
 
@@ -122,7 +116,7 @@ def get_hdw_cores_per_node():
         import psutil
 
         cores = psutil.cpu_count(logical=False)
-        print_not_help("Found %d cpus from psutil" % cores)
+        print("Found %d cpus from psutil" % cores)
     except (NameError, ImportError, TypeError):
         # print("Could not get cpus from psutil")
         pass
@@ -136,12 +130,12 @@ def get_hdw_cores_per_node():
         if platform.system() == "Darwin":
             for line in os.popen("sysctl -n hw.physicalcpu").readlines():
                 hyperthreads = cpus / int(line)
-            print_not_help("Found %d cpus and %d hyperthreads from sysctl" % (cpus, hyperthreads))
+            print("Found %d cpus and %d hyperthreads from sysctl" % (cpus, hyperthreads))
         else:
             for line in os.popen("lscpu").readlines():
                 if line.startswith("Thread(s) per core"):
                     hyperthreads = int(line.split()[3])
-            print_not_help("Found %d cpus and %d hyperthreads from lscpu" % (cpus, hyperthreads))
+            print("Found %d cpus and %d hyperthreads from lscpu" % (cpus, hyperthreads))
         cores = int(cpus / hyperthreads)
     _defaultCores = cores
     return cores
@@ -208,7 +202,7 @@ def get_slurm_cores_per_node(defaultCores=0):
         defaultCores = get_hdw_cores_per_node()
     ntasks_per_node = os.environ.get("SLURM_NTASKS_PER_NODE")
     if ntasks_per_node:
-        print_not_help("Found tasks per node from SLURM_NTASKS_PER_NODE=", ntasks_per_node)
+        print("Found tasks per node from SLURM_NTASKS_PER_NODE=", ntasks_per_node)
         return int(ntasks_per_node)
     # This SLURM variable defaults to all the hyperthreads if not overriden by the sbatch option --ntasks-per-node
     ntasks_per_node = os.environ.get("SLURM_TASKS_PER_NODE")    # SLURM_TASKS_PER_NODE=32(x4)
@@ -218,14 +212,14 @@ def get_slurm_cores_per_node(defaultCores=0):
         else:
             ntasks_per_node = int(ntasks_per_node)
         if ntasks_per_node <= defaultCores:
-            print_not_help(
+            print(
                 "Detected slurm job restricts cores to ",
                 ntasks_per_node,
                 " because of SLURM_TASKS_PER_NODE=",
                 os.environ.get("SLURM_TASKS_PER_NODE"),
             )
             return ntasks_per_node
-        print_not_help(
+        print(
             "Using default cores of ",
             defaultCores,
             ". Ignoring tasks per node ",
@@ -253,7 +247,7 @@ def get_job_cores_per_node(defaultCores=0):
     if defaultCores == 0:
         defaultCores = get_hdw_cores_per_node()
     if "GASNET_PSHM_NODES" in os.environ:
-        print_not_help(
+        print(
             "Detected procs_per_node from GASNET_PSHM_NODES=",
             os.getenv("GASNET_PSHM_NODES"),
         )
@@ -277,7 +271,7 @@ def get_slurm_job_nodes():
         nodes = os.environ.get("SLURM_NNODES")
     if nodes:
         return int(nodes)
-    print_not_help("Warning: could not determine the number of nodes in this SLURM job (%d). Only using 1" % (get_job_id()))
+    print("Warning: could not determine the number of nodes in this SLURM job (%d). Only using 1" % (get_job_id()))
     return 1
 
 
@@ -287,7 +281,7 @@ def get_lsb_job_nodes():
     nodes = os.environ.get("LSB_MCPU_HOSTS")
     if nodes:
         return int((len(nodes.split()) - 2) / 2)
-    print_not_help("Warning: could not determine the number of nodes in this LSF job (%s). Only using 1" % (get_job_id()))
+    print("Warning: could not determine the number of nodes in this LSF job (%s). Only using 1" % (get_job_id()))
     return 1
 
 
@@ -300,7 +294,7 @@ def get_pbs_job_nodes():
             for line in f:
                 nodes[line] = 1
         return len(nodes)
-    print_not_help("Warning: could not determine the number of nodes in this PBS job (%d). Only using 1" % (get_job_id()))
+    print("Warning: could not determine the number of nodes in this PBS job (%d). Only using 1" % (get_job_id()))
     return 1
 
 
@@ -309,7 +303,7 @@ def get_ge_job_nodes():
     nodes = os.environ.get("NHOSTS")
     if nodes is not None:
         return int(nodes)
-    print_not_help("Warning: could not determine the number of nodes in this SGE job (%d). Only using 1" % (get_job_id()))
+    print("Warning: could not determine the number of nodes in this SGE job (%d). Only using 1" % (get_job_id()))
     return 1
 
 
@@ -318,7 +312,7 @@ def get_cobalt_job_nodes():
     nodes = os.environ.get("COBALT_JOBSIZE")
     if nodes is not None:
         return int(nodes)
-    print_not_help("Warning: could not determine the number of nodes in this COBALT job (%s). Only using 1" % (get_job_id()))
+    print("Warning: could not determine the number of nodes in this COBALT job (%s). Only using 1" % (get_job_id()))
     return 1
 
 
@@ -334,8 +328,7 @@ def get_job_nodes():
         return get_ge_job_nodes()
     if is_cobalt_job():
         return get_cobalt_job_nodes()
-    print_not_help("Warning: could not determine the number of nodes in this unsupported scheduler job (%s). Only using 1" %
-                   (get_job_id()))
+    print("Warning: could not determine the number of nodes in this unsupported scheduler job (%s). Only using 1" % (get_job_id()))
     return 1
 
 
@@ -525,7 +518,6 @@ def main():
     global _output_dir
     global _err_thread
     global _start_time
-    global _show_help
 
     _start_time = time.time()
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
@@ -576,17 +568,14 @@ def main():
     # expect mhm2 to be in same directory as mhm2.py
     mhm2_binary_path = os.path.split(sys.argv[0])[0] + "/" + options.binary
     if not (os.path.exists(mhm2_binary_path) or which(mhm2_binary_path)):
+        show_mhm2_help(mhm2_binary_path)
         die("Cannot find binary ", options.binary + " in '", mhm2_binary_path, "'")
 
     if "-h" in unknown_options or "--help" in unknown_options:
-        argparser.print_help()
-        print()
         show_mhm2_help(mhm2_binary_path)
         exit()
 
     if len(unknown_options) == 0:
-        argparser.print_help()
-        print()
         show_mhm2_help(mhm2_binary_path)
         die("You must specify at least the reads to include for the assembly")
 
@@ -594,7 +583,7 @@ def main():
     is_input = False
     is_checkpointed = False
     for x in unknown_options:
-        print("Checking option ", x)
+        # print("Checking option ", x)
         if x[0] == '-':
             is_input = False
             if len(x) == 2 and (x[1] == 'r' or x[1] == 'p' or x[1] == 'u'):
@@ -621,10 +610,10 @@ def main():
             is_checkpointed = True
 
     if options.auto_resume:
-        print_not_help("--auto-resume is enabled: will try to restart if run fails")
+        print("--auto-resume is enabled: will try to restart if run fails")
         if not is_checkpointed:
             unknown_options.extend(["--checkpoint"])
-            print_not_help("Appending --checkpoint to mhm2 options as this run will be automatically resumed, if possible")
+            print("Appending --checkpoint to mhm2 options as this run will be automatically resumed, if possible")
 
     check_exec("upcxx-run", "-h", "UPC++")
 
@@ -636,7 +625,7 @@ def main():
         options.procs = num_nodes * get_job_cores_per_node()
 
     if options.nodes != 0 and options.nodes != num_nodes:
-        print_not_help(
+        print(
             "Overriding to use",
             options.nodes,
             "nodes, instead of the detected",
@@ -657,7 +646,7 @@ def main():
             # default to split ranks by gpu
             cmd.extend(["--by-gpu"])
             os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal for summit
-        print_not_help("This is Summit - executing custom script upcxx-jsrun to spawn the job", cmd)
+        print("This is Summit - executing custom script upcxx-jsrun to spawn the job", cmd)
 
     if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
         cmd.extend(["-shared-heap", options.shared_heap])
@@ -678,7 +667,7 @@ def main():
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
             os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal on perlmutter gpu
-        print_not_help(
+        print(
             "This is Perlmutter GPU partition - executing upcxx-srun directly and setting UPCXX_SHARED_HEAP_SIZE=",
             os.environ["UPCXX_SHARED_HEAP_SIZE"],
             ":",
@@ -703,7 +692,7 @@ def main():
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
             os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal on crusher
-        print_not_help(
+        print(
             "This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
             os.environ["UPCXX_SHARED_HEAP_SIZE"],
             ":",
@@ -728,7 +717,7 @@ def main():
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
             os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"    # default of numa is suboptimal on crusher
-        print_not_help(
+        print(
             "This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
             os.environ["UPCXX_SHARED_HEAP_SIZE"],
             ":",
@@ -752,7 +741,7 @@ def main():
         )
 
     if options.preproc:
-        print_not_help("Executing preprocess options: ", options.preproc)
+        print("Executing preprocess options: ", options.preproc)
         pplist = options.preproc.split(",")
         cmd.extend(pplist)
     cmd.extend(["--", mhm2_binary_path])
@@ -788,7 +777,7 @@ def main():
         if not "GASNET_TRACEMASK" in os.environ:
             runtime_vars += ', GASNET_TRACEMASK="GPWBNIH"'
         runtime_vars += ", "
-        print_not_help("Ignoring SIGUSR2 as gasnet traces will be generated when that is sent")
+        print("Ignoring SIGUSR2 as gasnet traces will be generated when that is sent")
         signal.signal(signal.SIGUSR2, log_signal)
 
     runenv = eval('dict(os.environ, %s MHM2_RUNTIME_PLACEHOLDER="")' % (runtime_vars))
@@ -809,7 +798,7 @@ def main():
     restarting = False
     err_msgs = []
     while True:
-        print_not_help(str(datetime.datetime.now()) + " " + "executing:\n", " ".join(cmd))
+        print(str(datetime.datetime.now()) + " " + "executing:\n", " ".join(cmd))
         started_exec = False
         completed_round = False
         try:
@@ -819,7 +808,7 @@ def main():
             _err_thread.start()
             for line in iter(_proc.stdout.readline, b""):
                 if not started_exec:
-                    print_not_help("Started executing at " + str(datetime.datetime.now()) + " with PID " + str(_proc.pid))
+                    print("Started executing at " + str(datetime.datetime.now()) + " with PID " + str(_proc.pid))
                     started_exec = True
                 try:
                     line = line.decode()
@@ -845,7 +834,7 @@ def main():
                                 moved_traces += 1
                             except:
                                 pass
-                    print_not_help(
+                    print(
                         "mhm2.py: Renamed ",
                         moved_traces,
                         " per_rank traces from ",
@@ -858,7 +847,7 @@ def main():
                         # always rename the error log if it already exists
                         new_err_log = (_output_dir + "err.log-" + str(datetime.datetime.now().isoformat()))
                         os.rename(_output_dir + "err.log", new_err_log)
-                        print_not_help("mhm2.py: Renamed old err.log to ", new_err_log)
+                        print("mhm2.py: Renamed old err.log to ", new_err_log)
                         os.unlink(_output_dir + "/per_rank/err.log")
                     except:
                         pass

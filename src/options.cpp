@@ -336,8 +336,25 @@ string Options::get_job_id() {
   return job_id;
 }
 
+Options::Options() {
+  char buf[32];
+  memset(buf, 0, sizeof(buf));
+  if (!upcxx::rank_me()) {
+    setup_time = get_current_time(true);
+    strncpy(buf, setup_time.c_str(), sizeof(buf) - 1);
+  }
+  upcxx::broadcast(buf, sizeof(buf), 0, world()).wait();
+  setup_time = string(buf);
+  output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
+               to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
+}
+
 Options::~Options() {
   flush_logger();
+  cleanup();
+}
+
+void Options::cleanup() {
   // cleanup and close loggers that Options opened in load
   close_logger();
 #ifdef DEBUG
@@ -349,18 +366,7 @@ CLI::Option *add_flag_def(CLI::App &app, string flag, bool &var, string help) {
   return app.add_flag(flag, var, help + " (" + (var ? "true" : "false") + ")");
 }
 
-Options::Options(int argc, char **argv) {
-  char buf[32];
-  memset(buf, 0, sizeof(buf));
-  if (!upcxx::rank_me()) {
-    setup_time = get_current_time(true);
-    strncpy(buf, setup_time.c_str(), sizeof(buf) - 1);
-  }
-  upcxx::broadcast(buf, sizeof(buf), 0, world()).wait();
-  setup_time = string(buf);
-  output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
-               to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
-  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN");  // get default from the environment if it exists
+bool Options::load(int argc, char **argv) {
   // MHM2 version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
   string full_version_str = "MHM2 version " + string(MHM2_VERSION) + "-" + string(MHM2_BRANCH) + " with upcxx-utils " +
                             string(UPCXX_UTILS_VERSION) + " built on " + string(MHM2_BUILD_DATE);
@@ -452,6 +458,7 @@ Options::Options(int argc, char **argv) {
   app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
       ->check(CLI::Range(0, 16))
       ->group("Performance trade-off options");
+  if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN");  // get default from the environment if it exists
   app.add_option("--pin", pin_by,
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
@@ -495,7 +502,7 @@ Options::Options(int argc, char **argv) {
       if (e.get_exit_code() != 0) cerr << "\nError (" << e.get_exit_code() << ") in command line:\n";
       app.exit(e);
     }
-    exit(127);
+    return false;
   }
 
   {
@@ -552,21 +559,28 @@ Options::Options(int argc, char **argv) {
   if (!restart && reads_fnames.empty()) {
     if (!rank_me())
       cerr << "\nError in command line:\nRequire read names if not restarting\nRun with --help for more information\n";
-    exit(127);
+    return false;
   }
 
   if (post_assm_only && ctgs_fname.empty()) ctgs_fname = "final_assembly.fasta";
 
-  if (post_assm_only) post_assm = true;
+  if (post_assm_only) {
+    post_assm = true;
+    if (!*output_dir_opt) {
+      if (!rank_me()) cerr << "\nError in command line: Cannot find output directory for post-asm-only run\n";
+      return false;
+    }
+    if (!file_exists(output_dir + string("/final_assembly.fasta"))) {
+      if (!rank_me())
+        cerr << "\nError in command line:\nCannot find file 'final_assembly.fasta' in directory '" << output_dir
+             << "' for post-asm-only run\n";
+      return false;
+    }
+  }
 
   upcxx::barrier();
 
   if (!*output_dir_opt) {
-    if (restart) {
-      if (!rank_me())
-        cerr << "\nError in command line:\nRequire output directory when restarting run\nRun with --help for more information\n";
-      exit(127);
-    }
     string first_read_fname = reads_fnames[0];
     // strip out the paired or unpaired/single the possible ':' in the name string
     auto colpos = first_read_fname.find_last_of(':');
@@ -597,7 +611,7 @@ Options::Options(int argc, char **argv) {
         cerr << "\nError (" << e.get_exit_code() << ") in config file (" << config_file << "):\n";
         app.exit(e);
       }
-      exit(127);
+      return false;
     }
   }
 
@@ -667,6 +681,7 @@ Options::Options(int argc, char **argv) {
 #endif
   write_config_file();
   upcxx::barrier();
+  return true;
 }
 
 void Options::adjust_config_option(const string &opt_name, const string &new_val) {

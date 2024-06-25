@@ -118,9 +118,11 @@ class Options {
   int sequencing_depth = 4;
   string optimize_for = "default";
 
-  Options() {}
-  Options(int argc, char **argv);
+  Options();
   ~Options();
+  void cleanup();
+
+  bool load(int argc, char **argv);
 
   void write_config_file();
   void adjust_config_option(const string &opt_name, const string &new_val);

@@ -425,7 +425,9 @@ int main(int argc, char **argv) {
 
   srand(rank_me() + 10);
   auto start_t = clock_now();
-  Options options(argc, argv);
+  Options options;
+  // if we don't load, return "command not found"
+  if (!options.load(argc, argv)) return 127;
   print_exec_cmd(argc, argv);
   SLOG_VERBOSE(KLCYAN, "Timing reported as min/my/average/max, balance", KNORM, "\n");
   // only write them here to honor the verbose flag in options
