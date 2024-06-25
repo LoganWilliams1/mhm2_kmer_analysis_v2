@@ -572,12 +572,16 @@ def main():
         die("Cannot find binary ", options.binary + " in '", mhm2_binary_path, "'")
 
     if "-h" in unknown_options or "--help" in unknown_options:
+        argparser.print_help()
+        print()
         show_mhm2_help(mhm2_binary_path)
         exit()
 
     if len(unknown_options) == 0:
+        argparser.print_help()
+        print()
         show_mhm2_help(mhm2_binary_path)
-        die("You must specify at least the reads to include for the assembly")
+        die("You must at least specify the reads to use for the assembly, or the config file containing the reads")
 
     is_output_option = False
     is_input = False
