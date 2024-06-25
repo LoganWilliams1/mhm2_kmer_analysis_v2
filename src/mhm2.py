@@ -98,7 +98,6 @@ _output_dir = ""
 _err_thread = None
 _stop_thread = False
 _start_time = None
-_show_help = False
 
 
 def print_red(*args):
@@ -411,10 +410,17 @@ def check_exec(cmd, args, expected):
     try:
         result = subprocess.check_output([test_exec, args]).decode()
         if expected not in result:
-            die(test_exec, " failed to execute")
+            die(test_exec, " failed to execute: ", test_exec, " ", args)
+        return result
     except subprocess.CalledProcessError as err:
         die("Could not execute ", test_exec + ": ", err)
 
+
+def show_mhm2_help(mhm2_binary_path):
+    try:
+        print(check_exec(mhm2_binary_path, '-h', 'MHM2 version'))
+    except e:
+        print("WARNING: Could not execute '", mhm2_binary_path, " -h' to determine its help: ", e)
 
 def capture_err(err_msgs):
     global _proc
@@ -548,6 +554,7 @@ def main():
     _start_time = time.time()
     _orig_sighdlr = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handle_interrupt)
+    default_shared_heap = "10%"
 
     argparser = argparse.ArgumentParser(
         add_help=False,
@@ -561,7 +568,7 @@ def main():
         help="Automatically resume after a failure",
     )
     argparser.add_argument(
-        "--shared-heap", default="10%", help="Shared heap as a percentage of memory"
+        "--shared-heap", default=default_shared_heap, help="Shared heap as a percentage of memory with %% or MB, per rank optionall with MB"
     )
     # argparser.add_argument("--procs-per-node", default=0, help="Processes to spawn per node (default auto-detect cores)")
     argparser.add_argument(
@@ -594,19 +601,60 @@ def main():
 
     options, unknown_options = argparser.parse_known_args()
 
-    if "-h" in unknown_options or "--help" in unknown_options:
-        _show_help = True
-        argparser.print_help()
-        print()
-
-    if options.auto_resume:
-        print("--auto-resume is enabled: will try to restart if run fails")
-
-    check_exec("upcxx-run", "-h", "UPC++")
     # expect mhm2 to be in same directory as mhm2.py
     mhm2_binary_path = os.path.split(sys.argv[0])[0] + "/" + options.binary
     if not (os.path.exists(mhm2_binary_path) or which(mhm2_binary_path)):
         die("Cannot find binary ", options.binary + " in '", mhm2_binary_path, "'")
+
+    if "-h" in unknown_options or "--help" in unknown_options:
+        argparser.print_help()
+        print()
+        show_mhm2_help(mhm2_binary_path)
+        exit()
+
+    if len(unknown_options) == 0:
+        argparser.print_help()
+        print()
+        show_mhm2_help(mhm2_binary_path)
+        die("You must specify at least the reads to include for the assembly")
+
+    is_output_option = False
+    is_input = False
+    is_checkpointed = False
+    for x in unknown_options:
+        print("Checking option ", x)
+        if x[0] == '-':
+            is_input = False
+            if len(x) == 2 and (x[1] == 'r' or x[1] == 'p' or x[1] == 'u'):
+                is_input = True
+                next
+            if '--paired' in x or '--unpaired' in x or '--reads' == x:
+                is_input = True
+                next
+        if is_input and x.endswith('.gz'):
+            argparser.print_help()
+            show_mhm2_help(mhm2_binary_path)
+            die("Detected a gzipped file as input: ", x, "\n", 
+                "You cannot include any gzipped files as input reads -- please uncompress them first!\n")
+        if x == '-o' or '--output' == x:
+            is_output_option = True
+            next
+        elif is_output_option:
+            _output_dir = x
+        is_output_option = False
+        if x == "--restart" and not options.auto_resume:
+            options.auto_resume = True
+            print("Detected --restart. Setting --auto-resume so that mhm2.py will attempt to re-run a failed run")
+        if x == "--checkpoint":
+            is_checkpointed = True
+
+    if options.auto_resume:
+        print("--auto-resume is enabled: will try to restart if run fails")
+        if not is_checkpointed:
+            unknown_options.extend(["--checkpoint"])
+            print("Appending --checkpoint to mhm2 options as this run will be automatically resumed, if possible")
+
+    check_exec("upcxx-run", "-h", "UPC++")
 
     # cores_per_node = int(options.procs_per_node)
     # if cores_per_node == 0:
@@ -643,7 +691,6 @@ def main():
 
     if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
         cmd.extend(["-shared-heap", options.shared_heap])
-        # os.environ['UPCXX_SHARED_HEAP_SIZE'] = options.shared_heap
 
     # special spawning for perlmutter GPU nodes that requires srun, not upcxx-run for now
     if (
@@ -663,7 +710,7 @@ def main():
             os.path.split(sys.argv[0])[0] + "/mhm2-mps-wrapper-perlmutter.sh",
         ]
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB"
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "450 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ[
             "MHM2_PIN"
         ] = "none"  # default of numa is suboptimal on perlmutter gpu
@@ -690,7 +737,7 @@ def main():
             "--bcast=/tmp/",
         ]
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB"
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal on crusher
         print(
             "This is Crusher - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
@@ -718,7 +765,7 @@ def main():
             "--bcast=/tmp/",
         ]
         if "UPCXX_SHARED_HEAP_SIZE" not in os.environ:
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB"
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] = "800 MB" if "%" in options.shared_heap else options.shared_heap
         os.environ["MHM2_PIN"] = "none"  # default of numa is suboptimal on crusher
         print(
             "This is Frontier - executing srun directly and overriding UPCXX_SHARED_HEAP_SIZE=",
@@ -728,15 +775,18 @@ def main():
         )
 
     if (
-        "UPCXX_SHARED_HEAP_SIZE" in os.environ
-        and "GASNET_MAX_SEGSIZE" not in os.environ
+        "GASNET_MAX_SEGSIZE" not in os.environ
     ):
+        if "UPCXX_SHARED_HEAP_SIZE" in os.environ and 'B' in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
+            os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
+        else:
+            os.environ["GASNET_MAX_SEGSIZE"] = "0.5/H"
+
+
         print(
-            "Setting GASNET_MAX_SEGSIZE == UPCXX_SHARED_HEAP_SIZE == ",
-            os.environ["UPCXX_SHARED_HEAP_SIZE"],
-            " to avoid gasnet memory probe",
+            "Setting GASNET_MAX_SEGSIZE == ", os.environ["GASNET_MAX_SEGSIZE"], " and ", "UPCXX_SHARED_HEAP_SIZE == " +
+            os.environ["UPCXX_SHARED_HEAP_SIZE"] if "UPCXX_SHARED_HEAP_SIZE" in os.environ else " -shared-heap = " + options.shared_heap, " to avoid gasnet memory probe",
         )
-        os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
@@ -749,7 +799,7 @@ def main():
     cmd.extend(["--adapter-refs", adapters_path])
 
     print("Executing mhm2 with " + get_job_desc() + " on " + str(num_nodes) + " nodes.")
-    print("Executing as: " + " ".join(sys.argv))
+    print("Executed as: " + " ".join(sys.argv))
 
     cores = get_job_cores_per_node()
     noderanks = "0"
@@ -931,9 +981,10 @@ def main():
                     print_red("Trying to restart with output directory ", _output_dir)
                     restarting = True
                     err_msgs = []
-                    cmd.append("--restart")
-                    if _output_dir[:-1] not in cmd:
-                        cmd.extend(["-o", _output_dir])
+                    if '--restart' not in cmd:
+                        cmd.extend(["--restart"])
+                    if '-o' not in cmd and '--output' not in cmd:
+                        cmd.extend(["--output", _output_dir])
                     time.sleep(5)
                 else:
                     if options.auto_resume:

@@ -66,6 +66,7 @@ echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 if [ ! -f ./test-arctic-sample0/final_assembly.fasta ] ; then FAILED="${FAILED} Did not find final_assembly.fasta for rwdi in test-arctic-sample0" ; fi
 echo "FAILED=${FAILED}" && [ -z "$FAILED" ]
 
+rm -rf ${RUN_PREFIX}/rwdi-test-arctic-sample0
 mv test-arctic-sample0 ${RUN_PREFIX}/rwdi-test-arctic-sample0
 echo "Starting debug run on with reduced workflow using ${DBG}/mhm2"
 timeout -k 1m -s INT --foreground -v 25m ${DBG}/mhm2.py -r $reads -o ${RUN_PREFIX}/dbg-k3163 --kmer-lens 31,63 --scaff-kmer-lens 63 --checkpoint=no -v || FAILED="${FAILED} Could not run dbg"
