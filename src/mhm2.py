@@ -402,7 +402,7 @@ def show_mhm2_help(mhm2_binary_path):
     try:
         # always make sure to set these variables to prevent slow GASNET memory probes
         os.environ["UPCXX_SHARED_HEAP"] = "10%"
-        os.environ["GASNET_MAX_SEGSIZE"] = "0.5/H"
+        os.environ["GASNET_PHYSMEM_PROBE"] = "0"
         h = check_exec(mhm2_binary_path, '-h', 'MHM2 version', die_on_fail=False)
         print(h)
     except Exception as e:
@@ -736,21 +736,24 @@ def main():
             cmd,
         )
 
-    if ("GASNET_MAX_SEGSIZE" not in os.environ):
-        if "UPCXX_SHARED_HEAP_SIZE" in os.environ and 'B' in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
-            os.environ["GASNET_MAX_SEGSIZE"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
-        else:
-            os.environ["GASNET_MAX_SEGSIZE"] = "0.5/H"
+    # avoid slow gasnet memory probe
+    os.environ["GASNET_PHYSMEM_PROBE"] = "0"
+    
+    # if ("GASNET_PHYSMEM_MAX" not in os.environ):
+    #     if "UPCXX_SHARED_HEAP_SIZE" in os.environ and 'B' in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
+    #         os.environ["GASNET_PHYSMEM_MAX"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
+    #     else:
+    #         os.environ["GASNET_PHYSMEM_MAX"] = "2/3"
 
-        print(
-            "Setting GASNET_MAX_SEGSIZE == ",
-            os.environ["GASNET_MAX_SEGSIZE"],
-            " and ",
-            "UPCXX_SHARED_HEAP_SIZE == " +
-            os.environ["UPCXX_SHARED_HEAP_SIZE"] if "UPCXX_SHARED_HEAP_SIZE" in os.environ else " -shared-heap = " +
-            options.shared_heap,
-            " to avoid gasnet memory probe",
-        )
+    #     print(
+    #         "Setting GASNET_PHYSMEM_MAX == ",
+    #         os.environ["GASNET_PHYSMEM_MAX"],
+    #         " and ",
+    #         "UPCXX_SHARED_HEAP_SIZE == " +
+    #         os.environ["UPCXX_SHARED_HEAP_SIZE"] if "UPCXX_SHARED_HEAP_SIZE" in os.environ else " -shared-heap = " +
+    #         options.shared_heap,
+    #         " to avoid gasnet memory probe",
+    #     )
 
     if options.preproc:
         print("Executing preprocess options: ", options.preproc)
