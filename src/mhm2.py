@@ -400,6 +400,9 @@ def check_exec(cmd, args, expected, die_on_fail=True):
 
 def show_mhm2_help(mhm2_binary_path):
     try:
+        # always make sure to set these variables to prevent slow GASNET memory probes
+        os.environ["UPCXX_SHARED_HEAP"] = "10%"
+        os.environ["GASNET_MAX_SEGSIZE"] = "0.5/H"
         h = check_exec(mhm2_binary_path, '-h', 'MHM2 version', die_on_fail=False)
         print(h)
     except Exception as e:
