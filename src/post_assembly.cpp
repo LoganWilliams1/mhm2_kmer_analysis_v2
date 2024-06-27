@@ -200,6 +200,7 @@ void post_assembly(Contigs &ctgs, Options &options) {
       stage_timers.aln_comms->inc_elapsed(aln_timers.fetch_ctg_maps.get_elapsed() + aln_timers.rget_ctg_seqs.get_elapsed());
       stage_timers.alignments->stop();
       LOG_MEM("Aligned Post Assembly Reads " + short_name);
+      barrier();
     }
     // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
     sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
