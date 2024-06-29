@@ -99,6 +99,7 @@ class Options {
   bool dump_merged = false;
   bool post_assm = false;
   bool post_assm_only = false;
+  bool post_assm_write_sam = true;
   int post_assm_subsets = 1;
   bool dump_gfa = false;
   bool show_progress = false;

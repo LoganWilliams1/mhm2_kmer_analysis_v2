@@ -405,6 +405,10 @@ bool Options::load(int argc, char **argv) {
       ->group("Basic options");
   add_flag_def(app, "--post-asm", post_assm, "Align reads to final assembly and compute abundances (for use by MetaBAT).")
       ->group("Basic options");
+  add_flag_def(
+      app, "--post-asm-write-sam", post_assm_write_sam,
+      "Write SAM files after post assembly alignment (defaults to true). If set to false, will still output abundance file.")
+      ->group("Basic options");
   add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly.")->group("Basic options");
   add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.")->group("Basic options");
   add_flag_def(app, "-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).")

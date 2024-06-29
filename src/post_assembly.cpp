@@ -141,12 +141,14 @@ void post_assembly(Contigs &ctgs, Options &options) {
   LOG_MEM("Starting Post Assembly");
   auto start_t = clock_now();
   // set up output files
-  SLOG_VERBOSE("Writing SAM headers\n");
-  dist_ofstream sam_header_ofs("final_assembly.header.sam");
-  stage_timers.dump_alns->start();
-  Alns::write_sam_header(sam_header_ofs, options.reads_fnames, ctgs, options.min_ctg_print_len).wait();
-  sam_header_ofs.close();
-  stage_timers.dump_alns->stop();
+  if (options.post_assm_write_sam) {
+    SLOG_VERBOSE("Writing SAM headers\n");
+    dist_ofstream sam_header_ofs("final_assembly.header.sam");
+    stage_timers.dump_alns->start();
+    Alns::write_sam_header(sam_header_ofs, options.reads_fnames, ctgs, options.min_ctg_print_len).wait();
+    sam_header_ofs.close();
+    stage_timers.dump_alns->stop();
+  }
   auto num_read_groups = options.reads_fnames.size();
   SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
   AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
@@ -213,15 +215,17 @@ void post_assembly(Contigs &ctgs, Options &options) {
     tot_reads_aligned += num_reads_aligned;
     tot_bases_aligned += num_bases_aligned;
     for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
-    // check for existence of SAM file - if so don't write again. This can be the slowest component on HPC systems, and we still
-    // need to do the other computations to obtain the global avg depth information
-    if (filesystem::exists(filesystem::path(sam_fname))) {
-      SLOG("SAM file \"", sam_fname, "\" exists: will not write again\n");
-    } else {
-      stage_timers.dump_alns->start();
-      alns.dump_sam_file(sam_fname, options.min_ctg_print_len);
-      stage_timers.dump_alns->stop();
-      LOG_MEM("After Post Assembly SAM Saved");
+    if (options.post_assm_write_sam) {
+      // check for existence of SAM file - if so don't write again. This can be the slowest component on HPC systems, and we still
+      // need to do the other computations to obtain the global avg depth information
+      if (filesystem::exists(filesystem::path(sam_fname))) {
+        SLOG("SAM file \"", sam_fname, "\" exists: will not write again\n");
+      } else {
+        stage_timers.dump_alns->start();
+        alns.dump_sam_file(sam_fname, options.min_ctg_print_len);
+        stage_timers.dump_alns->stop();
+        LOG_MEM("After Post Assembly SAM Saved");
+      }
     }
 #ifdef PAF_OUTPUT_FORMAT
     string aln_name("final_assembly-" + short_name + ".paf");
@@ -307,9 +311,11 @@ void post_assembly(Contigs &ctgs, Options &options) {
   chrono::duration<double> t_elapsed = clock_now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
 
-  SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly. Files can be found in directory \"", options.output_dir,
-       "\":\n  \"final_assembly.header.sam\" contains header information",
-       "\n  \"*.sam\" files contain alignments per input/read file", "\n  \"final_assembly_depths.text\" contains scaffold depths",
-       KNORM, "\n");
+  SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly. Files can be found in directory \"", options.output_dir, "\":\n");
+  SLOG(KBLUE, "  \"final_assembly_depths.text\" contains scaffold depths (abundances)", KNORM, "\n");
+  if (options.post_assm_write_sam) {
+    SLOG(KBLUE, "  \"final_assembly.header.sam\" contains header information for all input file alignments", KNORM, "\n");
+    SLOG(KBLUE, "  \"*.sam\" files contain alignments per input/read file", KNORM, "\n");
+  }
   SLOG(KBLUE, "_________________________", KNORM, "\n");
 }

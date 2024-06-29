@@ -102,6 +102,43 @@ In addition, many more files may be generated according to which command-line op
 
 The `mhm2` binary can be executed directly using `upcxx-run`, `srun` or another suitable launcher. Generally we recommend using `mhm2.py`, because it takes care of many facets of starting the executable in a given environment and provides additional functionality, e.g. automatically restarting on errors, easily enabling communication tracing, etc.
 
+A description of all the available options is provided below. This list can be obtained in an abbreviated form by running `mhm2.py -h`.
+
+## Options provided by mhm2.py
+
+The following options are provided by the `mhm2.py` wrapper script:
+
+**`--auto-resume BOOL`**
+Automatically resume a run if it fails. This wil restart the run at the last saved checkpoint (this will enable checkpoints by default, i.e. `--checkpoint=true`). This defaults to false.
+
+**`--shared-heap INT`**
+
+Set the shared heap size used by the UPC++ runtime, as a percentage of the available memory. This defaults to 10% and should not need to be adjusted. If MHM2 fails with `upcxx::bad_shared_alloc` messages, then this value should be increased.
+
+**`--procs INT`**
+
+Set the number of processes used when running MHM2. By default, MHM2 automatically detects the number of available cores and runs with one process per core. This setting allows a user to run MHM2 on a subset of available processors, which may be desirable if running on a server that is running other applications.
+
+**`--nodes INT`**
+
+Set the number of nodes on which to execute MHM2. By default, MHM2 will use the total available number of nodes from the job launch. On rare occasions it may be desirable to explicitly set this through the MHM2 launch, and not during the external job launch.
+
+**`--gasnet-stats`**
+
+Collect GASNet communication statistics. This option should be run with either a `Debug` or a `RelWithDebInfo` build. It will produce a summary of communication statistics for each stage, and write the summary to the log file and to stdout. Enabling this will further increase the runtime.
+
+**`--gasnet-trace`**
+
+Enable GASNet tracing. This must be run with a `Debug` or `RelWithDebInfo` build. This will produce one file per process `P`, called `trace_<P>.txt`. For more about what data are collected, consult the [GASNet documentation](https://gasnet.lbl.gov/dist-ex/README), in the section about GASNet tracing and statistical collection. The trace mask is set to a comprensive set of default, i.e. setting the GASNet environment variable: `GASNET_TRACEMASK="GPWBNIH"`. This can be overriden by explicitly setting that environment variable.
+
+**`--preproc STRING`**
+
+Preprocessing commands. This is a comma separated list containing preprocesses and/or options (e.g. `valgrind --leak-check=full`), or additional options to be passed to `upcxx-run`.
+
+**`--binary STRING`**
+
+The name of the binary file for executing MHM2. This defaults to `mhm2`. This option can be used to run different binaries from the same script, such as builds with and without GPU support.
+
 ## Basic options
 
 These are the most commonly used options.
@@ -114,7 +151,6 @@ lfs setstripe -c 72 data
 mv reads.fastq data
 ```
 
-
 **`-r, --reads STRING,STRING,...`**
 
 A collection of names of files containing interleaved paired reads in FASTQ format. Multiple files must be comma-separated, or can be separated by spaces. For paired reads in separate files, use the `-p` option. For unpaired reads, use the `-u` option. Long lists of read files can be set in a configuration file and loaded with the `--config` option, to avoid having to type them in on the command line.
@@ -126,24 +162,11 @@ A collection of names of files containing separate paired reads in FASTQ format.
 
 `-p lib1_1.fastq,lib1_2.fastq,lib2_1.fastq,lib2_2.fastq`
 
-
 This option only supports reads where each pair of reads has the same sequence length, usually only seen in raw reads. For support of trimmed reads of possibly different lengths, first interleave the files and then call with the `-r` option. The separate files can be interleaved with `reformat.sh` from [bbtools](https://jgi.doe.gov/data-and-tools/bbtools/).
 
 **`-u, --unpaired-reads STRING,STRING,...`**
 
 A collection of names of files containing unpaired reads in FASTQ format. Multiple files must be comma-separated, or can be separated by spaces.
-
-**`--adapter-trim BOOL`**
-
-If set to true, will trim adapters using the `--adapter-refs` file. The default is true.
-
-**`--adapter-refs STRING`**
-
-A file containing adapter sequences in the FASTA format. If specified, it will be used to trim out all adapters when the input reads are first loaded. Two files containing adapter sequences are provided in the `contrib` directory: `adapters_no_transposase.fa` and `all_adapters.fa.gz`. When installed the latter is unzipped and copied to the install directory under `share`. The default is to trim adapters using this file, so this option usually does not need to be set.
-
-**`-i, --insert INT:INT`**
-
-The insert size for paired reads. The first integer is the average insert size for the paired reads and the second integer is the standard deviation of the insert sizes. MHM2 will automatically attempt to compute these values so this parameter is usually not necessary. However, there are certain cases where it may be useful, for example, if MHM2 prints a warning about being unable to compute the insert size because of the nature of the reads, or if only doing scaffolding. MHM2 will also compare its computed value to any option set on the command line and print a warning if the two differ significantly; this is useful for confirming assumptions about the insert sise distribution.
 
 **`-k, --kmer-lens INT,INT,...`**
 
@@ -151,7 +174,7 @@ The *k*-mer lengths used for the contigging rounds. MHM2 performs one or more co
 
 **`-s, --scaff-kmer-lens INT,INT,...`**
 
-The *k*-mer lengths used for the scaffolding rounds. In MHM2, the contigging rounds are followed by one or more scaffolding rounds. These rounds usually proceed from a high *k* to a low one, i.e. the reverse ordering of contigging. This option defaults to `-s 95,47,31` for reads of length greater than 130, and to `\s 47,31` for shorter reads. The first value should always be set to the final `k` used in contigging, e.g. for reads of length 250 with parameter `-k 21,33,47,63,95,121`, the scaffolding values could be `-s 121,63,31`. More rounds may improve contiguity but will likely increase misassemblies. To disable scaffolding altogether, set this value to 0, i.e. `-s 0`.
+The *k*-mer lengths used for the scaffolding rounds. In MHM2, the contigging rounds are followed by one or more scaffolding rounds. These rounds usually proceed from a high *k* to a low one, i.e. the reverse ordering of contigging. This option defaults to `-s 95,47,31` for reads of length greater than 130, and to `-s 47,31` for shorter reads. The first value should always be set to the final `k` used in contigging, e.g. for reads of length 250 with parameter `-k 21,33,47,63,95,121`, the scaffolding values could be `-s 121,63,31`. More rounds may improve contiguity but will likely increase misassemblies. To disable scaffolding altogether, set this value to 0, i.e. `-s 0`.
 
 **`--min-ctg-print-len INT`**
 
@@ -179,7 +202,7 @@ Restart a previous incomplete run. If set to true, MHM2 will attempt to restart 
 
 **`--post-asm BOOL`**
 
-Perform alignment of reads to final assembly after assembly has completed, and compute abundances. If set to true. MHM2 will align the original reads to the final assembly and report the results in a file, `final_assembly.sam`, in [SAM format](https://samtools.github.io/hts-specs/SAMv1.pdf). MHM2 will also compute the abundances (depths) for the contigs in the final assembly and write the results to the file, `final_assembly_depths.txt`. The format of this file is the same as that used by [MetaBAT](https://bitbucket.org/berkeleylab/metabat/), and so can be used together with the `final_assembly.fasta` for post-assembly binning, e.g.:
+Perform alignment of reads to final assembly after assembly has completed, and compute abundances. If set to true. MHM2 will align the original reads to the final assembly and write one output SAM file (with extension `.sam`) per input file. The headers for all the SAM files will be all written to a single file, `final_assembly.header.sam`. The output will be in [SAM format](https://samtools.github.io/hts-specs/SAMv1.pdf). MHM2 will also compute the abundances (depths) for the scaffolds in the final assembly and write the results to the file, `final_assembly_depths.txt`. The format of this file is the same as that used by [MetaBAT](https://bitbucket.org/berkeleylab/metabat/), and so can be used together with the `final_assembly.fasta` for post-assembly binning, e.g.:
 
 `metabat2 -i final_assembly.fasta -a final_assembly_depths.txt -o bins_dir/bin`
 
@@ -189,13 +212,10 @@ Perform alignment of reads to final assembly after assembly has completed, and c
 
 Perform only post-assembly operations. If set to true, this requires an existing directory containing a full run (i.e. with a `final_assembly.fasta` file), and it will execute post-assembly operations on that assembly without any other steps. This provides a convenient means to run alignment and/or abundance calculations on an already completed assembly. By default this post-assembly analysis will use the `final_assembly.fasta` file in the output directory, but any FASTA file could be used, including those not generated by MHM2 (see the `--contigs` in the advanced options section below). This defaults to false.
 
-**`--write-gfa BOOL`**
+**`--post-asm-write-sam BOOL`**
 
-Produce an assembly graph in the GF2 format. If set to true, MHM2 will output an assembly graph in the [GFA2 format](https://github.com/GFA-spec/GFA-spec/blob/master/GFA2.md) in the file, `final_assembly.gfa`. This represents the assembly graph formed by aligning the reads to the final contigs and using those alignments to infer edges between the contigs. This defaults to false.
-
-**`-Q, --quality-offset INT`**
-
-The *phred* encoding offset. In most cases, MHM2 will be able to detect this offset from analyzing the reads file, so it usually does not need to be explicitly set.
+Turn writing of the SAM files for post-assembly on or off. This defaults to true. The SAM files can be very large and do not need to be saved to the filesystem in order for the abundances to be calculated, and only the abundances are needed for running
+      MetaBAT. Specify false here to save space.
 
 **`--progress BOOL`**
 
@@ -252,6 +272,18 @@ The *k*-mer length in the previous contigging round. Only needed if restarting i
 
 There are several additonal options for adjusting the quality of the final assembly, apart from the *k*-mer values specified for the contigging and scaffolding rounds, as described earlier.
 
+**`--adapter-trim BOOL`**
+
+If set to true, will trim adapters using the `--adapter-refs` file. This can be turned off if the input reads are already trimmed and preprocessed to removed adapters. The default is true.
+
+**`--adapter-refs STRING`**
+
+A file containing adapter sequences in the FASTA format. If specified, it will be used to trim out all adapters when the input reads are first loaded. Two files containing adapter sequences are provided in the `contrib` directory: `adapters_no_transposase.fa` and `all_adapters.fa.gz`. When installed the latter is unzipped and copied to the install directory under `share`. The default is to trim adapters using this file, so this option usually does not need to be set.
+
+**`-i, --insert INT:INT`**
+
+The insert size for paired reads. The first integer is the average insert size for the paired reads and the second integer is the standard deviation of the insert sizes. MHM2 will automatically attempt to compute these values so this parameter is usually not necessary. However, there are certain cases where it may be useful, for example, if MHM2 prints a warning about being unable to compute the insert size because of the nature of the reads, or if only doing scaffolding. MHM2 will also compare its computed value to any option set on the command line and print a warning if the two differ significantly; this is useful for confirming assumptions about the insert sise distribution.
+
 **`--break-scaff-Ns INT`**
 
 The number of Ns allowed in a gap before the scaffold is broken into two. The default is 10.
@@ -276,6 +308,10 @@ The maximum size per process in MB for the aggregation of *k*-mers during *k*-me
 
 The maximum number of remote procedure calls (RPCs) outstanding at any given time. The default is 100. Reducing this will reduce memory usage but could increase running time. If set to 0, there are no limits on the outstanding RPCs.
 
+**`--aln-ctg-seq-buf-size INT`**
+
+Size of buffer for fetching contig sequences during alignment. Reducing this will reduce memory usage but slow down communication. Defaults to 1000.
+
 **`--max-worker-threads INT`**
 
 The maximum number of background worker threads. These threads are used for a limited number of background computation tasks. The default value is three and should not need to be adjusted.
@@ -288,12 +324,9 @@ Restrict the hardware contexts that processes can run on. There are five options
 
 The expected average sequencing depth. This value is used to estimate the memory requirements for unique *k*-mers in the first round of contigging. It may only need to be adjusted when memory is scarce and there is a need to better balance initial memory allocations.
 
-**`--shared-heap INT`**
+**`--post-asm-subsets INT`**
 
-Set the shared heap size used by the UPC++ runtime, as a percentage of the available memory. This defaults to 10% and should not need to be adjusted. If MHM2 fails with `upcxx::bad_shared_alloc` messages, then this value should be increased.
-
-
-### Miscellaneous
+Number of subsets to split contigs into for post-assembly. Each subset is processed in turn against all input files and the results are combined per input file. Increasing the number of subsets reduces memory usage but increases time taken.
 
 **`--shuffle-reads BOOL`**
 
@@ -303,6 +336,13 @@ Shuffle reads to improve locality. This defaults to true, and results in greatly
 
 Use the [TCF filter](https://ppopp23.sigplan.org/details/PPoPP-2023-papers/13/High-Performance-Filters-for-GPUs) to reduce memory when running on GPUs. This option will reduce peak GPU memory requirements by about 50%, with a performance impact of less than one percent. The only reason to disable it is for debugging or evaluating the impact of the TCF.
 
+**`--subsample-pct INT`**
+
+Percentage of input read files to use in the assembly. The value is from 0 to 100. This option enables to user to test a dataset with a smaller part of it, e.g. 10%. All of the input files will be reduced to the percentage specified.
+
+
+### Miscellaneous
+
 **`--dump-merged BOOL`**
 
 Write merged FASTQ input files to the output directory. The file will be named `<READ_FILE_NAME>-merged.fastq`. The default is false.
@@ -311,30 +351,11 @@ Write merged FASTQ input files to the output directory. The file will be named `
 
 Write *k*-mers to files in the output directory. The *k*-mers are written in each contigging stage immediately after *k*-mer counting. The files will be written on a per process basis into the `per_rank` subdirectory, named `kmers-<k>.txt.gz`, where `k` is the value for the contigging round. The default is false.
 
-**`--subsample-pct INT`**
+**`--write-gfa BOOL`**
 
-Percentage of input read files to use in the assembly. The value is from 0 to 100. This option enables to user to test a dataset with a smaller part of it, e.g. 10%. All of the input files will be reduced to the percentage specified.
+Produce an assembly graph in the GF2 format. If set to true, MHM2 will output an assembly graph in the [GFA2 format](https://github.com/GFA-spec/GFA-spec/blob/master/GFA2.md) in the file, `final_assembly.gfa`. This represents the assembly graph formed by aligning the reads to the final contigs and using those alignments to infer edges between the contigs. This defaults to false.
 
-**`--procs INT`**
+**`-Q, --quality-offset INT`**
 
-Set the number of processes used when running MHM2. By default, MHM2 automatically detects the number of available cores and runs with one process per core. This setting allows a user to run MHM2 on a subset of available processors, which may be desirable if running on a server that is running other applications.
+The *phred* encoding offset. In most cases, MHM2 will be able to detect this offset from analyzing the reads file, so it usually does not need to be explicitly set.
 
-**`--nodes INT`**
-
-Set the number of nodes on which to execute MHM2. By default, MHM2 will use the total available number of nodes from the job launch. On rare occasions it may be desirable to explicitly set this through the MHM2 launch, and not during the external job launch.
-
-**`--gasnet-stats`**
-
-Collect GASNet communication statistics. This option should be run with either a `Debug` or a `RelWithDebInfo` build. It will produce a summary of communication statistics for each stage, and write the summary to the log file and to stdout. Enabling this will further increase the runtime.
-
-**`--gasnet-trace`**
-
-Enable GASNet tracing. This must be run with a `Debug` or `RelWithDebInfo` build. This will produce one file per process `P`, called `trace_<P>.txt`. For more about what data are collected, consult the [GASNet documentation](https://gasnet.lbl.gov/dist-ex/README), in the section about GASNet tracing and statistical collection. The trace mask is set to a comprensive set of default, i.e. setting the GASNet environment variable: `GASNET_TRACEMASK="GPWBNIH"`. This can be overriden by explicitly setting that environment variable.
-
-**`--preproc STRING`**
-
-Preprocessing commands. This is a comma separated list containing preprocesses and/or options (e.g. `valgrind --leak-check=full`), or additional options to be passed to `upcxx-run`.
-
-**`--binary STRING`**
-
-The name of the binary file for executing MHM2. This defaults to `mhm2`. This option can be used to run different binaries from the same script, such as builds with and without GPU support.

@@ -615,9 +615,10 @@ def main():
         elif is_output_option:
             _output_dir = x
         is_output_option = False
-        if x == "--restart" and not options.auto_resume:
-            options.auto_resume = True
-            print("Detected --restart. Setting --auto-resume so that mhm2.py will attempt to re-run a failed run")
+        # a user may want to restart a failed run but without auto-resume enabled
+        #if x == "--restart" and not options.auto_resume:
+        #    options.auto_resume = True
+        #    print("Detected --restart. Setting --auto-resume so that mhm2.py will attempt to re-run a failed run")
         if x == "--checkpoint":
             is_checkpointed = True
 
@@ -738,7 +739,7 @@ def main():
 
     # avoid slow gasnet memory probe
     os.environ["GASNET_PHYSMEM_PROBE"] = "0"
-    
+
     # if ("GASNET_PHYSMEM_MAX" not in os.environ):
     #     if "UPCXX_SHARED_HEAP_SIZE" in os.environ and 'B' in os.environ["UPCXX_SHARED_HEAP_SIZE"]:
     #         os.environ["GASNET_PHYSMEM_MAX"] = os.environ["UPCXX_SHARED_HEAP_SIZE"]
