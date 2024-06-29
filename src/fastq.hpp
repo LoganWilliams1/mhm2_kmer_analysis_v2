@@ -47,7 +47,6 @@
 
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/timers.hpp"
-#include "zstr.hpp"
 
 using std::shared_ptr;
 using std::string;
@@ -64,7 +63,7 @@ using upcxx_utils::get_basename;
 using upcxx_utils::IntermittentTimer;
 using upcxx_utils::Timer;
 
-#define INT_CEIL(numerator, denominator) (((numerator)-1) / (denominator) + 1)
+#define INT_CEIL(numerator, denominator) (((numerator) - 1) / (denominator) + 1)
 #define BUF_SIZE 2047
 
 class FastqReader {
@@ -134,9 +133,9 @@ class FastqReader {
   int64_t get_fptr_for_next_record(int64_t offset);
 
  public:
-  FastqReader() = delete;                                    // no default constructor
+  FastqReader() = delete;  // no default constructor
   FastqReader(const string &_fname, upcxx::future<> first_wait = make_future(), bool is_second_file = false);
-  FastqReader(const FastqReader &copy) = delete;             // no copy
+  FastqReader(const FastqReader &copy) = delete;  // no copy
   FastqReader(FastqReader &&move) = default;
   FastqReader &operator=(const FastqReader &copy) = delete;  // no copy
   FastqReader &operator=(FastqReader &&move) = delete;

@@ -66,7 +66,6 @@ using namespace upcxx;
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "utils.hpp"
-#include "zstr.hpp"
 #include "kmer.hpp"
 #include "adapters.hpp"
 

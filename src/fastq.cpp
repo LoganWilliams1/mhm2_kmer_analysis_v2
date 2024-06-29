@@ -56,8 +56,6 @@
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
 
-#include "zstr.hpp"
-
 using namespace upcxx_utils;
 using std::make_shared;
 using std::ostringstream;
