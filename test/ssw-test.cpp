@@ -62,10 +62,10 @@ void test_aligns_gpu(vector<Alignment> &alns, vector<string> query, vector<strin
     if (max_q_len < query[i].size()) max_q_len = query[i].size();
     if (max_ref_len < ref[i].size()) max_ref_len = ref[i].size();
   }
-  double t1,t2;
-  gpu_driver.run_kernel_forwards(query, ref, max_q_len, max_ref_len,t1,t2);
+  double t1, t2;
+  gpu_driver.run_kernel_forwards(query, ref, max_q_len, max_ref_len, t1, t2);
   gpu_driver.kernel_block_fwd();
-  gpu_driver.run_kernel_backwards(query, ref, max_q_len, max_ref_len,t1,t2);
+  gpu_driver.run_kernel_backwards(query, ref, max_q_len, max_ref_len, t1, t2);
   gpu_driver.kernel_block_rev();
 
   auto aln_results = gpu_driver.get_aln_results();
@@ -466,7 +466,7 @@ TEST(MHMTest, Issue118) {
 
   aln[0] = Aln("a", 0, 0, query.size() - 1, query.size(), 0, ref.size() - 1, ref.size(), '+', 0, 0, 0, -1);
   exp_aln = "a\t1\t150\t150\tContig0\t1\t150\t150\tPlus\t248\t114";
-  exp_sam = "a\t0\tContig0\t1\t7\t6=1X1=2I2=2D19=1X25=1X36=1X8=1X8=1X37=\t*\t0\t151\t*\t*\tAS:i:248\tNM:i:10\tRG:Z:0";
+  exp_sam = "a\t0\tscaffold_0\t1\t32\t6=1X1=2I2=2D19=1X25=1X36=1X8=1X8=1X37=\t*\t0\t0\t*\t*\tAS:i:248\tNM:i:10\tRG:Z:0\tYI:i:93";
   // minimap cigar: 12S19=1X25=1X36=1X8=1X8=1X37=
 
   CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, aln[0], string_view(query), string_view(ref), 0);
@@ -476,7 +476,7 @@ TEST(MHMTest, Issue118) {
 
   aln[1] = Aln("b", 0, 0, ref.size() - 1, ref.size(), 0, query.size() - 1, query.size(), '+', 0, 0, 0, -1);
   exp_aln = "b\t1\t150\t150\tContig0\t1\t150\t150\tPlus\t248\t114";
-  exp_sam = "b\t0\tContig0\t1\t7\t6=1X1=2D2=2I19=1X25=1X36=1X8=1X8=1X37=\t*\t0\t151\t*\t*\tAS:i:248\tNM:i:10\tRG:Z:0";
+  exp_sam = "b\t0\tscaffold_0\t1\t32\t6=1X1=2D2=2I19=1X25=1X36=1X8=1X8=1X37=\t*\t0\t0\t*\t*\tAS:i:248\tNM:i:10\tRG:Z:0\tYI:i:93";
 
   CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, aln[1], string_view(ref), string_view(query), 0);
   EXPECT_EQ(alns.size(), 2) << "did not align query=" << query << " ref=" << ref;
@@ -506,8 +506,8 @@ TEST(MHMTest, Issue118) {
 
   aln[2] = Aln("c", 0, 0, query.size() - 1, query.size(), 0, ref.size() - 1, ref.size(), '+', 0, 0, 0, -1);
   exp_aln = "c\t2\t150\t150\tContig0\t1\t150\t150\tPlus\t186\t68";
-  exp_sam = "c\t0\tContig0\t1\t8\t1S3=1D5=2D3=2I11=1I1=1D2X7=1I1=1D1=1X3=1X3=1X22=1X1=1X8=1X1=1X2=1X14=1X9=1X38=\t*\t0\t151\t*\t*"
-            "\tAS:i:186\tNM:i:21\tRG:Z:0";
+  exp_sam = "c\t0\tscaffold_0\t1\t16\t1S3=1D5=2D3=2I11=1I1=1D2X7=1I1=1D1=1X3=1X3=1X22=1X1=1X8=1X1=1X2=1X14=1X9=1X38=\t*\t0\t0\t*\t*"
+            "\tAS:i:186\tNM:i:21\tRG:Z:0\tYI:i:86";
 
   CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, aln[2], string_view(query), string_view(ref), 0);
   EXPECT_EQ(alns.size(), 3) << "did not align query=" << query << " ref=" << ref;
@@ -516,9 +516,8 @@ TEST(MHMTest, Issue118) {
 
   aln[3] = Aln("d", 0, 0, ref.size() - 1, ref.size(), 0, query.size() - 1, query.size(), '+', 0, 0, 0, -1);
   exp_aln = "d\t1\t150\t150\tContig0\t2\t150\t150\tPlus\t186\t68";
-  exp_sam =
-      "d\t0\tContig0\t2\t8\t3=1I5=2I3=2D11=1D1=1I2X7=1I1=1D1=1X3=1X3=1X22=1X1=1X8=1X1=1X2=1X14=1X9=1X38=\t*\t0\t150\t*\t*\tAS:"
-      "i:186\tNM:i:21\tRG:Z:0";
+  exp_sam = "d\t0\tscaffold_0\t2\t16\t3=1I5=2I3=2D11=1D1=1I2X7=1I1=1D1=1X3=1X3=1X22=1X1=1X8=1X1=1X2=1X14=1X9=1X38=\t*\t0\t0\t*\t*"
+            "\tAS:i:186\tNM:i:21\tRG:Z:0\tYI:i:86";
 
   CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, aln[3], string_view(ref), string_view(query), 0);
   EXPECT_EQ(alns.size(), 4) << "did not align query=" << query << " ref=" << ref;
@@ -536,7 +535,7 @@ TEST(MHMTest, Issue118) {
 
   aln[4] = Aln("e", 0, 0, query.size() - 1, query.size(), 0, ref.size() - 1, ref.size(), '+', 0, 0, 0, -1);
   exp_aln = "e\t22\t142\t142\tContig0\t26\t142\t142\tPlus\t190\t72";
-  exp_sam = "e\t0\tContig0\t26\t8\t21S4=1I5=1X6=1X6=4I3=1D18=1X62=1X8=\t*\t0\t118\t*\t*\tAS:i:190\tNM:i:10\tRG:Z:0";
+  exp_sam = "e\t0\tscaffold_0\t26\t20\t21S4=1I5=1X6=1X6=4I3=1D18=1X62=1X8=\t*\t0\t0\t*\t*\tAS:i:190\tNM:i:10\tRG:Z:0\tYI:i:78";
 
   CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, aln[4], string_view(query), string_view(ref), 0);
   EXPECT_EQ(alns.size(), 5) << "did not align query=" << query << " ref=" << ref;
@@ -545,7 +544,7 @@ TEST(MHMTest, Issue118) {
 
   aln[5] = Aln("f", 0, 0, ref.size() - 1, ref.size(), 0, query.size() - 1, query.size(), '+', 0, 0, 0, -1);
   exp_aln = "f\t26\t142\t142\tContig0\t22\t142\t142\tPlus\t190\t78";
-  exp_sam = "f\t0\tContig0\t22\t7\t25S4=1D5=1X6=1X6=4D3=1I18=1X62=1X8=\t*\t0\t122\t*\t*\tAS:i:190\tNM:i:10\tRG:Z:0";
+  exp_sam = "f\t0\tscaffold_0\t22\t20\t25S4=1D5=1X6=1X6=4D3=1I18=1X62=1X8=\t*\t0\t0\t*\t*\tAS:i:190\tNM:i:10\tRG:Z:0\tYI:i:78";
   // minimap cigar                 25S4=1D5=1X6=1X6=4D3=1I18=1X62=1X8=
 
   CPUAligner::ssw_align_read(ssw_aligner_cigar, ssw_filter_cigar, &alns, aln[5], string_view(ref), string_view(query), 0);

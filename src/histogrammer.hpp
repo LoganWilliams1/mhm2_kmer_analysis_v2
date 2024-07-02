@@ -44,5 +44,21 @@
 
 #include "alignments.hpp"
 
-std::pair<int, int> calculate_insert_size(Alns &alns, int ins_avg, int ins_stddev, int max_expected_ins_size,
-                                          const string &dump_large_alns_fname = "");
+class Histogrammer {
+  int expected_ins_avg;
+  int expected_ins_stddev;
+  int max_expected_ins_size;
+  string dump_large_alns_fname;
+
+ public:
+  int ins_avg;
+  int ins_stddev;
+
+  Histogrammer(int expected_ins_avg, int expected_ins_stddev)
+      : expected_ins_avg(expected_ins_avg)
+      , expected_ins_stddev(expected_ins_stddev)
+      , max_expected_ins_size(expected_ins_avg + 8 * expected_ins_stddev)
+      , dump_large_alns_fname("") {}
+
+  void calculate_insert_size(Alns &alns);
+};

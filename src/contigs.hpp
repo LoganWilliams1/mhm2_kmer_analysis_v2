@@ -42,6 +42,7 @@
  form.
 */
 
+#include <stdint.h>
 #include <array>
 #include <string>
 #include <vector>
@@ -60,9 +61,17 @@ struct Contig {
 
 class Contigs {
   vector<Contig> contigs;
+  int max_clen;
+  size_t begin_idx;
+  size_t end_idx;
+  size_t tot_length;
 
  public:
-  Contigs() {}
+  Contigs()
+      : max_clen(0)
+      , begin_idx(0)
+      , end_idx(0)
+      , tot_length(0) {}
 
   void clear();
 
@@ -73,13 +82,15 @@ class Contigs {
 
   size_t size() const;
 
-  auto begin() { return contigs.begin(); }
+  size_t get_length() const;
 
-  auto end() { return contigs.end(); }
+  std::vector<Contig>::iterator begin();
 
-  auto begin() const { return contigs.begin(); }
+  std::vector<Contig>::iterator end();
 
-  auto end() const { return contigs.end(); }
+  std::vector<Contig>::const_iterator begin() const;
+
+  std::vector<Contig>::const_iterator end() const;
 
   void print_stats(unsigned min_ctg_len) const;
 
@@ -88,4 +99,12 @@ class Contigs {
   void load_contigs(const string &ctgs_fname, const string &prefix);
 
   size_t get_num_ctg_kmers(int kmer_len) const;
+
+  int get_max_clen() const;
+
+  void set_next_slice(int num_slices);
+
+  void clear_slices();
+
+  void sort_by_length();
 };

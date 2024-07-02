@@ -122,7 +122,7 @@ struct RgetRequest {
 
 template <int MAX_K>
 class KmerCtgDHT {
-  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, forward_list<CtgLoc>>;
+  using local_kmer_map_t = HASH_TABLE<Kmer<MAX_K>, vector<CtgLoc>>;
   using kmer_map_t = dist_object<local_kmer_map_t>;
   kmer_map_t kmer_map;
   vector<global_ptr<char>> global_ctg_seqs;
@@ -153,7 +153,8 @@ class KmerCtgDHT {
         it = kmer_map->insert({kmer_and_ctg_loc.kmer, {ctg_loc}}).first;
       } else {
         if (allow_multi_kmers) {
-          it->second.push_front(ctg_loc);
+          // only add if we haven't hit the threshold to prevent excess memory usage and load imbalance here
+          if (it->second.size() < KLIGN_MAX_CTGS_PER_KMER) it->second.push_back(ctg_loc);
         } else {
           // there are conflicts so don't allow any kmer mappings. This improves the assembly when scaffolding k is smaller than
           // the final contigging k, e.g. sk=33
@@ -214,7 +215,8 @@ class KmerCtgDHT {
     size_t max_ctgs = 0;
     // determine max number of ctgs mapped to by a single kmer
     for (auto &elem : *kmer_map) {
-      max_ctgs = ::max(max_ctgs, (size_t)distance(elem.second.begin(), elem.second.end()));  // .size());
+      auto num_ctgs_for_kmer = elem.second.size();
+      max_ctgs = ::max(max_ctgs, num_ctgs_for_kmer);
     }
     auto &pr = Timings::get_promise_reduce();
     auto fut_reduce = when_all(pr.reduce_one(max_ctgs, op_fast_max, 0));
@@ -228,7 +230,7 @@ class KmerCtgDHT {
     DBG_VERBOSE("Sending request for ", kmers.size(), " to ", target_rank, "\n");
     auto fut_rpc = rpc(
         target_rank,
-        [allow_multi_kmers = this->allow_multi_kmers](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
+        [](const vector<Kmer<MAX_K>> &kmers, kmer_map_t &kmer_map) {
           BaseTimer t("with get_ctgs_with_kmers rpc");
           t.start();
           vector<CtgLocAndKmerIdx> ctg_locs;
@@ -239,9 +241,7 @@ class KmerCtgDHT {
             assert(kmer.is_valid());
             const auto it = kmer_map->find(kmer);
             if (it == kmer_map->end()) continue;
-            for (auto &ctg_loc : it->second) {
-              ctg_locs.push_back({ctg_loc, i});
-            }
+            for (auto &ctg_loc : it->second) ctg_locs.push_back({ctg_loc, i});
           }
           t.stop();
           // For Issue137 tracking
@@ -350,7 +350,7 @@ class KmerCtgDHT {
     Timings::set_pending(fut_report);
   }
 
-  void purge_high_count_seeds(int max_ctgs_per_kmer = KLIGN_MAX_CTGS_PER_KMER) {
+  void purge_high_count_seeds() {
     BarrierTimer timer(__FILEFUNC__);
     // FIXME: Hack for Issue137 to be fixed robustly later
     size_t num_purged = 0;
@@ -362,21 +362,19 @@ class KmerCtgDHT {
     vector<Kmer<MAX_K>> to_be_purged;
     for (auto &elem : *kmer_map) {
       auto &[kmer, ctg_locs] = elem;
-      size_t sz = 0;
       double depth = 0.0;
       for (auto &ctg_loc : ctg_locs) {
-        sz++;
         depth += ctg_loc.depth;
       }
-
-      if (sz > max_ctg_locs) max_ctg_locs = sz;
-      if (depth > max_depth) max_depth = depth;
+      max_ctg_locs = max(max_ctg_locs, ctg_locs.size());
+      max_depth = max(max_depth, depth);
       total_depth += depth;
-      if (max_ctgs_per_kmer > 0 && sz > max_ctgs_per_kmer) {
-        DBG("Removing kmer with ", sz, " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
+      // we should never actually exceed this threshold because we limit the number of insertions
+      if (KLIGN_MAX_CTGS_PER_KMER > 0 && ctg_locs.size() >= KLIGN_MAX_CTGS_PER_KMER) {
+        DBG("Removing kmer with ", ctg_locs.size(), " ctg_loc hits aggregated depth=", depth, ": ", kmer.to_string(), "\n");
         to_be_purged.push_back(kmer);
         num_purged++;
-        num_ctg_locs_purged += sz;
+        num_ctg_locs_purged += ctg_locs.size();
         total_purged_depth += depth;
       }
     }
@@ -467,7 +465,7 @@ class Aligner {
       int score1 = overlap_len * cpu_aligner.ssw_aligner.get_match_score();
       Aln aln(rname, cid, rstart, rstop, rlen, cstart, cstop, clen, orient, score1, 0, 0, read_group_id);
       assert(aln.is_valid());
-      if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(rseq, to_string(overlap_len) + "=");
+      if (cpu_aligner.ssw_filter.report_cigar) aln.set_sam_string(to_string(overlap_len) + "=");
       alns->add_aln(aln);
     } else {
       max_clen = max((int64_t)cseq.size(), max_clen);
@@ -476,7 +474,7 @@ class Aligner {
       int64_t tot_mem_est = num_kernel_alns * (max_clen + max_rlen + 2 * sizeof(int) + 5 * sizeof(short));
       // contig is the ref, read is the query - done this way so that we can potentially do multiple alns to each read
       // this is also the way it's done in meraligner
-      kernel_alns.emplace_back(rname, cid, 0, 0, rlen, cstart, 0, clen, orient);
+      kernel_alns.emplace_back(rname, cid, rlen, cstart, clen, orient);
       ctg_seqs.emplace_back(cseq);
       read_seqs.emplace_back(rseq);
       if (num_kernel_alns >= KLIGN_GPU_BLOCK_SIZE) {
@@ -905,9 +903,7 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   int kmer_len = Kmer<MAX_K>::get_k();
   int64_t num_reads_aligned = 0;
   int64_t num_reads = 0;
-  auto sh_alns = make_shared<Alns>();
-  Alns &alns_for_sample = *sh_alns;
-  Aligner aligner(Kmer<MAX_K>::get_k(), alns_for_sample, rlen_limit, report_cigar, use_blastn_scores);
+  Aligner aligner(Kmer<MAX_K>::get_k(), alns, rlen_limit, report_cigar, use_blastn_scores);
   string read_seq, read_id, read_quals;
   ProgressBar progbar(packed_reads->get_local_num_reads(), string("Computing alignments on ") + short_name);
   for (auto &read_record : read_records) {
@@ -931,10 +927,10 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
   // defer reporting
   aligner.log_ctg_bytes_fetched();
   auto &pr = Timings::get_promise_reduce();
-  auto fut_reduce = when_all(
-      pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_reads_aligned, op_fast_add, 0), aligner.fut_get_num_alns(),
-      aligner.fut_get_num_perfect_alns(), pr.reduce_one(alns_for_sample.get_num_dups(), op_fast_add, 0),
-      pr.reduce_one(alns_for_sample.get_num_bad(), op_fast_add, 0), pr.reduce_one(alns_for_sample.size(), op_fast_add, 0));
+  auto fut_reduce =
+      when_all(pr.reduce_one(num_reads, op_fast_add, 0), pr.reduce_one(num_reads_aligned, op_fast_add, 0),
+               aligner.fut_get_num_alns(), aligner.fut_get_num_perfect_alns(), pr.reduce_one(alns.get_num_dups(), op_fast_add, 0),
+               pr.reduce_one(alns.get_num_bad(), op_fast_add, 0), pr.reduce_one(alns.size(), op_fast_add, 0));
 
   auto fut_report = fut_reduce.then([short_name](auto all_num_reads, auto all_num_reads_aligned, auto all_num_alns,
                                                  auto all_num_perfect, auto all_num_dups, auto all_num_bad, auto all_num_good) {
@@ -947,29 +943,25 @@ void compute_alns(PackedReads *packed_reads, vector<ReadRecord> &read_records, A
                  (double)all_num_alns / all_num_reads_aligned, "\n");
   });
   Timings::set_pending(fut_report);
-
-  // barrier before possibly loosing attention for sort & append
-  LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
-  BarrierTimer sort_bt("Sorting Alignments for " + short_name);
-  if (!sh_alns->empty()) {
-    LOG("Sorting ", sh_alns->size(), " alignments in a new thread after discharge\n");
-    // wrap expensive sort in thread and keep some attention while waiting
-    auto sort_lambda = [&sort_t = timers.sort_t, &alns_for_sample, sh_alns]() {
-      sort_t.start();
-      assert(&alns_for_sample == sh_alns.get());
-      alns_for_sample.sort_alns();
-      sort_t.stop();
-      LOG("Completed sorting ", alns_for_sample.size(), " alignments\n");
-    };
-    future<> fut_sort = upcxx_utils::ThreadPool::get_single_pool().enqueue_serially(sort_lambda);
-    fut_sort = fut_sort.then([sh_alns, &alns]() {
-      assert(upcxx::master_persona().active_with_caller());
-      alns.append(*sh_alns);
-    });
-    Timings::set_pending(fut_sort);
-  }
-
 };  // compute_alns
+
+template <int MAX_K>
+future<> sort_alns(Alns &alns, KlignTimers &timers, const string &reads_fname) {
+  // barrier before possibly losing attention for sort & append
+  LOG("Entering barrier after all reads have been aligned and before sorting alignments\n");
+  BarrierTimer sort_bt("Sorting Alignments for " + get_basename(reads_fname));
+
+  LOG("Sorting ", alns.size(), " alignments in a new thread after discharge\n");
+  // wrap expensive sort in thread and keep some attention while waiting
+  auto sort_lambda = [&sort_t = timers.sort_t, &alns]() {
+    sort_t.start();
+    alns.sort_alns();
+    sort_t.stop();
+    LOG("Finished sorting ", alns.size(), " alignments\n");
+  };
+  future<> fut_sort = upcxx_utils::ThreadPool::get_single_pool().enqueue_serially(sort_lambda);
+  return fut_sort;
+}
 
 template <int MAX_K>
 shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_store_size, int max_rpcs_in_flight, Contigs &ctgs,
@@ -977,8 +969,13 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
   BarrierTimer timer(__FILEFUNC__);
   Kmer<MAX_K>::set_k(kmer_len);
   uint64_t num_ctg_kmers = 0;
-  for (auto &ctg : ctgs)
-    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+  size_t num_ctgs = 0;
+  for (auto &ctg : ctgs) {
+    if (ctg.seq.length() >= Kmer<MAX_K>::get_k()) {
+      num_ctg_kmers += ctg.seq.length() - Kmer<MAX_K>::get_k() + 1;
+      num_ctgs++;
+    }
+  }
   auto sh_kmer_ctg_dht = make_shared<KmerCtgDHT<MAX_K>>(max_store_size, max_rpcs_in_flight, allow_multi_kmers, num_ctg_kmers);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   kmer_ctg_dht.build(ctgs, min_ctg_len);
@@ -989,11 +986,14 @@ shared_ptr<KmerCtgDHT<MAX_K>> build_kmer_ctg_dht(unsigned kmer_len, int max_stor
 template <int MAX_K>
 pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_reads_list, int max_store_size,
                                      int max_rpcs_in_flight, Contigs &ctgs, Alns &alns, int seed_space, int rlen_limit,
-                                     bool report_cigar, bool use_blastn_scores, int min_ctg_len, int rget_buf_size) {
+                                     bool use_blastn_scores, int min_ctg_len, int rget_buf_size) {
   BarrierTimer timer(__FILEFUNC__);
   SLOG_VERBOSE("Aligning with seed size of ", kmer_len, " and seed space ", seed_space, "\n");
 
-  auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(kmer_len, max_store_size, max_rpcs_in_flight, ctgs, min_ctg_len, report_cigar);
+  const bool ALLOW_MULTI_KMERS = false;
+  const bool REPORT_CIGAR = false;
+  auto sh_kmer_ctg_dht =
+      build_kmer_ctg_dht<MAX_K>(kmer_len, max_store_size, max_rpcs_in_flight, ctgs, min_ctg_len, ALLOW_MULTI_KMERS);
   auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
   KlignTimers timers;
   int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
@@ -1006,10 +1006,20 @@ pair<double, double> find_alignments(unsigned kmer_len, PackedReadsList &packed_
   for (auto packed_reads : packed_reads_list) {
     vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
     fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, seed_space, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, use_blastn_scores, all_num_ctgs,
-                        rget_buf_size, timers);
+    auto sh_alns = make_shared<Alns>();
+    Alns &alns_for_sample = *sh_alns;
+    compute_alns<MAX_K>(packed_reads, read_records, alns_for_sample, read_group_id, rlen_limit, REPORT_CIGAR, use_blastn_scores,
+                        all_num_ctgs, rget_buf_size, timers);
+    if (!sh_alns->empty()) {
+      auto fut_sort = sort_alns<MAX_K>(alns_for_sample, timers, packed_reads->get_fname()).then([sh_alns, &alns]() {
+        assert(upcxx::master_persona().active_with_caller());
+        alns.append(*sh_alns);
+      });
+      Timings::set_pending(fut_sort);
+    }
     read_group_id++;
   }
+  Timings::wait_pending();
   timers.done_all();
   double aln_kernel_elapsed = timers.aln_kernel.get_elapsed();
   double aln_comms_elapsed = timers.fetch_ctg_maps.get_elapsed() + timers.rget_ctg_seqs.get_elapsed();

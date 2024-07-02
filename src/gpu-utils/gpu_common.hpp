@@ -78,6 +78,7 @@ void gpu_die(Error_t code, const char *file, int line, bool abort = true);
 static_assert(sizeof(unsigned long long) == sizeof(uint64_t));
 
 using timepoint_t = std::chrono::time_point<std::chrono::high_resolution_clock>;
+#define clock_now std::chrono::high_resolution_clock::now
 
 class QuickTimer {
   timepoint_t t;
@@ -122,11 +123,11 @@ inline __device__ T blockReduceSum(T val, int n) {
   int lane_id = threadIdx.x % warpSize;
   int warp_id = threadIdx.x / warpSize;
 
-  val = warpReduceSum(val, n);              // Each warp performs partial reduction
+  val = warpReduceSum(val, n);  // Each warp performs partial reduction
 
   if (lane_id == 0) shared[warp_id] = val;  // Write reduced value to shared memory
 
-  __syncthreads();                          // Wait for all partial reductions
+  __syncthreads();  // Wait for all partial reductions
 
   // read from shared memory only if that warp existed
   val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane_id] : 0;

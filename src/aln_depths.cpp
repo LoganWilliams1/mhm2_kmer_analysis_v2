@@ -108,6 +108,7 @@ struct CtgBaseDepths {
       , owning_rank{}
       , read_group_base_counts{}
       , rg_stats{} {}
+
   // for owning rank's placeholder entry in dist_object
   CtgBaseDepths(cid_t cid)
       : cid{cid}
@@ -115,6 +116,7 @@ struct CtgBaseDepths {
       , owning_rank(rank_me())
       , read_group_base_counts{}
       , rg_stats{} {}
+
   // for target ranks's calculations
   CtgBaseDepths(cid_t cid, int num_read_groups, int clen, int owning_rank)
       : cid(cid)
@@ -122,6 +124,7 @@ struct CtgBaseDepths {
       , owning_rank(owning_rank)
       , read_group_base_counts(num_read_groups, nullptr)
       , rg_stats(num_read_groups) {}
+
   // for update function
   CtgBaseDepths(const CtgStats &ctg_stats)
       : cid(ctg_stats.cid)
@@ -129,11 +132,14 @@ struct CtgBaseDepths {
       , owning_rank{}
       , read_group_base_counts{}
       , rg_stats(ctg_stats.rg_stats) {}
+
   ~CtgBaseDepths() { clear_rg_bases(); }
+
   void clear_rg_bases() {
     for (auto rgbc_ptr : read_group_base_counts) assert(rgbc_ptr == nullptr && "All allocations are freed");
     if (!read_group_base_counts.empty()) read_group_base_count_t().swap(read_group_base_counts);
   }
+
   base_count_t *get_base_counts(int read_group_id) {
     assert(read_group_id >= 0 && read_group_id < read_group_base_counts.size());
     auto &rgbc_ptr = read_group_base_counts[read_group_id];
@@ -144,6 +150,7 @@ struct CtgBaseDepths {
     }
     return rgbc_ptr;
   }
+
   void free_base_counts(int read_group_id) {
     assert(read_group_id >= 0 && read_group_id < read_group_base_counts.size());
     auto &rgbc_ptr = read_group_base_counts[read_group_id];
@@ -163,9 +170,7 @@ struct CtgBaseDepths {
     //    " contig.size()=", ctg_base_counts.size(), "\n");
     assert(aln_start >= 0 && "Align start >= 0");
     assert(aln_stop <= clen && "Align stop <= contig.size()");
-    for (int i = aln_start; i < aln_stop; i++) {
-      ctg_base_counts[i]++;
-    }
+    for (int i = aln_start; i < aln_stop; i++) ctg_base_counts[i]++;
     // disabled by default -- counts are "better" if this does not happen
     // instead, count *insert coverage* not *read coverage*
     // insert coverage should be closer to a Poisson distribution
@@ -174,9 +179,7 @@ struct CtgBaseDepths {
     if (aln_merge_start != -1 && aln_merge_stop != -1) {
       assert(aln_merge_start >= 0 && "merge start >= 0");
       assert(aln_merge_stop <= clen && "merge_stop <= size");
-      for (int i = aln_merge_start; i < aln_merge_stop; i++) {
-        ctg_base_counts[i]++;
-      }
+      for (int i = aln_merge_start; i < aln_merge_stop; i++) ctg_base_counts[i]++;
     }
   }  // add_alignment_depth
 
@@ -192,14 +195,9 @@ struct CtgBaseDepths {
     if (adjusted_clen <= 0) adjusted_clen = 1;
     if (rgbc_ptr != nullptr) {
       auto &ctg_base_depths = rgbc_ptr;
-      for (int i = edge_base_len; i < (int)clen - edge_base_len; i++) {
-        stats.avg += ctg_base_depths[i];
-      }
+      for (int i = edge_base_len; i < (int)clen - edge_base_len; i++) stats.avg += ctg_base_depths[i];
       stats.avg /= adjusted_clen;
-
-      for (int i = edge_base_len; i < (int)clen - edge_base_len; i++) {
-        stats.var += pow((double)ctg_base_depths[i] - stats.avg, 2.0);
-      }
+      for (int i = edge_base_len; i < (int)clen - edge_base_len; i++) stats.var += pow((double)ctg_base_depths[i] - stats.avg, 2.0);
       stats.var /= adjusted_clen;
     }
     rg_stats[read_group_id].avg = stats.avg;
@@ -432,16 +430,16 @@ class CtgsDepths {
     SLOG_VERBOSE("Computing aln depths for ctgs\n");
     ProgressBar progbar(alns.size(), "Processing alignments");
     for (auto &aln : alns) {
+      if (aln.cid == -1) continue;
       progbar.update();
       // read_group_id could be one of multiple groups, so we set it to -1
       assert(read_group_id == -1 || aln.read_group_id == read_group_id);
       // aln.check_quality();
       //  this gives abundances more in line with what we see in MetaBAT, which uses a 97% identity cut-off
-      if (min_ctg_len && aln.calc_identity() < 97) {
+      if (min_ctg_len && aln.identity < 97) {
         num_bad_alns++;
         continue;
       }
-
       // convert to coords for use here
       assert(aln.is_valid());
       // set to -1 if this read is not merged

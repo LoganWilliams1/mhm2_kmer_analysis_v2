@@ -42,92 +42,39 @@
  form.
 */
 
-#include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
+#include <upcxx/upcxx.hpp>
 
-#include "CLI11.hpp"
-#include "version.h"
+#include "upcxx_utils/timers.hpp"
+#include "kmer.hpp"
+#include "ssw.hpp"
+#include "utils.hpp"
 
-using std::cout;
-using std::endl;
 using std::string;
-using std::vector;
 
-class Options {
-  CLI::App app;
+#define MAX_ADAPTER_K 32
+// kmer mapping to {index for adapter seq in adapter_seqs vector, offset within adapter seq}
+using adapter_hash_table_t = HASH_TABLE<Kmer<MAX_ADAPTER_K>, vector<pair<int, int>>>;
+using adapter_sequences_t = std::vector<string>;
 
-  string config_file = "per_rank/mhm2.config";
-  string linked_config_file = "mhm2.config";
+class Adapters {
+  adapter_sequences_t adapter_seqs;
+  adapter_hash_table_t kmer_adapter_map;
+  StripedSmithWaterman::Aligner ssw_aligner;
+  StripedSmithWaterman::Filter ssw_filter;
+  int64_t bases_trimmed = 0;
+  int64_t reads_removed = 0;
+  int adapter_k;
+  bool use_blastn_scores;
+  upcxx_utils::BaseTimer trim_timer;
+  upcxx_utils::BaseTimer trim_timer_ssw;
 
-  vector<string> splitter(string in_pattern, string &content);
-
-  bool extract_previous_lens(vector<unsigned> &lens, unsigned k);
-
-  void get_restart_options();
-
-  double setup_output_dir();
-
-  double setup_log_file();
-
-  bool find_restart(string stage_type, int k);
-
-  static string get_job_id();
+  void load_adapter_seqs(const string &fname);
 
  public:
-  vector<string> reads_fnames;
-  vector<string> paired_fnames;
-  vector<string> unpaired_fnames;
-  bool adapter_trim = true;
-  string adapter_fname;
-  vector<unsigned> kmer_lens = {21, 31, 47, 63, 95};
-  bool default_kmer_lens = true;
-  int min_kmer_len = -1;
-  int max_kmer_len = 0;
-  int prev_kmer_len = 0;
-  vector<unsigned> scaff_kmer_lens = {95, 47, 31};
-  bool default_scaff_kmer_lens = true;
-  int qual_offset = 33;
-  bool verbose = false;
-  int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
-  int max_rpcs_in_flight = 100;
-  int dmin_thres = 2.0;
-  int subsample_fastq_pct = 100;  // percentage of fastq files to read
-  int klign_rget_buf_size = KLIGN_RGET_BUF_SIZE;
-  bool checkpoint = false;
-  bool dump_merged = false;
-  bool post_assm = false;
-  bool post_assm_only = false;
-  bool post_assm_write_sam = true;
-  int post_assm_subsets = 1;
-  bool dump_gfa = false;
-  bool show_progress = false;
-  string pin_by = "numa";
-  int max_worker_threads = 3;
-  string ctgs_fname;
-  vector<int> insert_size = {0, 0};
-  int min_ctg_print_len = 500;
-  int break_scaff_Ns = 10;
-  string output_dir;
-  string setup_time;
-  bool restart = false;
-  bool shuffle_reads = true;
-  bool dump_kmers = false;
-  bool use_qf = true;
-  // very conservative so as not to drop kmers for low depth datasets
-  int sequencing_depth = 4;
-  string optimize_for = "default";
-
-  Options();
-  ~Options();
-  void cleanup();
-
-  bool load(int argc, char **argv);
-
-  void write_config_file();
-  void adjust_config_option(const string &opt_name, const string &new_val);
-
-  template <typename T>
-  static string vec_to_str(const vector<T> &vec, const string &delimiter = ",");
+  Adapters(int adapter_k, const string &fname, bool use_blastn_scores);
+  void done(size_t all_bases_read, size_t all_num_pairs);
+  bool trim(const string &id, string &seq, string &quals);
+  bool trim_pair(const string &id1, string &seq1, string &quals1, const string &id2, string &seq2, string &quals2);
 };

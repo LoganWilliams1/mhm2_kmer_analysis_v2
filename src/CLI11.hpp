@@ -4853,7 +4853,7 @@ class App {
     parse(std::move(args));
   }
 
-  void parse_config(const string &cfg_fname) {
+  void parse_config(const std::string &cfg_fname) {
     ConfigINI cfg_ini;
     auto cfg_opts = cfg_ini.from_file(cfg_fname);
     // now fix issue where options are written out as [i,j] for default values, but not read in that way, causing crashes

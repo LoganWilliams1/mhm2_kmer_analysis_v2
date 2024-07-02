@@ -166,7 +166,10 @@ elseif(ENABLE_HIP)
   enable_language(HIP)
   message(STATUS "Building for GPUs with HIP")
 else()
-  message(STATUS "Building for CPUs")
+  string(ASCII 27 Esc)
+  set(ColorReset "${Esc}[m")
+  set(Yellow      "${Esc}[33m")
+  message(STATUS "${Yellow}Building for CPUs${ColorReset}")
 endif()
 
 # a bit of jiggery-pokery to get a list of all compile time definitions in the
@@ -219,6 +222,7 @@ foreach(
   packed_reads
   utils
   options
+  adapters
   merge_reads
   dbjg_traversal
   histogrammer

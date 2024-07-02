@@ -56,8 +56,6 @@
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
 
-#include "zstr.hpp"
-
 using namespace upcxx_utils;
 using std::make_shared;
 using std::ostringstream;
@@ -358,7 +356,7 @@ int64_t FastqReader::get_fptr_for_next_record(int64_t offset) {
           _fix_paired_name = true;
           LOG("Detected indistinguishable paired read names which will be fixed on-the-fly: ", last_header, " in ", this->fname,
               "\n");
-          if (offset == 0) WARN(this->fname, " is paired but read names are indistinguisable.  example: ", possible_header, "\n");
+          if (offset == 0) WARN(this->fname, " is paired but read names are indistinguishable.  example: ", possible_header, "\n");
         } else if (!_is_paired) {
           DIE("Invalid unpaired fastq file that contains identical sequential read names: ", last_header, " in ", this->fname,
               " _is_paired=", _is_paired, " _fix_paired_name=", _fix_paired_name, " i=", i, " offset=", offset, "\n");

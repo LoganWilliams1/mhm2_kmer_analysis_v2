@@ -63,6 +63,8 @@ using std::vector;
 #define HASH_TABLE std::unordered_map
 #endif
 
+#define clock_now std::chrono::high_resolution_clock::now
+
 size_t estimate_hashtable_memory(size_t num_elements, size_t element_size);
 
 string revcomp(const string &seq);

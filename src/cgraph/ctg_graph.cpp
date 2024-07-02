@@ -688,3 +688,21 @@ void CtgGraph::print_graph(const string &fname) {
   cgraph_ofs << os.str();
   cgraph_ofs.close();
 }
+
+void CtgGraph::print_edges(const string &fname) {
+  dist_ofstream cgraph_ofs(fname + ".edges");
+  ostringstream os;
+  for (auto edge = get_first_local_edge(); edge != nullptr; edge = get_next_local_edge()) {
+    os << *edge << endl;
+    auto v1 = get_vertex(edge->cids.cid1);
+    auto v2 = get_vertex(edge->cids.cid2);
+    auto s1 = get_vertex_seq(v1->seq_gptr, v1->clen);
+    auto s2 = get_vertex_seq(v2->seq_gptr, v2->clen);
+    if (edge->end1 == 5) s1 = revcomp(s1);
+    if (edge->end2 == 3) s2 = revcomp(s2);
+    os << s1 << "\n";
+    os << s2 << "\n";
+  }
+  cgraph_ofs << os.str();
+  cgraph_ofs.close();
+}

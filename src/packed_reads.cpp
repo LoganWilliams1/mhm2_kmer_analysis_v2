@@ -50,6 +50,7 @@
 #include <upcxx/upcxx.hpp>
 
 #include "fastq.hpp"
+#include "adapters.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/progress_bar.hpp"
@@ -239,15 +240,17 @@ PackedReads::PackedReads(int qual_offset, const string &fname, bool str_ids)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , qual_offset(qual_offset)
     , fname(fname)
-    , str_ids(str_ids) {}
+    , str_ids(str_ids)
+    , reads_are_paired(true) {}
 
 PackedReads::PackedReads(int qual_offset, PackedReadsContainer &new_packed_reads, const string &fname)
     : allocator(ALLOCATION_BLOCK_SIZE)
     , packed_reads{}
-    , index(0)
+    , _index(0)
     , qual_offset(qual_offset)
     , fname(fname)
-    , str_ids(false) {
+    , str_ids(false)
+    , reads_are_paired(true) {
   max_read_len = 0;
   // assert(!packed_reads.size());
   LOG("Constructed PackedReads ", (void *)this, ". Transferring ", new_packed_reads.size(), " to allocated storage fname=", fname,
@@ -265,32 +268,38 @@ PackedReads::~PackedReads() { clear(); }
 
 bool PackedReads::get_next_read(string &id, string &seq, string &quals) {
   assert(qual_offset == 33 || qual_offset == 64);
-  if (index == packed_reads.size()) return false;
-  packed_reads[index].unpack(id, seq, quals, qual_offset);
-  if (str_ids) id = read_id_idx_to_str[index];
-  index++;
+  if (_index == packed_reads.size()) return false;
+  packed_reads[_index].unpack(id, seq, quals, qual_offset);
+  if (str_ids) id = read_id_idx_to_str[_index];
+  _index++;
   return true;
 }
 
 unsigned char *PackedReads::allocate_read(uint16_t read_len) { return (unsigned char *)allocator.Allocate(read_len); }
 
-uint64_t PackedReads::get_read_index() const { return index; }
+uint64_t PackedReads::get_read_index() const { return _index; }
 
-void PackedReads::get_read(uint64_t index, string &id, string &seq, string &quals) const {
-  if (index >= packed_reads.size()) DIE("Invalid get_read(", index, ") - size=", packed_reads.size());
-  packed_reads[index].unpack(id, seq, quals, qual_offset);
-  if (str_ids) id = read_id_idx_to_str[index];
+void PackedReads::get_read(uint64_t i, string &id, string &seq, string &quals) const {
+  if (i >= packed_reads.size()) DIE("Invalid get_read(", i, ") - size=", packed_reads.size());
+  packed_reads[i].unpack(id, seq, quals, qual_offset);
+  if (str_ids) id = read_id_idx_to_str[i];
 }
 
-void PackedReads::get_read_seq(uint64_t index, string &seq) const {
-  if (index >= packed_reads.size()) DIE("Invalid get_read(", index, ") - size=", packed_reads.size());
-  packed_reads[index].unpack_seq(seq);
+string PackedReads::get_full_read_id(uint64_t i) {
+  if (i >= packed_reads.size()) DIE("Invalid get_read(", i, ") - size=", packed_reads.size());
+  if (str_ids) return read_id_idx_to_str[i];
+  return string("");
 }
 
-void PackedReads::reset() { index = 0; }
+void PackedReads::get_read_seq(uint64_t i, string &seq) const {
+  if (i >= packed_reads.size()) DIE("Invalid get_read(", i, ") - size=", packed_reads.size());
+  packed_reads[i].unpack_seq(seq);
+}
+
+void PackedReads::reset() { _index = 0; }
 
 void PackedReads::clear() {
-  index = 0;
+  _index = 0;
   fname.clear();
   PackedReadsContainer().swap(packed_reads);
   allocator.Reset();
@@ -327,43 +336,26 @@ int64_t PackedReads::get_total_local_num_reads(const PackedReadsList &packed_rea
 
 int PackedReads::get_qual_offset() { return qual_offset; }
 
-void PackedReads::add_read(const string &read_id, const string &seq, const string &quals) {
+void PackedReads::add_read(const string &read_id, const string &seq, const string &quals, const string &orig_id) {
   packed_reads.emplace_back(read_id, seq, quals, qual_offset, this);
   if (str_ids) {
-    read_id_idx_to_str.push_back(read_id);
-    name_bytes += sizeof(string) + read_id.size();
+    assert(orig_id.length() > 0);
+    read_id_idx_to_str.push_back(orig_id);
+    name_bytes += sizeof(string) + orig_id.size();
   }
   max_read_len = max(max_read_len, (unsigned)seq.length());
   bases += seq.length();
 }
 
-void PackedReads::load_reads(PackedReadsList &packed_reads_list) {
-  BarrierTimer timer(__FILEFUNC__);
-  upcxx::future<> all_done = upcxx::make_future();
-  vector<string> file_names;
-  for (auto pr : packed_reads_list) {
-    file_names.push_back(pr->fname);
-  }
-  FastqReaders::open_all(file_names);
-  for (auto pr : packed_reads_list) {
-    upcxx::discharge();
-    upcxx::progress();
-    auto fut = pr->load_reads_nb();
-    all_done = when_all(all_done, fut);
-  }
-  FastqReaders::close_all();
-  all_done.wait();
-}
-
-upcxx::future<> PackedReads::load_reads_nb() {
+upcxx::future<> PackedReads::load_reads_nb(const string &adapter_fname) {
   // first estimate the number of records
   size_t tot_bytes_read = 0;
   int64_t num_records = 0;
   FastqReader &fqr = FastqReaders::get(fname);
   fqr.advise(true);
-  string id, seq, quals;
+  string id1, id2, seq1, seq2, quals1, quals2;
   for (num_records = 0; num_records < 20000; num_records++) {
-    size_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
+    size_t bytes_read = fqr.get_next_fq_record(id1, seq1, quals1);
     if (!bytes_read) break;
     tot_bytes_read += bytes_read;
   }
@@ -375,19 +367,38 @@ upcxx::future<> PackedReads::load_reads_nb() {
     reserve_records = estimated_records * 1.10 + 10000;  // reserve more so there is not a big reallocation if it is under
   }
   fqr.reset();
+  if (!fqr.is_paired()) reads_are_paired = false;
+  auto max_num_reads = reduce_all(estimated_records, op_fast_max).wait();
+  auto read_id_block = (max_num_reads + 10000) * 2 * 5;
+  uint64_t read_id = rank_me() * read_id_block;
+  uint64_t start_read_id = read_id;
+  Adapters adapters(POST_ASM_ALN_K, adapter_fname, false);
   ProgressBar progbar(fqr.my_file_size(), "Loading reads from " + fname + " " + get_size_str(fqr.my_file_size()));
   tot_bytes_read = 0;
-  int lines = 0;
   while (true) {
-    size_t bytes_read = fqr.get_next_fq_record(id, seq, quals);
+    size_t bytes_read = fqr.get_next_fq_record(id1, seq1, quals1);
     if (!bytes_read) break;
     tot_bytes_read += bytes_read;
+    if (fqr.is_paired()) {
+      bytes_read = fqr.get_next_fq_record(id2, seq2, quals2);
+      if (!bytes_read) break;
+      tot_bytes_read += bytes_read;
+      adapters.trim_pair(id1, seq1, quals1, id2, seq2, quals2);
+      add_read("r" + to_string(read_id) + "/1", seq1, quals1, id1);
+      add_read("r" + to_string(read_id) + "/2", seq2, quals2, id2);
+    } else {
+      adapters.trim(id1, seq1, quals1);
+      add_read("r" + to_string(read_id), seq1, quals1, id1);
+    }
+    read_id++;
     progbar.update(tot_bytes_read);
-    add_read(id, seq, quals);
   }
   DBG("Done loading reads in ", fname, "\n");
   fqr.advise(false);
   FastqReaders::close(fname);
+  auto all_num_records = reduce_one(packed_reads.size(), upcxx::op_fast_add, 0).wait();
+  auto all_num_bases = reduce_one(bases, upcxx::op_fast_add, 0).wait();
+  adapters.done(all_num_bases, all_num_records);
   auto fut = progbar.set_done();
   int64_t underestimate = estimated_records - packed_reads.size();
   if (underestimate < 0 && reserve_records < packed_reads.size())
@@ -395,12 +406,10 @@ upcxx::future<> PackedReads::load_reads_nb() {
   auto &pr = Timings::get_promise_reduce();
   auto all_under_estimated_fut = pr.reduce_one(underestimate < 0 ? 1 : 0, upcxx::op_fast_add, 0);
   auto all_estimated_records_fut = pr.reduce_one(estimated_records, upcxx::op_fast_add, 0);
-  auto all_num_records_fut = pr.reduce_one(packed_reads.size(), upcxx::op_fast_add, 0);
-  auto all_num_bases_fut = pr.reduce_one(bases, upcxx::op_fast_add, 0);
   auto fut_report =
-      when_all(fut, all_under_estimated_fut, all_estimated_records_fut, all_num_records_fut, all_num_bases_fut)
-          .then([max_read_len = this->max_read_len](int64_t all_under_estimated, int64_t all_estimated_records,
-                                                    int64_t all_num_records, int64_t all_num_bases) {
+      when_all(fut, all_under_estimated_fut, all_estimated_records_fut)
+          .then([max_read_len = this->max_read_len, all_num_records, all_num_bases](int64_t all_under_estimated,
+                                                                                    int64_t all_estimated_records) {
             SLOG_VERBOSE("Loaded ", all_num_records, " reads (estimated ", all_estimated_records, " with ", all_under_estimated,
                          " ranks underestimated) max_read=", max_read_len, " tot_bases=", all_num_bases, "\n");
           });
@@ -408,9 +417,27 @@ upcxx::future<> PackedReads::load_reads_nb() {
   return fut_report;
 }
 
-void PackedReads::load_reads() {
+void PackedReads::load_reads_list(PackedReadsList &packed_reads_list, const string &adapter_fname) {
   BarrierTimer timer(__FILEFUNC__);
-  auto fut = load_reads_nb();
+  upcxx::future<> all_done = upcxx::make_future();
+  vector<string> file_names;
+  for (auto pr : packed_reads_list) {
+    file_names.push_back(pr->fname);
+  }
+  FastqReaders::open_all(file_names);
+  for (auto pr : packed_reads_list) {
+    upcxx::discharge();
+    upcxx::progress();
+    auto fut = pr->load_reads_nb(adapter_fname);
+    all_done = when_all(all_done, fut);
+  }
+  FastqReaders::close_all();
+  all_done.wait();
+}
+
+void PackedReads::load_reads(const string &adapter_fname) {
+  BarrierTimer timer(__FILEFUNC__);
+  auto fut = load_reads_nb(adapter_fname);
   Timings::wait_pending();
   fut.wait();
 }
@@ -437,6 +464,8 @@ void PackedReads::report_size() {
   Timings::set_pending(fut);  // include in reports
 }
 
+bool PackedReads::is_paired() { return reads_are_paired; }
+
 int64_t PackedReads::get_local_bases() const { return bases; }
 upcxx::future<uint64_t> PackedReads::fut_get_bases() const {
   return upcxx_utils::Timings::get_promise_reduce().reduce_one(bases, upcxx::op_fast_add, 0);
@@ -447,9 +476,9 @@ uint64_t PackedReads::get_bases() const {
   return fut.wait();
 }
 
-PackedRead &PackedReads::operator[](int index) {
-  if (index >= packed_reads.size()) DIE("Array index out of bound ", index, " >= ", packed_reads.size());
-  return packed_reads[index];
+PackedRead &PackedReads::operator[](int i) {
+  if (i >= packed_reads.size()) DIE("Array index out of bound ", i, " >= ", packed_reads.size());
+  return packed_reads[i];
 }
 
 uint64_t PackedReads::estimate_num_kmers(unsigned kmer_len, PackedReadsList &packed_reads_list) {

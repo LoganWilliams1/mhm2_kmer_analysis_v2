@@ -1,5 +1,6 @@
 title="MHM User Guide"
-revision="Version 2.1.0.2 (01/31/2023)"
+version=`cat ../VERSION`
+revision="Version $(version)"
 
 TARGET = mhm_guide
 INPUT = copy-ack-legal.md mhm_guide.md
@@ -21,7 +22,7 @@ all: $(TARGET).pdf $(TARGET).html
     # embed-image replaces all images with inline base64 encodings so this is truly standalone
 $(TARGET).html: $(INPUT)
 #	printf "<center><h1>%s<br>%s</h1><h3>%s</h3></center>\n<h2>Contents</h2>\n" $(title) $(revision) $(subtitle) > header.html
-	printf "<center><h1>%s</h1><h3>%s</h3></center>\n" $(title) $(revision) >> header.html
+	printf "<center><h1>%s</h1><h3>%s</h3></center>\n" $(title) $(revision) > header.html
 	pandoc --metadata pagetitle=$(title)", "$(revision) $(pandocopts) \
                pandoc.css -H header.html \
                -o $@ $^

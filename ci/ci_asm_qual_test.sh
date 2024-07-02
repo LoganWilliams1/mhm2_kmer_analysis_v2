@@ -18,7 +18,7 @@ if [ ! -f "$reads" ]; then
     rm -f ${reads}.gz
     wget https://portal.nersc.gov/project/hipmer/MetaHipMer_datasets_12_2019/ArcticSynth/samples/${reads}.gz
     gunzip ${reads}.gz &
-fi 
+fi
 
 wait
 
@@ -32,7 +32,7 @@ else
 fi
 uptime
 set -x
-timeout -k 1m -s INT --foreground -v 30m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm-align --post-asm-abd
+timeout -k 1m -s INT --foreground -v 30m $mhm2_install_dir/bin/mhm2.py $@ -r $reads -o $test_dir --checkpoint=no --post-asm
 status=$?
 if [ $status -ne 0 ]
 then

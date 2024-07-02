@@ -40,141 +40,282 @@
  form.
 */
 
-#include "post_assembly.hpp"
+#include <bitset>
+#include <filesystem>
 
+#include "post_assembly.hpp"
 #include "aln_depths.hpp"
 #include "fastq.hpp"
 #include "gasnet_stats.hpp"
-#include "histogrammer.hpp"
 #include "klign.hpp"
 #include "packed_reads.hpp"
 #include "stage_timers.hpp"
+#include "shuffle_reads.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
+#include "upcxx_utils/three_tier_aggr_store.hpp"
 
 using namespace upcxx_utils;
+using namespace std;
 
-using std::shared_ptr;
-using std::string;
-using std::vector;
+struct CtgBaseRange {
+  cid_t cid;
+  int clen;
+  int cstart;
+  int cstop;
+};
 
-using upcxx::future;
+#define BITSET_SIZE 256
 
-void post_assembly(Contigs &ctgs, shared_ptr<Options> options, int max_expected_ins_size) {
-  auto loop_start_t = std::chrono::high_resolution_clock::now();
+static size_t get_target_rank(cid_t cid) { return std::hash<cid_t>{}(cid) % upcxx::rank_n(); }
+
+struct CtgBasesCovered {
+  int clen;
+  vector<bitset<BITSET_SIZE>> bases_covered;
+
+  int num_bits_set() {
+    int num_bits = 0;
+    for (auto &b : bases_covered) num_bits += b.count();
+    return num_bits;
+  }
+};
+
+class CtgsCovered {
+  using local_ctgs_covered_map_t = HASH_TABLE<cid_t, CtgBasesCovered>;
+  using ctgs_covered_map_t = upcxx::dist_object<local_ctgs_covered_map_t>;
+  ctgs_covered_map_t ctgs_covered;
+  ThreeTierAggrStore<CtgBaseRange> ctg_bases_covered_store;
+
+  void update_ctg_bases(const CtgBaseRange &ctg_base_range) {
+    cid_t cid = ctg_base_range.cid;
+    int clen = ctg_base_range.clen;
+    auto elem = ctgs_covered->find(cid);
+    if (elem == ctgs_covered->end()) {
+      CtgBasesCovered new_elem = {.clen = clen, .bases_covered = {}};
+      new_elem.bases_covered.resize(clen / BITSET_SIZE + (clen % BITSET_SIZE != 0), 0);
+      elem = ctgs_covered->insert({cid, new_elem}).first;
+    }
+    if (elem->second.clen != ctg_base_range.clen) DIE("clens don't match ", elem->second.clen, " != ", ctg_base_range.clen);
+    // update the ranges of covered bases
+    for (int i = ctg_base_range.cstart; i < ctg_base_range.cstop; i++) {
+      elem->second.bases_covered[i / BITSET_SIZE][i % BITSET_SIZE] = 1;
+    }
+  }
+
+ public:
+  CtgsCovered(size_t num_ctgs)
+      : ctgs_covered(local_ctgs_covered_map_t{})
+      , ctg_bases_covered_store() {
+    ctgs_covered->reserve(num_ctgs * 2 + 2000);  // entries for self + distributed calcs
+    int64_t mem_to_use = 0.1 * get_free_mem(true) / local_team().rank_n();
+    size_t max_store_bytes = std::max(mem_to_use, (int64_t)sizeof(CtgBasesCovered) * 100);
+    ctg_bases_covered_store.set_size("Ctg Bases Covered", max_store_bytes);
+    ctg_bases_covered_store.set_update_func(
+        [&self = *this](CtgBaseRange ctg_base_range) { self.update_ctg_bases(ctg_base_range); });
+  }
+
+  void add_ctg_range(cid_t cid, int clen, int cstart, int cstop) {
+    // cid is -1 if the aln was dropped in favor of better alignments
+    if (cid == -1) return;
+    CtgBaseRange ctg_base_range = {.cid = cid, .clen = clen, .cstart = cstart, .cstop = cstop};
+    auto tgt = get_target_rank(cid);
+    if (tgt != rank_me()) {
+      ctg_bases_covered_store.update(tgt, ctg_base_range);
+    } else {
+      update_ctg_bases(ctg_base_range);
+    }
+  }
+
+  void done_adding() { ctg_bases_covered_store.flush_updates(); }
+
+  size_t get_covered_bases() {
+    size_t num_covered_bases = 0;
+    for (auto &[key, val] : *ctgs_covered) num_covered_bases += val.num_bits_set();
+    return num_covered_bases;
+  }
+};
+
+void post_assembly(Contigs &ctgs, Options &options) {
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Post processing", KNORM, "\n\n");
   LOG_MEM("Starting Post Assembly");
-
-  // build kmer_ctg_dht
-  auto max_kmer_store = options->max_kmer_store_mb * ONE_MB;
-  int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
-  const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
-  auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options->max_rpcs_in_flight, ctgs,
-                                                   options->min_ctg_print_len, true);
-  auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
-  LOG_MEM("After Post Assembly Built Kmer Seeds");
-
-  auto num_read_groups = options->reads_fnames.size();
-  shared_ptr<AlnDepths> sh_aln_depths;
-  if (options->post_assm_abundances) {
-    SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
-    sh_aln_depths = make_shared<AlnDepths>(ctgs, options->min_ctg_print_len, num_read_groups);
-    LOG_MEM("After Post Assembly Ctgs Depths");
-  }
-
-  shared_ptr<dist_ofstream> sh_sam_of;
-  future<> fut_sam = make_future();
-  if (options->post_assm_aln) {
+  auto start_t = clock_now();
+  // set up output files
+  if (options.post_assm_write_sam) {
     SLOG_VERBOSE("Writing SAM headers\n");
-    sh_sam_of = make_shared<dist_ofstream>("final_assembly.sam");
-    fut_sam = Alns::_write_sam_header(*sh_sam_of, options->reads_fnames, ctgs, options->min_ctg_print_len);
+    dist_ofstream sam_header_ofs("final_assembly.header.sam");
+    stage_timers.dump_alns->start();
+    Alns::write_sam_header(sam_header_ofs, options.reads_fnames, ctgs, options.min_ctg_print_len).wait();
+    sam_header_ofs.close();
+    stage_timers.dump_alns->stop();
   }
-
-  KlignTimers timers;
-  unsigned rlen_limit = 0;
-  int read_group_id = 0;
-  for (auto &reads_fname : options->reads_fnames) {
-    vector<string> one_file_list;
-    one_file_list.push_back(reads_fname);
+  auto num_read_groups = options.reads_fnames.size();
+  SLOG_VERBOSE("Preparing aln depths for post assembly abundance\n");
+  AlnDepths aln_depths(ctgs, options.min_ctg_print_len, num_read_groups);
+  LOG_MEM("After Post Assembly Ctgs Depths");
+  CtgsCovered ctgs_covered(ctgs.size());
+  auto max_kmer_store = options.max_kmer_store_mb * ONE_MB;
+  const int MAX_K = (POST_ASM_ALN_K + 31) / 32 * 32;
+  const bool REPORT_CIGAR = true;
+  const bool USE_BLASTN_SCORES = true;
+  const bool ALLOW_MULTI_KMERS = true;
+  size_t tot_num_reads = 0;
+  size_t tot_num_bases = 0;
+  size_t tot_reads_aligned = 0;
+  size_t tot_bases_aligned = 0;
+  size_t tot_proper_pairs = 0;
+  SLOG(KBLUE, "Processing contigs in ", options.post_assm_subsets, " subsets", KNORM, "\n");
+  for (int read_group_id = 0; read_group_id < options.reads_fnames.size(); read_group_id++) {
+    string &reads_fname = options.reads_fnames[read_group_id];
+    SLOG(KBLUE, "_________________________", KNORM, "\n");
+    SLOG(KBLUE, "Processing file ", reads_fname, KNORM, "\n");
+    auto short_name = get_basename(reads_fname);
+    string sam_fname = short_name + ".sam";
+    vector<string> one_file_list = {reads_fname};
     FastqReaders::open_all_file_blocking(one_file_list);
-    PackedReadsList packed_reads_list;
-    packed_reads_list.push_back(new PackedReads(options->qual_offset, reads_fname, true));
-    auto packed_reads = packed_reads_list[0];
-    auto short_name = get_basename(packed_reads->get_fname());
-
+    PackedReads packed_reads(options.qual_offset, reads_fname, true);
     stage_timers.cache_reads->start();
-    packed_reads->load_reads();
-    auto max_read_len = packed_reads->get_max_read_len();
-    rlen_limit = max(rlen_limit, max_read_len);
-    DBG("max_read_len=", max_read_len, " rlen_limit=", rlen_limit, "\n");
+    packed_reads.load_reads(options.adapter_fname);
+    unsigned rlen_limit = packed_reads.get_max_read_len();
     stage_timers.cache_reads->stop();
-    max_read_len = reduce_all(max_read_len, op_fast_max).wait();
     LOG_MEM("Read " + short_name);
-
-    stage_timers.alignments->start();
-
-    bool report_cigar = true;
-    int kmer_len = POST_ASM_ALN_K;
-
-    Alns alns;
-    vector<ReadRecord> read_records(packed_reads->get_local_num_reads());
-    fetch_ctg_maps(kmer_ctg_dht, packed_reads, read_records, KLIGN_SEED_SPACE, timers);
-    compute_alns<MAX_K>(packed_reads, read_records, alns, read_group_id, rlen_limit, report_cigar, true, all_num_ctgs,
-                        options->klign_rget_buf_size, timers);
-    stage_timers.alignments->stop();
-    LOG_MEM("Aligned Post Assembly Reads " + short_name);
-
-    delete packed_reads;
-    LOG_MEM("Purged Post Assembly Reads" + short_name);
-
-    calculate_insert_size(alns, options->insert_size[0], options->insert_size[1], max_expected_ins_size);
-
-    if (options->post_assm_aln) {
+    barrier();
+    ctgs.clear_slices();
+    KlignTimers aln_timers;
+    Alns alns(rlen_limit);
+    for (int subset_i = 0; subset_i < options.post_assm_subsets; subset_i++) {
+      SLOG(KBLUE, "\nContig subset ", subset_i, KNORM, ":\n");
+      ctgs.set_next_slice(options.post_assm_subsets);
+      int64_t all_num_ctgs = reduce_all(ctgs.size(), op_fast_add).wait();
+      stage_timers.build_aln_seed_index->start();
+      auto sh_kmer_ctg_dht = build_kmer_ctg_dht<MAX_K>(POST_ASM_ALN_K, max_kmer_store, options.max_rpcs_in_flight, ctgs,
+                                                       options.min_ctg_print_len, ALLOW_MULTI_KMERS);
+      stage_timers.build_aln_seed_index->stop();
+      auto &kmer_ctg_dht = *sh_kmer_ctg_dht;
+      LOG_MEM("After Post Assembly Built Kmer Seeds");
+      stage_timers.alignments->start();
+      vector<ReadRecord> read_records(packed_reads.get_local_num_reads());
+      fetch_ctg_maps(kmer_ctg_dht, &packed_reads, read_records, POST_ASM_ALN_SEED_SPACE, aln_timers);
+      compute_alns<MAX_K>(&packed_reads, read_records, alns, read_group_id, rlen_limit, REPORT_CIGAR, USE_BLASTN_SCORES,
+                          all_num_ctgs, options.klign_rget_buf_size, aln_timers);
+      stage_timers.kernel_alns->inc_elapsed(aln_timers.aln_kernel.get_elapsed());
+      stage_timers.aln_comms->inc_elapsed(aln_timers.fetch_ctg_maps.get_elapsed() + aln_timers.rget_ctg_seqs.get_elapsed());
+      stage_timers.alignments->stop();
+      LOG_MEM("Aligned Post Assembly Reads " + short_name);
+      barrier();
+    }
+    // the alignments have to be accumulated per read so they can be sorted to keep alignments to each read together
+    sort_alns<MAX_K>(alns, aln_timers, packed_reads.get_fname()).wait();
+    stage_timers.alignments->inc_elapsed(aln_timers.sort_t.get_elapsed());
+    size_t num_proper_pairs = 0;
+    if (packed_reads.is_paired()) alns.select_pairs(num_proper_pairs);
+    tot_proper_pairs += num_proper_pairs;
+    size_t num_reads_aligned, num_bases_aligned;
+    alns.compute_stats(num_reads_aligned, num_bases_aligned);
+    tot_reads_aligned += num_reads_aligned;
+    tot_bases_aligned += num_bases_aligned;
+    for (auto &aln : alns) ctgs_covered.add_ctg_range(aln.cid, aln.clen, aln.cstart, aln.cstop);
+    if (options.post_assm_write_sam) {
+      // check for existence of SAM file - if so don't write again. This can be the slowest component on HPC systems, and we still
+      // need to do the other computations to obtain the global avg depth information
+      if (filesystem::exists(filesystem::path(sam_fname))) {
+        SLOG("SAM file \"", sam_fname, "\" exists: will not write again\n");
+      } else {
+        stage_timers.dump_alns->start();
+        alns.dump_sam_file(sam_fname, options.min_ctg_print_len);
+        stage_timers.dump_alns->stop();
+        LOG_MEM("After Post Assembly SAM Saved");
+      }
+    }
 #ifdef PAF_OUTPUT_FORMAT
-      string aln_name("final_assembly-" + short_name + ".paf");
-      alns.dump_single_file(aln_name);
-      SLOG("\n", KBLUE, "PAF alignments can be found at ", options->output_dir, "/", aln_name, KNORM, "\n");
+    string aln_name("final_assembly-" + short_name + ".paf");
+    alns.dump_single_file(aln_name, Alns::Format::PAF);
+    SLOG("\n", KBLUE, "PAF alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+    LOG_MEM("After Post Assembly PAF Alignments Saved");
 #elif BLAST6_OUTPUT_FORMAT
-      string aln_name("final_assembly-" + short_name + ".b6");
-      alns.dump_single_file(aln_name);
-      SLOG("\n", KBLUE, "Blast alignments can be found at ", options->output_dir, "/", aln_name, KNORM, "\n");
+    string aln_name("final_assembly-" + short_name + ".b6");
+    alns.dump_single_file(aln_name, Alns::Format::BLAST);
+    SLOG("\n", KBLUE, "Blast alignments can be found at ", options.output_dir, "/", aln_name, KNORM, "\n");
+    LOG_MEM("After Post Assembly BLAST Alignments Saved");
 #endif
-      LOG_MEM("After Post Assembly Alignments Saved");
-      // Dump 1 file at a time with proper read groups
-      auto fut_flush = alns._write_sam_alignments(*sh_sam_of, options->min_ctg_print_len);
-      fut_sam = when_all(fut_sam, fut_flush);
-
-      LOG_MEM("After Post Assembly SAM Saved");
-    }
-    if (options->post_assm_abundances) {
-      SLOG("\n");
-      stage_timers.compute_ctg_depths->start();
-      // compute depths 1 column at a time
-      sh_aln_depths->compute_for_read_group(alns, read_group_id);
-      stage_timers.compute_ctg_depths->stop();
-      LOG_MEM("After Post Assembly Depths Saved");
-    }
-    read_group_id++;
+    stage_timers.compute_ctg_depths->start();
+    // compute depths 1 column at a time
+    aln_depths.compute_for_read_group(alns, read_group_id);
+    stage_timers.compute_ctg_depths->stop();
+    LOG_MEM("After Post Assembly Depths Saved");
+    tot_num_reads += packed_reads.get_local_num_reads();
+    tot_num_bases += packed_reads.get_local_bases();
+    LOG_MEM("Purged Post Assembly Reads" + short_name);
   }
-  stage_timers.kernel_alns->inc_elapsed(timers.aln_kernel.get_elapsed());
-
   Timings::wait_pending();
+  ctgs.clear_slices();
+  aln_depths.done_computing();
+  string fname("final_assembly_depths.txt");
+  SLOG_VERBOSE("Writing ", fname, "\n");
+  aln_depths.dump_depths(fname, options.reads_fnames);
+  ctgs_covered.done_adding();
+  auto covered_bases = ctgs_covered.get_covered_bases();
 
-  if (options->post_assm_aln) {
-    fut_sam.wait();
-    sh_sam_of->close();
-    SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly: SAM file can be found at ", options->output_dir,
-         "/final_assembly.sam", KNORM, "\n");
+  auto all_covered_bases = reduce_one(covered_bases, op_fast_add, 0).wait();
+  auto all_tot_num_reads = reduce_one(tot_num_reads, op_fast_add, 0).wait();
+  auto all_tot_num_bases = reduce_one(tot_num_bases, op_fast_add, 0).wait();
+  auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
+  auto all_ctgs_len = reduce_all(ctgs.get_length(), op_fast_add).wait();
+  auto all_reads_aligned = reduce_one(tot_reads_aligned, op_fast_add, 0).wait();
+  auto all_bases_aligned = reduce_all(tot_bases_aligned, op_fast_add).wait();
+  auto all_proper_pairs = reduce_one(tot_proper_pairs, op_fast_add, 0).wait();
+  size_t all_unmapped_bases = 0;
+
+  // every rank needs the avg coverage to calculate the std deviation
+  double avg_coverage = (double)all_bases_aligned / all_ctgs_len;
+  double sum_diffs = 0;
+  for (auto &ctg : ctgs) sum_diffs += pow((double)ctg.depth - avg_coverage, 2.0) * (double)ctg.seq.length();
+  auto all_sum_diffs = reduce_one(sum_diffs, op_fast_add, 0).wait();
+  auto std_dev_coverage = sqrt(all_sum_diffs / all_ctgs_len);
+
+  SLOG(KBLUE "_________________________", KNORM, "\n");
+  SLOG("Alignment statistics\n");
+  SLOG("  Reads: ", all_tot_num_reads, "\n");
+  SLOG("  Bases: ", all_tot_num_bases, "\n");
+  SLOG("  Mapped reads: ", all_reads_aligned, "\n");
+  SLOG("  Mapped bases: ", all_bases_aligned, "\n");
+  SLOG("  Ref scaffolds: ", all_num_ctgs, "\n");
+  SLOG("  Ref bases: ", all_ctgs_len, "\n");
+  SLOG("  Percent mapped: ", 100.0 * (double)all_reads_aligned / all_tot_num_reads, "\n");
+  SLOG("  Percent bases mapped: ", 100.0 * (double)all_bases_aligned / all_tot_num_bases, "\n");
+  //  a proper pair is where both sides of the pair map to the same contig in the correct orientation, less than 32kbp apart
+  SLOG("  Percent proper pairs: ", 100.0 * (double)all_proper_pairs / (all_tot_num_reads / 2), "\n");
+  // average depth per base
+  SLOG("  Average coverage: ", avg_coverage, "\n");
+  SLOG("  Average coverage with deletions: N/A\n");
+  // standard deviation of depth per base
+  SLOG("  Standard deviation: ", std_dev_coverage, "\n");
+  // this will always be 100% because the contigs are created from the reads in the first place
+  SLOG("  Percent scaffolds with any coverage: 100.0\n");
+  SLOG("  Percent of reference bases covered: ", 100.0 * (double)all_covered_bases / all_ctgs_len, "\n");
+
+  stage_timers.alignments->inc_elapsed(stage_timers.build_aln_seed_index->get_elapsed());
+
+  SLOG(KBLUE "_________________________", KNORM, "\n");
+  SLOG("Stage timing:\n");
+  SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
+  SLOG("    ", stage_timers.build_aln_seed_index->get_final(), "\n");
+  SLOG("    ", stage_timers.alignments->get_final(), "\n");
+  SLOG("      -> ", stage_timers.kernel_alns->get_final(), "\n");
+  SLOG("      -> ", stage_timers.aln_comms->get_final(), "\n");
+  SLOG("    ", stage_timers.compute_ctg_depths->get_final(), "\n");
+  SLOG("    ", stage_timers.dump_alns->get_final(), "\n");
+  // if (options.shuffle_reads) SLOG("    ", stage_timers.shuffle_reads->get_final(), "\n");
+  SLOG("    FASTQ total read time: ", FastqReader::get_io_time(), "\n");
+  SLOG(KBLUE "_________________________", KNORM, "\n");
+  chrono::duration<double> t_elapsed = clock_now() - start_t;
+  SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
+
+  SLOG("\n", KBLUE, "Aligned unmerged reads to final assembly. Files can be found in directory \"", options.output_dir, "\":\n");
+  SLOG(KBLUE, "  \"final_assembly_depths.text\" contains scaffold depths (abundances)", KNORM, "\n");
+  if (options.post_assm_write_sam) {
+    SLOG(KBLUE, "  \"final_assembly.header.sam\" contains header information for all input file alignments", KNORM, "\n");
+    SLOG(KBLUE, "  \"*.sam\" files contain alignments per input/read file", KNORM, "\n");
   }
-
-  if (options->post_assm_abundances) {
-    string fname("final_assembly_depths.txt");
-    SLOG_VERBOSE("Writing ", fname, "\n");
-    sh_aln_depths->done_computing();
-    sh_aln_depths->dump_depths(fname, options->reads_fnames);
-    SLOG(KBLUE, "\nContig depths (abundances) can be found at ", options->output_dir, "/", fname, KNORM, "\n");
-  }
-
   SLOG(KBLUE, "_________________________", KNORM, "\n");
 }

@@ -58,24 +58,28 @@ struct Aln {
   int rstart, rstop, rlen;  // TODO can these be int16_t (for short reads only)?
   int score1, score2;       // TODO can this be uint16_t (for short reads only)?
   int mismatches;           // TODO can this be uint16_t (for short reads only)?
+  int identity;
+  int mapq;
   string sam_string;
   string cigar;
   int16_t read_group_id;
   char orient;  // TODO can this be bool?
 
   Aln();
-  Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, int cstart, int cstop, int clen, char orient,
-      int score1 = 0, int score2 = 0, int mismatches = 0, int read_group_id = -1);
+  Aln(const string &read_id, int64_t cid, int rlen, int cstart, int clen, char orient);
+  Aln(const string &read_id, int64_t cid, int rstart, int rstop, int rlen, int cstart, int cstop, int clen, char orient, int score1,
+      int score2, int mismatches, int read_group_id);
 
   void set(int ref_begin, int ref_end, int query_begin, int query_end, int top_score, int next_best_score, int aln_mismatches,
            int aln_read_group_id);
-  void set_sam_string(std::string_view read_seq, string cigar);
+  void set_sam_string(string cigar);
+  void add_cigar_pair_info(int64_t other_cid, int other_aln_cstart, char other_orient, int read_len);
   // writes out in the format meraligner uses
   string to_paf_string() const;
   string to_blast6_string() const;
   bool is_valid() const;
   std::pair<int, int> get_unaligned_overlaps() const;
-  double calc_identity() const;
+  void set_identity();
   bool check_quality() const;
   static bool cmp(const Aln &aln1, const Aln &aln2);
   friend bool operator==(const Aln &aln1, const Aln &aln2);
@@ -87,9 +91,16 @@ class Alns {
   alns_t alns;
   int64_t num_dups;
   int64_t num_bad;
+  int read_len;
+
+  bool set_pair_info(const string &read_id, vector<size_t> &read1_aln_indexes, vector<size_t> &read2_aln_indexes);
+  upcxx::future<> write_sam_alignments(dist_ofstream &of, int min_contig_len) const;
 
  public:
+  enum class Format { PAF, BLAST, SAM };
+
   Alns();
+  Alns(int read_len);
 
   void clear();
 
@@ -121,26 +132,19 @@ class Alns {
   inline auto end() const { return alns.end(); };
 
   template <typename OSTREAM>
-  void dump_all(OSTREAM &os, bool as_sam_format, int min_ctg_len = 0) const {
-    // all ranks dump their valid alignments
-    for (const auto &aln : alns) {
-      DBG(aln.to_paf_string(), "\n");
-      if (aln.clen < min_ctg_len) continue;
-      if (!as_sam_format)
-        os << aln.to_blast6_string() << "\n";
-      else
-        os << aln.sam_string << "\n";
-    }
-  }
-
-  void dump_single_file(const string fname) const;
-  static upcxx::future<> _write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
-                                           int min_ctg_len);
-  upcxx::future<> _write_sam_alignments(dist_ofstream &of, int min_contig_len) const;
+  void dump_all(OSTREAM &os, Format fmt, int min_ctg_len = 0) const;
+  void dump_single_file(const string fname, Format fmt) const;
+  static upcxx::future<> write_sam_header(dist_ofstream &of, const vector<string> &read_group_names, const Contigs &ctgs,
+                                          int min_ctg_len);
   void dump_sam_file(const string fname, const vector<string> &read_group_names, const Contigs &ctgs, int min_contig_len = 0) const;
-  void dump_rank_file(const string fname) const;
+  void dump_sam_file(const string fname, int min_ctg_len) const;
+  void dump_rank_file(const string fname, Format fmt) const;
 
   int calculate_unmerged_rlen() const;
 
   void sort_alns();
+
+  void compute_stats(size_t &num_reads_aligned, size_t &num_bases_aligned);
+
+  void select_pairs(size_t &num_proper_pairs);
 };  // class Alns

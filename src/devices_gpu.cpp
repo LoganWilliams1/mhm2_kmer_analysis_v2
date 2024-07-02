@@ -43,6 +43,7 @@
 #include <upcxx/upcxx.hpp>
 
 #include "upcxx_utils/thread_pool.hpp"
+#include "upcxx_utils/mem_profile.hpp"
 #include "gpu-utils/gpu_utils.hpp"
 #include "devices_gpu.hpp"
 #include "utils.hpp"
@@ -58,6 +59,7 @@ static bool init_gpu_thread = true;
 static future<> detect_gpu_fut;
 static double gpu_startup_duration = 0;
 static int num_gpus_on_node = 0;
+static timepoint_t start_t;
 
 size_t get_gpu_avail_mem_per_rank() {
   auto &gpu_team = get_gpu_team();
@@ -82,7 +84,7 @@ upcxx::team &get_gpu_team() {
     upcxx::intrank_t color = upcxx::team::color_none;
     if (gpu_utils::gpus_present()) {
       auto my_uuid = gpu_utils::get_gpu_uuid();
-      color = std::hash<string>{}(my_uuid)&0xffffffff;
+      color = std::hash<string>{}(my_uuid) & 0xffffffff;
       if (color < 0) color = -color;
     } else {
       color = 0;  // i.e. just a copy of the local team
@@ -96,6 +98,7 @@ upcxx::team &get_gpu_team() {
 
 void init_devices() {
   SLOG("Initializing GPUs\n");
+  start_t = clock_now();
   init_gpu_thread = true;
   // initialize the GPU and first-touch memory and functions in a new thread as this can take many seconds to complete
   detect_gpu_fut = execute_in_thread_pool([]() {
@@ -173,6 +176,10 @@ void done_init_devices() {
       SDIE("No GPUs available - this build requires GPUs");
     }
   }
+  auto post_init_dev_free_mem = get_free_mem(true);
+  duration_seconds init_t_elapsed = clock_now() - start_t;
+  SLOG(KBLUE, "Completed device initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(),
+       " (", get_size_str(post_init_dev_free_mem), " free memory on node 0)", KNORM, "\n");
 }
 
 void tear_down_devices() {

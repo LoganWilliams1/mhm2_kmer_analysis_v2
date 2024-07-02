@@ -81,15 +81,29 @@ using namespace upcxx_utils;
 void Contigs::clear() {
   contigs.clear();
   vector<Contig>().swap(contigs);
+  begin_idx = 0;
+  end_idx = 0;
+  max_clen = 0;
+  tot_length = 0;
 }
 
 void Contigs::set_capacity(int64_t sz) { contigs.reserve(sz); }
 
-void Contigs::add_contig(const Contig &contig) { contigs.push_back(contig); }
+void Contigs::add_contig(const Contig &contig) {
+  contigs.push_back(contig);
+  end_idx++;
+  tot_length += contig.seq.length();
+}
 
-void Contigs::add_contig(Contig &&contig) { contigs.emplace_back(std::move(contig)); }
+void Contigs::add_contig(Contig &&contig) {
+  contigs.emplace_back(std::move(contig));
+  end_idx++;
+  tot_length += contig.seq.length();
+}
 
-size_t Contigs::size() const { return contigs.size(); }
+size_t Contigs::size() const { return end_idx - begin_idx; }
+
+size_t Contigs::get_length() const { return tot_length; }
 
 void Contigs::print_stats(unsigned min_ctg_len) const {
   BarrierTimer timer(__FILEFUNC__);
@@ -177,7 +191,9 @@ void Contigs::dump_contigs(const string &fname, unsigned min_ctg_len, const stri
   for (auto it = contigs.begin(); it != contigs.end(); ++it) {
     auto ctg = it;
     if (ctg->seq.length() < min_ctg_len) continue;
-    of << ">" << prefix << to_string(ctg->id) << " " << ctg->depth << "\n";
+    of << ">" << prefix << to_string(ctg->id);
+    if (fname != "final_assembly.fasta") of << " " << ctg->depth;
+    of << "\n";
     string rc_uutig = revcomp(ctg->seq);
     string seq = (rc_uutig < ctg->seq ? rc_uutig : ctg->seq);
     // for (int64_t i = 0; i < ctg->seq.length(); i += 50) of << ctg->seq.substr(i, 50) << "\n";
@@ -218,7 +234,7 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
 
   SLOG_VERBOSE("Loading contigs from fasta file ", ctgs_fname, "\n");
   BarrierTimer timer(__FILEFUNC__);
-  contigs.clear();
+  clear();
   dist_object<upcxx::promise<size_t>> dist_stop_prom(world());
   string line;
   string ctg_prefix = ">" + prefix;
@@ -268,16 +284,17 @@ void Contigs::load_contigs(const string &ctgs_fname, const string &prefix) {
     // extract the id
     char *endptr;
     int64_t id = strtol(cname.c_str() + ctg_prefix.length(), &endptr, 10);
-    if (id == prev_id) DIE("DUplicate ids ", prev_id, " in file ", ctgs_fname);
+    if (id == prev_id) DIE("Duplicate ids ", prev_id, " in file ", ctgs_fname);
     prev_id = id;
     // depth is the last field in the cname
-    double depth = strtod(endptr, NULL);
+    double depth = (ctgs_fname == "final_assembly.fasta" ? 0 : strtod(endptr, NULL));
     Contig contig = {.id = id, .seq = seq, .depth = depth};
     add_contig(contig);
+    max_clen = max(max_clen, (int)seq.length());
   }
   if (ctgs_file.tellg() < stop_offset)
     DIE("Did not read the entire contigs file from ", start_offset, " to ", stop_offset, " tellg=", ctgs_file.tellg());
-  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, "\n");
+  LOG("Got contigs=", contigs.size(), " tot_len=", tot_len, " max_clen=", max_clen, "\n");
   auto &pr = Timings::get_promise_reduce();
   auto fut_tot_contigs = pr.reduce_one(contigs.size(), op_fast_add, 0);
   auto fut_tot_len = pr.reduce_one(tot_len, op_fast_add, 0);
@@ -295,4 +312,43 @@ size_t Contigs::get_num_ctg_kmers(int kmer_len) const {
     if (ctg.seq.length() > kmer_len) num_ctg_kmers += (ctg.seq.length() - kmer_len + 1);
   }
   return num_ctg_kmers;
+}
+
+int Contigs::get_max_clen() const { return max_clen; }
+
+void Contigs::set_next_slice(int num_slices) {
+  if (end_idx == contigs.size() && begin_idx == 0) end_idx = 0;  // first call
+  begin_idx = end_idx;
+  int expected_slice_size = tot_length / num_slices;
+  size_t slice_size = 0;
+  for (size_t i = begin_idx; i < contigs.size(); i++) {
+    slice_size += contigs[i].seq.length();
+    if (slice_size >= expected_slice_size) {
+      end_idx = i + 1;
+      break;
+    }
+  }
+  if (end_idx == begin_idx) end_idx = contigs.size();
+  auto msm_slice_size = min_sum_max_reduce_one(slice_size, 0).wait();
+  SLOG_VERBOSE("Rank 0, contig slice: begin idx ", begin_idx, " end idx ", end_idx, " num ctgs ", contigs.size(), "\n");
+  SLOG_VERBOSE("Rank 0, expected contig slice size ", expected_slice_size, " actual slice size ", slice_size, " total size ",
+               tot_length, "\n");
+  SLOG_VERBOSE("All contig slice sizes ", msm_slice_size.to_string(), "\n");
+}
+
+void Contigs::clear_slices() {
+  begin_idx = 0;
+  end_idx = contigs.size();
+}
+
+std::vector<Contig>::iterator Contigs::begin() { return contigs.begin() + begin_idx; }
+
+std::vector<Contig>::iterator Contigs::end() { return contigs.begin() + end_idx; }
+
+std::vector<Contig>::const_iterator Contigs::begin() const { return contigs.begin() + begin_idx; }
+
+std::vector<Contig>::const_iterator Contigs::end() const { return contigs.begin() + end_idx; }
+
+void Contigs::sort_by_length() {
+  sort(contigs.begin(), contigs.end(), [](const Contig &c1, const Contig &c2) { return c1.seq.length() > c2.seq.length(); });
 }

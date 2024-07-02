@@ -105,6 +105,7 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
   kmer_cid_store.set_size("kmer cid store", max_store_bytes, local_n * 2, num_updates);
   for (auto &ctg : ctgs) {
     vector<kmer_t> kmers;
+    assert(ctg.seq.length() > 0);
     kmer_t::get_kmers(SHUFFLE_KMER_LEN, ctg.seq, kmers);
     // can skip kmers to make it more efficient
     for (int i = 0; i < kmers.size(); i += 1) {
@@ -116,6 +117,8 @@ static dist_object<kmer_to_cid_map_t> compute_kmer_to_cid_map(Contigs &ctgs) {
   }
   kmer_cid_store.flush_updates();
   barrier();
+  auto tot_map_size = reduce_one(kmer_to_cid_map->size(), op_fast_add, 0).wait();
+  SLOG_VERBOSE("Inserted ", tot_map_size, " kmers in the map of kmers to contig ids\n");
   return kmer_to_cid_map;
 }
 
@@ -178,6 +181,7 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList 
                                                                 dist_object<kmer_to_cid_map_t> &kmer_to_cid_map, int64_t num_ctgs) {
   BarrierTimer timer(__FILEFUNC__);
   dist_object<cid_to_reads_map_t> cid_to_reads_map(cid_to_reads_map_t{});
+  auto tot_num_ctgs = reduce_one(num_ctgs, op_fast_add, 0).wait();
   cid_to_reads_map->reserve(num_ctgs);
   ThreeTierAggrStore<pair<int64_t, int64_t>> cid_reads_store;
   cid_reads_store.set_update_func([&cid_to_reads_map](pair<int64_t, int64_t> &&cid_reads_info) {
@@ -194,8 +198,9 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList 
   auto max_store_bytes = max(mem_to_use, (int64_t)est_update_size * 100);
   // estimate the number of updates
   uint64_t num_updates = 0;
-  for (auto packed_reads : packed_reads_list)
+  for (auto packed_reads : packed_reads_list) {
     num_updates += packed_reads->get_local_num_reads() * (packed_reads->get_max_read_len() - SHUFFLE_KMER_LEN + 1);
+  }
   cid_reads_store.set_size("Read cid store", max_store_bytes, local_n * 2, num_updates);
   string read_id_str, read_seq, read_quals;
   const int MAX_REQ_BUFF = 1000;
@@ -204,11 +209,19 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList 
   vector<UpdateCidReadsBuffer> cid_update_buffer;
   for (auto packed_reads : packed_reads_list) {
     packed_reads->reset();
+    int64_t prev_read_id = -1;
     for (int i = 0; i < packed_reads->get_local_num_reads(); i += 2) {
       progress();
       auto &packed_read1 = (*packed_reads)[i];
       auto &packed_read2 = (*packed_reads)[i + 1];
+      // first in pair is indicated by a negative index
       auto read_id = abs(packed_read1.get_id());
+      if (i > 0 && prev_read_id == read_id)
+        DIE("Duplicate read id across pairs, i ", i, " read id ", read_id, " ", packed_reads->get_full_read_id(i), " ",
+            packed_reads->get_full_read_id(i - 2));
+      prev_read_id = read_id;
+      if (-packed_read1.get_id() != packed_read2.get_id())
+        DIE("Paired reads id mismatch: ", -packed_read1.get_id(), " != ", packed_read2.get_id());
       for (auto &packed_read : {packed_read1, packed_read2}) {
         vector<kmer_t> kmers;
         packed_read.unpack(read_id_str, read_seq, read_quals, packed_reads->get_qual_offset());
@@ -240,6 +253,9 @@ static dist_object<cid_to_reads_map_t> compute_cid_to_reads_map(PackedReadsList 
   update_cid_reads_buffer(cid_reads_store, cid_update_buffer);
   cid_reads_store.flush_updates();
   barrier();
+  auto all_map_size = reduce_one(cid_to_reads_map->size(), op_fast_add, 0).wait();
+  auto all_num_ctgs = reduce_one(num_ctgs, op_fast_add, 0).wait();
+  SLOG_VERBOSE("Ctg IDs that map to reads: ", perc_str(all_map_size, all_num_ctgs), "\n");
   return cid_to_reads_map;
 }
 
@@ -313,14 +329,11 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   auto fut_read_slot = upcxx_utils::reduce_prefix(num_mapped_reads, upcxx::op_fast_add);
   auto fut_all_num_mapped_reads = pr.reduce_all(num_mapped_reads, op_fast_add);
   auto fut_max_num_mapped_reads = pr.reduce_one(num_mapped_reads, op_fast_max, 0);
-
   // complete pending reductions
   pr.fulfill().wait();
   auto max_num_mapped_reads = fut_max_num_mapped_reads.wait();
   auto all_num_mapped_reads = fut_all_num_mapped_reads.wait();
   auto read_slot = fut_read_slot.wait() - num_mapped_reads;  // get my starting read slot
-  LOG("read_slot=", read_slot, " num_mapped_reads=", num_mapped_reads, " max_num_mapped_reads=", max_num_mapped_reads,
-      " all_num_mapped_reads=", all_num_mapped_reads, "\n");
   barrier();
   auto avg_num_mapped_reads = all_num_mapped_reads / rank_n();
   SLOG_VERBOSE("Avg mapped reads per rank ", avg_num_mapped_reads, " max ", max_num_mapped_reads, " balance ",
@@ -333,19 +346,20 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   auto max_store_bytes = max(mem_to_use, (int64_t)sizeof(ReadTarget) * 100);
   // estimate the number of updates
   uint64_t num_updates = 0;
-  for (auto &[cid, read_ids] : *cid_to_reads_map) num_updates += read_ids.size();
-  read_target_store.set_size("Read-Targets", max_store_bytes, local_n * 2, num_updates);
+  read_target_store.set_size("Read-Targets", max_store_bytes, local_n * 2, num_mapped_reads / 2);
   read_target_store.set_update_func([&read_to_target_map](ReadTarget rt) { read_to_target_map->insert({rt.read_id, rt.target}); });
   read_to_target_map->reserve(avg_num_mapped_reads);
   barrier();
   ProgressBar progbar(num_mapped_reads, "Updating read targets");
   int64_t block = (all_num_mapped_reads + rank_n() - 1) / rank_n();
-  // int64_t num_reads_found = 0;
+  LOG("read_slot=", read_slot, " block ", block, " num_mapped_reads=", num_mapped_reads,
+      " max_num_mapped_reads=", max_num_mapped_reads, " all_num_mapped_reads=", all_num_mapped_reads, "\n");
+  int64_t num_reads_found = 0;
   for (auto &[cid, read_ids] : *cid_to_reads_map) {
     progress();
     if (read_ids.empty()) continue;
     for (auto read_id : read_ids) {
-      // num_reads_found++;
+      num_reads_found++;
       ReadTarget rt{read_id, read_slot / block};
       assert(rt.target < rank_n() && "Target is on a rank's block");
       read_target_store.update(get_target_rank(read_id), rt);
@@ -357,10 +371,10 @@ static dist_object<read_to_target_map_t> compute_read_locations(dist_object<cid_
   assert(read_slot == fut_read_slot.wait() && "updated all Read-Targets");
   auto fut_progbar = progbar.set_done();
   read_target_store.flush_updates();
+  barrier();
   read_target_store.clear();
   Timings::wait_pending();
   fut_progbar.wait();
-  barrier();
   auto tot_reads_found = reduce_one(read_to_target_map->size(), op_fast_add, 0).wait();
   SLOG_VERBOSE("Number of read pairs mapping to contigs is ", perc_str(tot_reads_found, tot_num_reads / 2), "\n");
   return read_to_target_map;
@@ -460,6 +474,7 @@ void shuffle_reads(int qual_offset, PackedReadsList &packed_reads_list, Contigs 
   auto kmer_to_cid_map = compute_kmer_to_cid_map(ctgs);
   auto cid_to_reads_map = compute_cid_to_reads_map(packed_reads_list, kmer_to_cid_map, ctgs.size());
   auto read_to_target_map = compute_read_locations(cid_to_reads_map, all_num_reads);
+
   dist_object<PackedReadsContainer> new_packed_reads(PackedReadsContainer{});
   new_packed_reads->reserve(num_reads * 1.3);
   move_reads_to_targets(packed_reads_list, read_to_target_map, all_num_reads, new_packed_reads);

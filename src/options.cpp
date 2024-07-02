@@ -54,7 +54,6 @@
 #include <string_view>
 #include <upcxx/upcxx.hpp>
 
-#include "CLI11.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/mem_profile.hpp"
 #include "upcxx_utils/timers.hpp"
@@ -145,14 +144,14 @@ void Options::get_restart_options() {
   bool found = file_exists("final_assembly.fasta");
   if (found) {
     // assembly completed check for post assembly options
-    if (post_assm_abundances || post_assm_aln) {
+    if (post_assm) {
       if (!post_assm_only) {
         SLOG_VERBOSE("Running with --post-asm-only as this run has already completed\n");
         post_assm_only = true;
       }
       ctgs_fname = "final_assembly.fasta";
     } else {
-      SWARN("This run has already completed (final_assembly.fasta exists) but --restart was chosen without any --post-asm options");
+      SWARN("This run has already completed (final_assembly.fasta exists) but --restart was chosen without --post-asm option");
       found = false;
     }
   }
@@ -173,7 +172,7 @@ void Options::get_restart_options() {
 }
 
 double Options::setup_output_dir() {
-  auto t_start = chrono::high_resolution_clock::now();
+  auto t_start = clock_now();
   if (output_dir.empty()) DIE("Invalid empty ouput_dir");
   if (!upcxx::rank_me()) {
     // create the output directory (and possibly stripe it)
@@ -190,7 +189,7 @@ double Options::setup_output_dir() {
       // could not create the directory
       if (errno == EEXIST) {
         // okay but warn if not restarting
-        if (!restart) SWARN("Output directory ", output_dir, " already exists. May overwrite existing files\n");
+        if (!restart && !post_assm_only) SWARN("Output directory ", output_dir, " already exists. May overwrite existing files\n");
       } else {
         SDIE("Could not create output directory '", output_dir, "': ", strerror(errno), "\n");
       }
@@ -293,12 +292,12 @@ double Options::setup_output_dir() {
   DBG("Changed dir to ", output_dir, "\n");
   upcxx::barrier();
 
-  chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - t_start;
+  chrono::duration<double> t_elapsed = clock_now() - t_start;
   return t_elapsed.count();
 }
 
 double Options::setup_log_file() {
-  auto t_start = chrono::high_resolution_clock::now();
+  auto t_start = clock_now();
   if (!upcxx::rank_me()) {
     // check to see if mhm2.log exists. If so, and not restarting, rename it
     if (file_exists("mhm2.log") && !restart) {
@@ -313,7 +312,7 @@ double Options::setup_log_file() {
     }
   }
   upcxx::barrier();
-  chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - t_start;
+  chrono::duration<double> t_elapsed = clock_now() - t_start;
   return t_elapsed.count();
 }
 
@@ -349,6 +348,7 @@ Options::Options() {
   output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
                to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
 }
+
 Options::~Options() {
   flush_logger();
   cleanup();
@@ -370,91 +370,128 @@ bool Options::load(int argc, char **argv) {
   // MHM2 version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
   string full_version_str = "MHM2 version " + string(MHM2_VERSION) + "-" + string(MHM2_BRANCH) + " with upcxx-utils " +
                             string(UPCXX_UTILS_VERSION) + " built on " + string(MHM2_BUILD_DATE);
-  CLI::App app(full_version_str);
+  app.description(full_version_str);
   app.option_defaults()->always_capture_default();
   // basic options - see user guide
   app.add_option("-r, --reads", reads_fnames,
                  "Files containing interleaved paired reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
-      ->check(CLI::ExistingFile);
+      ->check(CLI::ExistingFile)
+      ->group("Basic options");
   app.add_option("-p, --paired-reads", paired_fnames,
                  "Alternating read files containing separate paired reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
-      ->check(CLI::ExistingFile);
+      ->check(CLI::ExistingFile)
+      ->group("Basic options");
   app.add_option("-u, --unpaired-reads", unpaired_fnames, "Unpaired or single reads in FASTQ format (comma or space separated).")
       ->delimiter(',')
-      ->check(CLI::ExistingFile);
-  add_flag_def(app, "--adapter-trim", adapter_trim, "Trim adapters using reference given by --adapter-refs");
-  app.add_option("--adapter-refs", adapter_fname, "File containing adapter sequences for trimming in FASTA format.")
-      ->check(CLI::ExistingFile);
-  app.add_option("-i, --insert", insert_size, "Insert size (average:stddev) (autodetected by default).")
-      ->delimiter(':')
-      ->expected(2)
-      ->check(CLI::Range(1, 10000));
+      ->check(CLI::ExistingFile)
+      ->group("Basic options");
   app.add_option("-k, --kmer-lens", kmer_lens, "kmer lengths (comma separated) for contigging (set to 0 to disable contigging).")
-      ->delimiter(',');
+      ->delimiter(',')
+      ->group("Basic options");
   app.add_option("-s, --scaff-kmer-lens", scaff_kmer_lens,
                  "kmer lengths (comma separated) for scaffolding (set to 0 to disable scaffolding).")
-      ->delimiter(',');
+      ->delimiter(',')
+      ->group("Basic options");
   app.add_option("--min-ctg-print-len", min_ctg_print_len, "Minimum length required for printing a contig in the final assembly.")
       ->default_val(to_string(min_ctg_print_len))
-      ->check(CLI::Range(0, 100000));
-  auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.");
-  add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.");
+      ->check(CLI::Range(0, 100000))
+      ->group("Basic options");
+  auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory.")->group("Basic options");
+  add_flag_def(app, "--checkpoint", checkpoint, "Enable checkpointing.")->group("Basic options");
   add_flag_def(app, "--restart", restart,
-               "Restart in previous directory where a run failed (must specify the previous directory with -o).");
-  add_flag_def(app, "--post-asm-align", post_assm_aln, "Align reads to final assembly");
-  add_flag_def(app, "--post-asm-abd", post_assm_abundances, "Compute and output abundances for final assembly (used by MetaBAT).");
-  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly (alignment and/or abundances).");
-  add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.");
-  app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
-      ->check(CLI::IsMember({0, 33, 64}));
-  add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.");
-  add_flag_def(app, "-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).");
-  auto *cfg_opt = app.set_config("--config", "", "Load options from a configuration file.");
+               "Restart in previous directory where a run failed (must specify the previous directory with -o).")
+      ->group("Basic options");
+  add_flag_def(app, "--post-asm", post_assm, "Align reads to final assembly and compute abundances (for use by MetaBAT).")
+      ->group("Basic options");
+  add_flag_def(
+      app, "--post-asm-write-sam", post_assm_write_sam,
+      "Write SAM files after post assembly alignment (defaults to true). If set to false, will still output abundance file.")
+      ->group("Basic options");
+  add_flag_def(app, "--post-asm-only", post_assm_only, "Only run post assembly.")->group("Basic options");
+  add_flag_def(app, "--progress", show_progress, "Show progress bars for operations.")->group("Basic options");
+  add_flag_def(app, "-v, --verbose", verbose, "Verbose output: lots of detailed information (always available in the log).")
+      ->group("Basic options");
+  auto *cfg_opt = app.set_config("--config", "", "Load options from a configuration file.")->group("Basic options");
 
   // advanced options
   // restarts
-  app.add_option("-c, --contigs", ctgs_fname, "FASTA file containing contigs used for restart.");
+  app.add_option("-c, --contigs", ctgs_fname, "FASTA file containing contigs used for restart.")->group("Restarting options");
   app.add_option("--max-kmer-len", max_kmer_len,
                  "Maximum contigging kmer length for restart (needed if only scaffolding and contig file is specified).")
-      ->check(CLI::Range(0, 159));
+      ->check(CLI::Range(0, 159))
+      ->group("Restarting options");
   app.add_option("--prev-kmer-len", prev_kmer_len,
                  "Previous contigging kmer length for restart (needed if contigging and contig file is specified).")
-      ->check(CLI::Range(0, 159));
+      ->check(CLI::Range(0, 159))
+      ->group("Restarting options");
   // quality tuning
+  add_flag_def(app, "--adapter-trim", adapter_trim, "Trim adapters using reference given by --adapter-refs")
+      ->group("Quality tuning options");
+  app.add_option("--adapter-refs", adapter_fname, "File containing adapter sequences for trimming in FASTA format.")
+      ->check(CLI::ExistingFile)
+      ->group("Quality tuning options");
+  app.add_option("-i, --insert", insert_size, "Insert size (average:stddev) (autodetected by default).")
+      ->delimiter(':')
+      ->expected(2)
+      ->check(CLI::Range(1, 10000))
+      ->group("Quality tuning options");
   app.add_option("--break-scaff-Ns", break_scaff_Ns, "Number of Ns allowed before a scaffold is broken.")
-      ->check(CLI::Range(0, 1000));
+      ->check(CLI::Range(0, 1000))
+      ->group("Quality tuning options");
   app.add_option("--min-depth-thres", dmin_thres, "Absolute mininimum depth threshold for DeBruijn graph traversal")
-      ->check(CLI::Range(1, 100));
-  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
-      ->check(CLI::Range(10000, 10000000));
+      ->check(CLI::Range(1, 100))
+      ->group("Quality tuning options");
   app.add_option("--optimize", optimize_for,
                  "Optimize setting: (contiguity, correctness, default) - improve contiguity at the cost of increased errors; "
                  "reduce errors at the cost of contiguity; default balance between contiguity and correctness")
-      ->check(CLI::IsMember({"default", "contiguity", "correctness"}));
+      ->check(CLI::IsMember({"default", "contiguity", "correctness"}))
+      ->group("Quality tuning options");
   // performance trade-offs
   app.add_option("--max-kmer-store", max_kmer_store_mb, "Maximum size for kmer store in MB per rank (set to 0 for auto 1% memory).")
-      ->check(CLI::Range(0, 5000));
+      ->check(CLI::Range(0, 5000))
+      ->group("Performance trade-off options");
   app.add_option("--max-rpcs-in-flight", max_rpcs_in_flight,
                  "Maximum number of RPCs in flight, per process (set to 0 for unlimited).")
-      ->check(CLI::Range(0, 10000));
+      ->check(CLI::Range(0, 10000))
+      ->group("Performance trade-off options");
+  app.add_option("--aln-ctg-seq-buf-size", klign_rget_buf_size, "Size of buffer for fetching ctg sequences in alignment.")
+      ->check(CLI::Range(10000, 10000000))
+      ->group("Performance trade-off options");
   app.add_option("--max-worker-threads", max_worker_threads, "Number of threads in the worker ThreadPool.")
-      ->check(CLI::Range(0, 16));
+      ->check(CLI::Range(0, 16))
+      ->group("Performance trade-off options");
   if (getenv("MHM2_PIN")) pin_by = getenv("MHM2_PIN");  // get default from the environment if it exists
   app.add_option("--pin", pin_by,
                  "Restrict processes according to logical CPUs, cores (groups of hardware threads), "
                  "or NUMA domains (cpu, core, numa, none).")
-      ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}));
-  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")->check(CLI::Range(1, 100));
-  // miscellaneous
-  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality");
+      ->check(CLI::IsMember({"cpu", "core", "numa", "rr_numa", "none"}))
+      ->group("Performance trade-off options");
+  app.add_option("--sequencing-depth", sequencing_depth, "Expected average sequencing depth")
+      ->check(CLI::Range(1, 100))
+      ->group("Performance trade-off options");
+  app.add_option("--post-asm-subsets", post_assm_subsets,
+                 "Number of subsets to split contigs into for post-assembly. "
+                 "More subsets means less memory but more compute time.")
+      ->check(CLI::Range(1, 100))
+      ->group("Performance trade-off options");
+  add_flag_def(app, "--shuffle-reads", shuffle_reads, "Shuffle reads to improve locality")->group("Performance trade-off options");
   add_flag_def(app, "--use-qf", use_qf,
-               "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).");
+               "Use quotient filter to reduce memory at the cost of slower processing (only applies to GPUs).")
+      ->group("Performance trade-off options");
+  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")
+      ->check(CLI::Range(1, 100))
+      ->group("Performance trade-off options");
+  // miscellaneous
   add_flag_def(app, "--dump-merged", dump_merged, "(debugging option) dumps merged fastq files in the output directory")
-      ->multi_option_policy();
-  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.");
-  app.add_option("--subsample-pct", subsample_fastq_pct, "Percentage of fastq files to read.")->check(CLI::Range(1, 100));
+      ->multi_option_policy()
+      ->group("Other options");
+  add_flag_def(app, "--dump-kmers", dump_kmers, "Write kmers out after kmer counting.")->group("Other options");
+  add_flag_def(app, "--write-gfa", dump_gfa, "Write scaffolding contig graphs in GFA2 format.")->group("Other options");
+  app.add_option("-Q, --quality-offset", qual_offset, "Phred encoding offset (auto-detected by default).")
+      ->check(CLI::IsMember({0, 33, 64}))
+      ->group("Other options");
 
   try {
     app.parse(argc, argv);
@@ -485,9 +522,11 @@ bool Options::load(int argc, char **argv) {
         return false;
       }
       while (paired_fnames.size() >= 2) {
-        if (!check_input_files.insert(paired_fnames[0]).second) SDIE("Duplicate first paired-read file detected: ", paired_fnames[0]);
-        if (!check_input_files.insert(paired_fnames[1]).second) SDIE("Duplicate second paired-read file detected: ", paired_fnames[1]);
-        
+        if (!check_input_files.insert(paired_fnames[0]).second)
+          SDIE("Duplicate first paired-read file detected: ", paired_fnames[0]);
+        if (!check_input_files.insert(paired_fnames[1]).second)
+          SDIE("Duplicate second paired-read file detected: ", paired_fnames[1]);
+
         reads_fnames.push_back(paired_fnames[0] + ":" + paired_fnames[1]);
         paired_fnames.erase(paired_fnames.begin());
         paired_fnames.erase(paired_fnames.begin());
@@ -513,9 +552,10 @@ bool Options::load(int argc, char **argv) {
     app.get_option("--restart")->default_val("false");
   }
 
- if (restart && (!*output_dir_opt || !file_exists(output_dir+string("/mhm2.log")))) {
+  if (restart && (!*output_dir_opt || !file_exists(output_dir + string("/mhm2.log")))) {
     if (!rank_me())
-      cerr << "\nWARNING --restart was requested but no output directory was specified or mhm2.log is missing.  Ignoring --restart request.\n";
+      cerr << "\nWARNING --restart was requested but no output directory was specified or mhm2.log is missing.  Ignoring --restart "
+              "request.\n";
     restart = false;
     app.get_option("--restart")->default_val("false");
   }
@@ -528,14 +568,23 @@ bool Options::load(int argc, char **argv) {
 
   if (post_assm_only && ctgs_fname.empty()) ctgs_fname = "final_assembly.fasta";
 
+  if (post_assm_only) {
+    post_assm = true;
+    if (!*output_dir_opt) {
+      if (!rank_me()) cerr << "\nError in command line: Cannot find output directory for post-asm-only run\n";
+      return false;
+    }
+    if (!file_exists(output_dir + string("/final_assembly.fasta"))) {
+      if (!rank_me())
+        cerr << "\nError in command line:\nCannot find file 'final_assembly.fasta' in directory '" << output_dir
+             << "' for post-asm-only run\n";
+      return false;
+    }
+  }
+
   upcxx::barrier();
 
   if (!*output_dir_opt) {
-    if (restart) {
-      if (!rank_me())
-        cerr << "\nError in command line:\nRequire output directory when restarting run\nRun with --help for more information\n";
-      return false;
-    }
     string first_read_fname = reads_fnames[0];
     // strip out the paired or unpaired/single the possible ':' in the name string
     auto colpos = first_read_fname.find_last_of(':');
@@ -557,8 +606,6 @@ bool Options::load(int argc, char **argv) {
 
   min_kmer_len = kmer_lens.empty() ? (scaff_kmer_lens.empty() ? -1 : scaff_kmer_lens[scaff_kmer_lens.size() - 1]) : kmer_lens[0];
   // save to per_rank, but hardlink to output_dir
-  string config_file = "per_rank/mhm2.config";
-  string linked_config_file = "mhm2.config";
   if (restart) {
     // use per_rank to read/write this small file, hardlink to top run level
     try {
@@ -586,7 +633,7 @@ bool Options::load(int argc, char **argv) {
   if (optimize_for == "contiguity") {
   }
 
-  auto logger_t = chrono::high_resolution_clock::now();
+  auto logger_t = clock_now();
   if (upcxx::local_team().rank_me() == 0) {
     // open 1 log per node
     // all have logs in per_rank
@@ -605,7 +652,7 @@ bool Options::load(int argc, char **argv) {
   }
 
   barrier();
-  chrono::duration<double> logger_t_elapsed = chrono::high_resolution_clock::now() - logger_t;
+  chrono::duration<double> logger_t_elapsed = clock_now() - logger_t;
   SLOG_VERBOSE("init_logger took ", setprecision(2), fixed, logger_t_elapsed.count(), " s at ", get_current_time(), " (",
                setup_time, " s for io)\n");
 
@@ -636,6 +683,17 @@ bool Options::load(int argc, char **argv) {
 #ifdef DEBUG
   SWARN("Running low-performance debug mode");
 #endif
+  write_config_file();
+  upcxx::barrier();
+  return true;
+}
+
+void Options::adjust_config_option(const string &opt_name, const string &new_val) {
+  app.get_option(opt_name)->clear();
+  app.get_option(opt_name)->add_result(new_val);
+}
+
+void Options::write_config_file() {
   if (!upcxx::rank_me()) {
     // write out configuration file for restarts
     ofstream ofs(config_file);
@@ -645,8 +703,6 @@ bool Options::load(int argc, char **argv) {
     auto ret = link(config_file.c_str(), linked_config_file.c_str());
     if (ret != 0 && !restart) LOG("Could not hard link config file, continuing\n");
   }
-  upcxx::barrier();
-  return true;
 }
 
 template <typename T>

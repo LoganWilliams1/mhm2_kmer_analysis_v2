@@ -52,7 +52,6 @@
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "utils.hpp"
-#include "zstr.hpp"
 
 using namespace std;
 using namespace upcxx;
