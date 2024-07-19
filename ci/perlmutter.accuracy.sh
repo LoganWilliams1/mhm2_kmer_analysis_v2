@@ -49,7 +49,7 @@ export GASNET_USE_HUGEPAGES=0
 
 for arch in gpu cpu
 do
-  slurm_opts="--job-name='CIm${arch}a-${CI_COMMIT_SHORT_SHA} -C $arch --qos=debug --time=12:00 --account=m2865"
+  slurm_opts="--job-name=CIm${arch}a-${CI_COMMIT_SHORT_SHA} -C $arch --qos=debug --time=12:00 --account=m2865"
   nodes=8
   if [ "$arch" == "gpu" ] ; then slurm_opts="${slurm_opts}_g -G $((4*nodes))" ; fi
   inst=${INSTALL_PREFIX}-${arch}
