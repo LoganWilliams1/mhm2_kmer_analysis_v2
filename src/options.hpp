@@ -129,5 +129,12 @@ class Options {
   void adjust_config_option(const string &opt_name, const string &new_val);
 
   template <typename T>
-  static string vec_to_str(const vector<T> &vec, const string &delimiter = ",");
+  static string vec_to_str(const vector<T> &vec, const string &delimiter = ",") {
+    std::ostringstream oss;
+    for (auto elem : vec) {
+      oss << elem;
+      if (elem != vec.back()) oss << delimiter;
+    }
+    return oss.str();
+  };
 };
