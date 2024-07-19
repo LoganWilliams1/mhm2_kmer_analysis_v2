@@ -704,13 +704,3 @@ void Options::write_config_file() {
     if (ret != 0 && !restart) LOG("Could not hard link config file, continuing\n");
   }
 }
-
-template <typename T>
-string Options::vec_to_str(const vector<T> &vec, const string &delimiter) {
-  std::ostringstream oss;
-  for (auto elem : vec) {
-    oss << elem;
-    if (elem != vec.back()) oss << delimiter;
-  }
-  return oss.str();
-}
