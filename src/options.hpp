@@ -131,9 +131,13 @@ class Options {
   template <typename T>
   static string vec_to_str(const vector<T> &vec, const string &delimiter = ",") {
     std::ostringstream oss;
-    for (auto elem : vec) {
+    bool is_first = true;
+    for (const auto &elem : vec) {
+      if (is_first)
+        is_first = false;
+      else
+        oss << delimiter;
       oss << elem;
-      if (elem != vec.back()) oss << delimiter;
     }
     return oss.str();
   };
