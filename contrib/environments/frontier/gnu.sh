@@ -1,12 +1,13 @@
 module rm PrgEnv-cray
 module load PrgEnv-gnu
-
 module load git
 module load cmake
 
 module rm xl
-module load gcc
-module load rocm/5.2.0
+module load gcc-native
+
+module load rocm/6.0.0
+#module load rocm
 module rm upcxx
 module load ums ums014 upcxx
 export GASNET_OFI_RECEIVE_BUFF_SIZE=recv

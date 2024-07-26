@@ -45,7 +45,8 @@
 #if defined(__NVCC__) && !defined(UPCXX_SERIALIZED_FIELDS)
 #define UPCXX_SERIALIZED_FIELDS(...)
 #endif
-#if defined(__HIP_PLATFORM_HCC__) && !defined(UPCXX_SERIALIZED_FIELDS)
+//#if defined(__HIP_PLATFORM_HCC__) && !defined(UPCXX_SERIALIZED_FIELDS)
+#if defined(__HIP_PLATFORM_AMD__) && !defined(UPCXX_SERIALIZED_FIELDS)
 #define UPCXX_SERIALIZED_FIELDS(...)
 #endif
 #include <string>
