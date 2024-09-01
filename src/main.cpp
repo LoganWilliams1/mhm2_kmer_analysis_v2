@@ -45,11 +45,8 @@
 #include <random>
 
 #include "contigging.hpp"
-#include "klign.hpp"
 #include "fastq.hpp"
 #include "packed_reads.hpp"
-#include "post_assembly.hpp"
-#include "scaffolding.hpp"
 #include "stage_timers.hpp"
 #include "gasnet_stats.hpp"
 #include "upcxx_utils.hpp"
@@ -184,56 +181,6 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contig
   }
 }
 
-void run_scaffolding(Options &options, PackedReadsList &packed_reads_list, Contigs &ctgs, int rlen_limit,
-                     Histogrammer &histogrammer) {
-  BarrierTimer("Start Scaffolding)");
-
-  // scaffolding loops
-  if (options.dump_gfa) {
-    if (options.scaff_kmer_lens.size())
-      options.scaff_kmer_lens.push_back(options.scaff_kmer_lens.back());
-    else
-      // options.scaff_kmer_lens.push_back(options.kmer_lens[0]);
-      options.scaff_kmer_lens.push_back(options.kmer_lens.back());
-  }
-  if (options.scaff_kmer_lens.size()) {
-    int max_kmer_len = 0;
-    if (options.kmer_lens.size()) {
-      max_kmer_len = options.kmer_lens.back();
-    } else {
-      max_kmer_len = options.max_kmer_len != 0 ? options.max_kmer_len : options.scaff_kmer_lens.front();
-    }
-    for (unsigned i = 0; i < options.scaff_kmer_lens.size(); ++i) {
-      auto scaff_kmer_len = options.scaff_kmer_lens[i];
-      auto max_k = (scaff_kmer_len / 32 + 1) * 32;
-      LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
-
-#define SCAFFOLD_K(KMER_LEN) \
-  case KMER_LEN: scaffolding<KMER_LEN>(i, max_kmer_len, rlen_limit, packed_reads_list, ctgs, histogrammer, options); break
-
-      switch (max_k) {
-        SCAFFOLD_K(32);
-#if MAX_BUILD_KMER >= 64
-        SCAFFOLD_K(64);
-#endif
-#if MAX_BUILD_KMER >= 96
-        SCAFFOLD_K(96);
-#endif
-#if MAX_BUILD_KMER >= 128
-        SCAFFOLD_K(128);
-#endif
-#if MAX_BUILD_KMER >= 160
-        SCAFFOLD_K(160);
-#endif
-        default: DIE("Built for max k = ", MAX_BUILD_KMER, " not k = ", max_k);
-      }
-#undef SCAFFOLD_K
-    }
-  } else {
-    SLOG_VERBOSE("Skipping scaffolding stage - no scaff_kmer_lens specified\n");
-  }
-}
-
 void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
   memory_tracker.start();
   LOG_MEM("Preparing to load reads\n");
@@ -296,7 +243,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   done_init_devices();
 
   run_contigging(options, packed_reads_list, ctgs, rlen_limit, histogrammer);
-  run_scaffolding(options, packed_reads_list, ctgs, rlen_limit, histogrammer);
 
   // cleanup
   LOG_MEM("Preparing to close all fastq");
@@ -329,14 +275,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   else
     SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
   SLOG("    ", stage_timers.analyze_kmers->get_final(), "\n");
-  SLOG("      -> ", stage_timers.kernel_kmer_analysis->get_final(), "\n");
-  SLOG("    ", stage_timers.dbjg_traversal->get_final(), "\n");
-  SLOG("    ", stage_timers.alignments->get_final(), "\n");
-  SLOG("      -> ", stage_timers.kernel_alns->get_final(), "\n");
-  SLOG("      -> ", stage_timers.aln_comms->get_final(), "\n");
-  SLOG("    ", stage_timers.localassm->get_final(), "\n");
-  if (options.shuffle_reads) SLOG("    ", stage_timers.shuffle_reads->get_final(), "\n");
-  SLOG("    ", stage_timers.cgraph->get_final(), "\n");
   SLOG("    FASTQ total read time: ", FastqReader::get_io_time(), "\n");
   SLOG("    merged FASTQ write time: ", elapsed_write_io_t, "\n");
   SLOG("    Contigs write time: ", stage_timers.dump_ctgs->get_elapsed(), "\n");
@@ -346,17 +284,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
 }
 
-void run_post_assembly(Options &options, MemoryTrackerThread &memory_tracker) {
-  memory_tracker.start();
-  BarrierTimer("Post Processing");
-  LOG_MEM("Before Post-Processing");
-  Contigs ctgs;
-  ctgs.load_contigs("final_assembly.fasta", "scaffold_");
-  if (options.post_assm_only) done_init_devices();
-  post_assembly(ctgs, options);
-  FastqReaders::close_all();
-  memory_tracker.stop();
-}
 
 string init_upcxx(BaseTimer &total_timer) {
   total_timer.start();
@@ -454,8 +381,7 @@ int main(int argc, char **argv, char **envp) {
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
-  if (!options.post_assm_only) run_pipeline(options, memory_tracker, start_t);
-  if (options.post_assm) run_post_assembly(options, memory_tracker);
+  run_pipeline(options, memory_tracker, start_t);
 
   LOG("Cleaning up and completing remaining tasks\n");
 

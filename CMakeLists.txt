@@ -284,7 +284,7 @@ include(CMakeDefinitions.txt)
 
 # verify submodules
 include(CheckSubmodules)
-check_submodules(zstr upcxx-utils test/googletest) # todo klign
+check_submodules(zstr upcxx-utils) # todo klign
 
 # set version
 include_directories(include src)
@@ -341,15 +341,5 @@ if(ENABLE_CUDA)
   add_subdirectory(point_tcf)
 endif()
 
-install(PROGRAMS ci/check_asm_quality.py ci/ci_asm_qual_test.sh
-                 ci/ci_asm_qual_test-full.sh ci/ci_asm_qual_test-tiny.sh
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-install(FILES ci/good-arctic-sample0.txt ci/good-arctic-sample0-k63.txt
-              ci/good-arctic-sample0-k31k63.txt ci/good-arctic-sample0_tiny.txt
-              ci/good-arcticsynth.txt contrib/all_adapters.fa DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
 
-option(MHM2_ENABLE_TESTING "Enable testing in MHM2" ON)
-if(MHM2_ENABLE_TESTING)
-  add_subdirectory(test)
-endif()
 add_subdirectory(contrib)
