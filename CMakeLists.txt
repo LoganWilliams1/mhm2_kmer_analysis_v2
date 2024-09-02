@@ -341,5 +341,7 @@ if(ENABLE_CUDA)
   add_subdirectory(point_tcf)
 endif()
 
+install(FILES contrib/all_adapters.fa DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
+
 
 add_subdirectory(contrib)
