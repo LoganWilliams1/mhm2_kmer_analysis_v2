@@ -1,3 +1,5 @@
+cmake_policy(SET CMP0074 NEW)
+
 if(ENABLE_HIP)
   message(STATUS "building GPU_UTILS using HIP")
   add_library(GPU_UTILS_LIBRARY_obj OBJECT gpu_utils.cpp gpu_common.cpp)
@@ -30,6 +32,8 @@ elseif(ENABLE_CUDA)
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
     target_link_libraries(GPU_UTILS_LIBRARY_obj INTERFACE)
   endif()
+
+  target_link_libraries(GPU_UTILS_LIBRARY_obj)
 
   set_source_files_properties(gpu_utils.cpp gpu_common.cpp
                               PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)

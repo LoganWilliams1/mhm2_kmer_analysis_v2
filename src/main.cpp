@@ -55,6 +55,16 @@
 
 #include "kmer.hpp"
 
+
+#ifdef ENABLE_KOKKOS
+#include <Kokkos_Core.hpp>
+#include <limits>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#endif
+
 using std::fixed;
 using std::setprecision;
 
@@ -335,9 +345,103 @@ string init_upcxx(BaseTimer &total_timer) {
   return fut_report_init_timings.wait();
 }
 
+
+void test_kokkos() {
+  if (!upcxx::rank_me()) {
+    cout << "\n----------------------------------------\n\n" << "kokkos enabled\n" << endl;
+    Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
+  }
+
+  int N = pow(2, 12);         // number of rows 2^12
+  int M = pow(2, 10);         // number of columns 2^10
+  int S = pow(2, 22);         // total size 2^22
+  int nrepeat = 100;  // number of repeats of the test
+
+  // For the sake of simplicity in this exercise, we're using std::malloc directly, but
+  // later on we'll learn a better way, so generally don't do this in Kokkos programs.
+  // Allocate y, x vectors and Matrix A:
+  auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
+  auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
+  auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
+
+  // Initialize y vector.
+  Kokkos::parallel_for( "y_init", N, KOKKOS_LAMBDA ( int i ) {
+    y[ i ] = 1;
+  });
+
+  // Initialize x vector.
+  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
+    x[ i ] = 1;
+  });
+
+  // Initialize A matrix, note 2D indexing computation.
+  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
+    for ( int i = 0; i < M; ++i ) {
+      A[ j * M + i ] = 1;
+    }
+  });
+
+  // Timer products.
+  Kokkos::Timer timer;
+
+  for ( int repeat = 0; repeat < nrepeat; repeat++ ) {
+    // Application: <y,Ax> = y^T*A*x
+    double result = 0;
+
+    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double &update ) {
+      double temp2 = 0;
+
+      for ( int i = 0; i < M; ++i ) {
+        temp2 += A[ j * M + i ] * x[ i ];
+      }
+
+      update += y[ j ] * temp2;
+    }, result );
+
+    // Output result.
+    if (!upcxx::rank_me() && repeat == ( nrepeat - 1 ) ) {
+      printf( "  Computed result for %d x %d is %lf\n", N, M, result );
+    }
+
+    const double solution = (double) N * (double) M;
+
+    if ( result != solution ) {
+      printf( "  Error: result( %lf ) != solution( %lf )\n", result, solution );
+    }
+  }
+
+  double time = timer.seconds();
+
+  // Calculate bandwidth.
+  // Each matrix A row (each of length M) is read once.
+  // The x vector (of length M) is read N times.
+  // The y vector (of length N) is read once.
+  // double Gbytes = 1.0e-9 * double( sizeof(double) * ( 2 * M * N + N ) );
+  double Gbytes = 1.0e-9 * double( sizeof(double) * ( M + M * N + N ) );
+
+  // Print results (problem size, time and bandwidth in GB/s).
+  if (!upcxx::rank_me()) {
+    printf( "  N( %d ) M( %d ) nrepeat ( %d ) problem( %g MB ) time( %g s ) bandwidth( %g GB/s )\n",
+          N, M, nrepeat, Gbytes * 1000, time, Gbytes * nrepeat / time );
+      
+    cout << "\n----------------------------------------\n" << endl;
+
+  }
+  Kokkos::kokkos_free(A);
+  Kokkos::kokkos_free(y);
+  Kokkos::kokkos_free(x);
+}
+
 int main(int argc, char **argv, char **envp) {
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
+  auto am_root = !rank_me();
+
+
+#ifdef ENABLE_KOKKOS
+  Kokkos::initialize(argc, argv);
+  {
+#endif
 
 #ifdef CIDS_FROM_HASH
   SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
@@ -390,7 +494,6 @@ int main(int argc, char **argv, char **envp) {
   LOG("Done waiting for all pending.\n");
   barrier();
   LOG("All ranks done. Flushing logs and finalizing.\n");
-  auto am_root = !rank_me();
 
   BaseTimer flush_logs_timer("flush_logger", nullptr);  // no PromiseReduce possible
   flush_logs_timer.start();
@@ -411,8 +514,17 @@ int main(int argc, char **argv, char **envp) {
   SLOG_VERBOSE("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
+
+#ifdef ENABLE_KOKKOS
+  test_kokkos();
+  }
+#endif
+
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
   finalize_timer.start();
+#ifdef ENABLE_KOKKOS
+  Kokkos::finalize();
+#endif
   upcxx::finalize();
   finalize_timer.stop();
   total_timer.stop();

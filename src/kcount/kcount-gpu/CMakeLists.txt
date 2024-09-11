@@ -1,3 +1,7 @@
+cmake_policy(SET CMP0074 NEW)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(SRCS parse_and_pack.cpp gpu_hash_table.cpp hashutil.cpp)
 
 string(ASCII 27 Esc)
@@ -7,9 +11,16 @@ set(Yellow      "${Esc}[33m")
 if(ENABLE_CUDA)
   message(STATUS "${Yellow}Building for CUDA${ColorReset}")
   add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
+
+  if(ENABLE_KOKKOS)
+    target_link_libraries(KCOUNT_GPU_LIBRARY_obj Kokkos::kokkos)
+  endif()
+
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
     target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
   endif()
+
+  target_link_libraries(KCOUNT_GPU_LIBRARY_obj)
 
   foreach(_SRC ${SRCS})
     set_source_files_properties(${_SRC} PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE
@@ -42,6 +53,7 @@ if(ENABLE_CUDA)
 
   # interface poggers/tcf with GPU library
   target_link_libraries(KCOUNT_GPU_LIBRARY_obj poggers)
+
 
 elseif(ENABLE_HIP)
   message(STATUS "Building for HIP")

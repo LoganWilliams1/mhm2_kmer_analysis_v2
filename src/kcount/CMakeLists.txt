@@ -1,3 +1,5 @@
+cmake_policy(SET CMP0074 NEW)
+
 set(KCOUNT_TARGET_FILES)
 
 foreach(KMER_LENGTH ${MHM2_KMER_LENGTHS})
@@ -75,4 +77,4 @@ elseif(ENABLE_HIP)
 endif()
 
 target_link_libraries(KCOUNT_LIBRARY ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
-                      ${UPCXX_UTILS_LIBRARIES})
+                      ${UPCXX_UTILS_LIBRARIES} Kokkos::kokkos)

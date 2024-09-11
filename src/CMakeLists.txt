@@ -39,6 +39,7 @@
 # such enhancements or derivative works thereof, in binary and source code form.
 
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
+cmake_policy(SET CMP0074 NEW)
 
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13 AND DEFINED UPCXX_LIBRARIES)
   message(
@@ -261,12 +262,17 @@ set(MHM2_TARGET_OBJECTS
 
 add_executable(mhm2 main.cpp ${MHM2_TARGET_OBJECTS})
 
+if(ENABLE_KOKKOS)
+  set (KokkosLib Kokkos::kokkos)
+endif()
+
 set(MHM2_LINK_LIBRARIES
     Threads::Threads
     SSW_LIBRARY
     KCOUNT_LIBRARY
     ${ZLIB_LIBRARIES}
-    MHM2_VERSION_LIB)
+    MHM2_VERSION_LIB
+    ${KokkosLib})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 

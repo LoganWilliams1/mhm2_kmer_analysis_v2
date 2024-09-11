@@ -47,6 +47,10 @@
 
 #include "gpu_compatibility.hpp"
 
+// #ifdef ENABLE_KOKKOS
+// #include <Kokkos_Core.hpp>
+// #endif
+
 namespace gpu_common {
 
 static __constant__ uint64_t GPU_TWINS[256] = {

@@ -42,6 +42,7 @@
 # to the root source directory of the project as ${MHM2_SOURCE_DIR} and to the
 # root binary directory of the project as ${MHM2_BINARY_DIR}
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
+cmake_policy(SET CMP0074 NEW)
 project(MHM2)
 
 message(STATUS "Building ${CMAKE_PROJECT_NAME} with CMake ${CMAKE_VERSION}")
@@ -174,6 +175,13 @@ if(MHM2_VECTORS)
       endif()
     endif()
   endforeach()
+endif()
+
+option(ENABLE_KOKKOS "Whether to use Kokkos" OFF)
+if(ENABLE_KOKKOS)
+  message(STATUS "Building with Kokkos")
+  add_definitions(-DENABLE_KOKKOS -DDESUL_IMPL_CUDA_RDC -DDESUL_ATOMICS_ENABLE_CUDA_SEPARABLE_COMPILATION)
+  find_package(Kokkos REQUIRED)
 endif()
 
 option(ENABLE_GASNET_STATS "Turn on gasnet stats recording" OFF)
