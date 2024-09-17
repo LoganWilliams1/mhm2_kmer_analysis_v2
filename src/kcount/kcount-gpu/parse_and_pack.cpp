@@ -52,9 +52,9 @@
 #include "gpu-utils/gpu_utils.hpp"
 #include "parse_and_pack.hpp"
 
-// #ifdef ENABLE_KOKKOS
-// #include <Kokkos_Core.hpp>
-// #endif
+#ifdef ENABLE_KOKKOS
+#include <Kokkos_Core.hpp>
+#endif
 using namespace std;
 using namespace gpu_common;
 

@@ -77,4 +77,4 @@ elseif(ENABLE_HIP)
 endif()
 
 target_link_libraries(KCOUNT_LIBRARY ${MHM2_LINK_LIBRARIES} ${UPCXX_LIBRARIES}
-                      ${UPCXX_UTILS_LIBRARIES} Kokkos::kokkos)
+                      ${UPCXX_UTILS_LIBRARIES})

@@ -12,15 +12,9 @@ if(ENABLE_CUDA)
   message(STATUS "${Yellow}Building for CUDA${ColorReset}")
   add_library(KCOUNT_GPU_LIBRARY_obj OBJECT ${SRCS})
 
-  if(ENABLE_KOKKOS)
-    target_link_libraries(KCOUNT_GPU_LIBRARY_obj Kokkos::kokkos)
-  endif()
-
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
     target_link_libraries(KCOUNT_GPU_LIBRARY_obj INTERFACE)
   endif()
-
-  target_link_libraries(KCOUNT_GPU_LIBRARY_obj)
 
   foreach(_SRC ${SRCS})
     set_source_files_properties(${_SRC} PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE
