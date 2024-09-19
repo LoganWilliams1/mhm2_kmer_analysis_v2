@@ -1,41 +1,76 @@
 #!/bin/bash
 
-# run proxy
-cd install/bin
+usage() {
+  echo "Usage: $0 [mhm2 options] -k <kmer length>"
+  exit 1
+}
 
-./mhm2.py "$@"
+# build command
 
-log_dir=$(ls -t | head -n 1)
+args="$*"
+k_found=false
 
-file="$log_dir/mhm2.log"
+while [[ "$#" -gt 0 ]]; do
+  if [[ "$1" == "-k" ]]; then
+    if [[ "$2" =~ ^[0-9]+$ ]]; then
+      k_found=true
+      break
+    else
+      usage
+    fi
+  else
+    shift
+  fi
+done
 
-line=$(grep 'Total kmers' "$file")
+if ! $k_found; then
+  usage
+fi
 
-proxy_count=$(echo "$line" | sed -n 's/.*Total kmers: *\([0-9]\+\).*/\1/p')
+command="./mhm2.py "$args" -s 0"
 
+
+proxy_path="$(pwd)/install/bin"
 
 # run parent (edit path)
-path_to_parent=~/mhm2/install/bin
+parent_path=~/mhm2/install/bin
+cd "$parent_path"
 
-cd "$path_to_parent"
-
-echo "----------------------------------------"
 echo
-
-echo $(pwd)
-./mhm2.py "$@"
+#echo -n "running parent..."
+eval $command #> /dev/null
+#echo -e "\tcomplete"
 
 log_dir=$(ls -t | head -n 1)
 
 file="$log_dir/mhm2.log"
 
 line=$(grep 'Total kmers' "$file")
-
 parent_count=$(echo "$line" | sed -n 's/.*Total kmers: *\([0-9]\+\).*/\1/p')
+line=$(grep 'Analyzing kmers' "$file")
+parent_time=$(echo "$line" | sed -n 's/.*Analyzing kmers *\(.*\)/\1/p')
 
-echo "----------------------------------------"
+# run proxy
+cd "$proxy_path"
 
+#echo -n "running proxy..."
+eval $command #> /dev/null
+#echo -e "\tcomplete"
+
+log_dir=$(ls -t | head -n 1)
+
+file="$log_dir/mhm2.log"
+
+line=$(grep 'Total kmers' "$file")
+proxy_count=$(echo "$line" | sed -n 's/.*Total kmers: *\([0-9]\+\).*/\1/p')
+line=$(grep 'Analyzing kmers' "$file")
+proxy_time=$(echo "$line" | sed -n 's/.*Analyzing kmers *\(.*\)/\1/p')
+
+
+echo -e "\n----------------------------\n"
+echo "MHM2 Time: $parent_time"
+echo "Proxy Time: $proxy_time"
 echo
-
-echo "Parent kmers: $parent_count"
+echo "MHM2 kmers: $parent_count"
 echo "Proxy kmers: $proxy_count"
+
