@@ -182,57 +182,23 @@ inline __device__ char comp_nucleotide(char ch) {
   }
 }
 
-inline __device__ void revcomp(uint64_t *longs, uint64_t *rc_longs, int kmer_len, int num_longs) {
-  int last_long = (kmer_len + 31) / 32;
-  for (size_t i = 0; i < last_long; i++) {
-    uint64_t v = longs[i];
-    rc_longs[last_long - 1 - i] = (GPU_TWINS[v & 0xFF] << 56) | (GPU_TWINS[(v >> 8) & 0xFF] << 48) |
-                                  (GPU_TWINS[(v >> 16) & 0xFF] << 40) | (GPU_TWINS[(v >> 24) & 0xFF] << 32) |
-                                  (GPU_TWINS[(v >> 32) & 0xFF] << 24) | (GPU_TWINS[(v >> 40) & 0xFF] << 16) |
-                                  (GPU_TWINS[(v >> 48) & 0xFF] << 8) | (GPU_TWINS[(v >> 56)]);
-  }
-  uint64_t shift = (kmer_len % 32) ? 2 * (32 - (kmer_len % 32)) : 0;
-  uint64_t shiftmask = (kmer_len % 32) ? (((((uint64_t)1) << shift) - 1) << (64 - shift)) : ((uint64_t)0);
-  rc_longs[0] = rc_longs[0] << shift;
-  for (size_t i = 1; i < last_long; i++) {
-    rc_longs[i - 1] |= (rc_longs[i] & shiftmask) >> (64 - shift);
-    rc_longs[i] = rc_longs[i] << shift;
-  }
-}
+// #ifdef ENABLE_KOKKOS
+// KOKKOS_INLINE_FUNCTION
+// #endif
+// #ifndef ENABLE_KOKKOS
+// inline __device__
+// #endif
+void revcomp(uint64_t *longs, uint64_t *rc_longs, int kmer_len, int num_longs);
 
-inline __device__ bool pack_seq_to_kmer(char *seqs, int kmer_len, int num_longs, uint64_t *kmer) {
-  int l = 0, prev_l = 0;
-  uint64_t longs = 0;
-  memset(kmer, 0, sizeof(uint64_t) * num_longs);
-  // each thread extracts one kmer
-  for (int k = 0; k < kmer_len; k++) {
-    char s = seqs[k];
-    switch (s) {
-      case 'a': s = 'A'; break;
-      case 'c': s = 'C'; break;
-      case 'g': s = 'G'; break;
-      case 't': s = 'T'; break;
-      case 'A':
-      case 'C':
-      case 'G':
-      case 'T': break;
-      default: return false;
-    }
-    int j = k % 32;
-    prev_l = l;
-    l = k / 32;
-    // we do it this way so we can operate on the variable longs in a register, rather than local memory in the array
-    if (l > prev_l) {
-      kmer[prev_l] = longs;
-      longs = 0;
-      prev_l = l;
-    }
-    uint64_t x = (s & 4) >> 1;
-    longs |= ((x + ((x ^ (s & 2)) >> 1)) << (2 * (31 - j)));
-  }
-  kmer[l] = longs;
-  return true;
-}
+// #ifdef ENABLE_KOKKOS
+// KOKKOS_INLINE_FUNCTION
+// #endif
+// #ifndef ENABLE_KOKKOS
+// inline __device__
+// #endif
+bool pack_seq_to_kmer(char *seqs, int kmer_len, int num_longs, uint64_t *kmer);
+
+
 
 inline __device__ uint16_t atomicAddUint16(uint16_t *address, uint16_t val) {
   unsigned int *base_address = (unsigned int *)((size_t)address & ~2);

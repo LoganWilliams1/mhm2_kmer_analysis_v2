@@ -58,7 +58,10 @@
 using namespace std;
 using namespace gpu_common;
 
-__constant__ uint64_t GPU_0_MASK[32] = {
+#ifndef ENABLE_KOKKOS
+__constant__ 
+#endif
+uint64_t GPU_0_MASK[32] = {
     0x0000000000000000, 0xC000000000000000, 0xF000000000000000, 0xFC00000000000000, 0xFF00000000000000, 0xFFC0000000000000,
     0xFFF0000000000000, 0xFFFC000000000000, 0xFFFF000000000000, 0xFFFFC00000000000, 0xFFFFF00000000000, 0xFFFFFC0000000000,
     0xFFFFFF0000000000, 0xFFFFFFC000000000, 0xFFFFFFF000000000, 0xFFFFFFFC00000000, 0xFFFFFFFF00000000, 0xFFFFFFFFC0000000,
@@ -71,7 +74,13 @@ struct kcount_gpu::ParseAndPackDriverState {
   int rank_me;
 };
 
-inline __device__ uint64_t quick_hash(uint64_t v) {
+#ifdef ENABLE_KOKKOS
+KOKKOS_INLINE_FUNCTION
+#endif
+#ifndef ENABLE_KOKKOS
+inline __device__
+#endif
+uint64_t quick_hash(uint64_t v) {
   v = v * 3935559000370003845 + 2691343689449507681;
   v ^= v >> 21;
   v ^= v << 37;
@@ -83,7 +92,13 @@ inline __device__ uint64_t quick_hash(uint64_t v) {
   return v;
 }
 
-__device__ uint64_t gpu_minimizer_hash_fast(int m, int kmer_len, int num_longs, uint64_t *longs, uint64_t *rc_longs) {
+#ifdef ENABLE_KOKKOS
+KOKKOS_INLINE_FUNCTION
+#endif
+#ifndef ENABLE_KOKKOS
+inline __device__
+#endif
+uint64_t gpu_minimizer_hash_fast(int m, int kmer_len, int num_longs, uint64_t *longs, uint64_t *rc_longs) {
   const int chunk_step = 32 - ((m + 3) / 4) * 4;  // chunk_step is a multiple of 4
 
   int base;
@@ -128,7 +143,7 @@ __device__ uint64_t gpu_minimizer_hash_fast(int m, int kmer_len, int num_longs, 
 }
 
 
-#ifdef ENABLE_KOKKOS
+#ifndef ENABLE_KOKKOS
 __global__ void parse_and_pack(char *seqs, int minimizer_len, int kmer_len, int num_longs, int seqs_len, int *kmer_targets,
                                int num_ranks) {
   int num_kmers = seqs_len - kmer_len + 1;
@@ -147,50 +162,50 @@ __global__ void parse_and_pack(char *seqs, int minimizer_len, int kmer_len, int 
   }
 }
 #endif
-// #ifdef ENABLE_KOKKOS
-// void parse_and_pack(char *seqs, int minimizer_len, int kmer_len, int num_longs, int seqs_len, int *kmer_targets,
-//                                int num_ranks) {
-//   int num_kmers = seqs_len - kmer_len + 1;
-//   const int MAX_LONGS = (MAX_BUILD_KMER + 31) / 32;
-//   // unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
-//   // if (threadid < num_kmers) {
-//   //   if (pack_seq_to_kmer(&(seqs[threadid]), kmer_len, num_longs, kmer)) {
-//   //     uint64_t kmer_rc[MAX_LONGS];
-//   //     revcomp(kmer, kmer_rc, kmer_len, num_longs);
-//   //     kmer_targets[threadid] = gpu_minimizer_hash_fast(minimizer_len, kmer_len, num_longs, kmer, kmer_rc) % num_ranks;
-//   //   } else {
-//   //     // indicate invalid with -1
-//   //     kmer_targets[threadid] = -1;
-//   //   }
-//   // }
+#ifdef ENABLE_KOKKOS
+void parse_and_pack(char *seqs, int minimizer_len, int kmer_len, int num_longs, int seqs_len, int *kmer_targets,
+                               int num_ranks) {
+  int num_kmers = seqs_len - kmer_len + 1;
+  const int MAX_LONGS = (MAX_BUILD_KMER + 31) / 32;
+  // unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
+  // if (threadid < num_kmers) {
+  //   if (pack_seq_to_kmer(&(seqs[threadid]), kmer_len, num_longs, kmer)) {
+  //     uint64_t kmer_rc[MAX_LONGS];
+  //     revcomp(kmer, kmer_rc, kmer_len, num_longs);
+  //     kmer_targets[threadid] = gpu_minimizer_hash_fast(minimizer_len, kmer_len, num_longs, kmer, kmer_rc) % num_ranks;
+  //   } else {
+  //     // indicate invalid with -1
+  //     kmer_targets[threadid] = -1;
+  //   }
+  // }
 
-//   Kokkos::View<char*> seqs_v("seqs_view", seqs_len);
-//   Kokkos::View<int*> kmer_targets_v("kmer_targets_view", num_kmers);
-//   Kokkos::View::HostMirror h_seqs_v = Kokkos::create_mirror_view(seqs_v);
-//   Kokkos::View::HostMirror h_kmer_targets_v = Kokkos::create_mirror_view(kmer_targets_v);
-//   for (int i = 0; i < seq_len; i++) {
-//     h_seqs_v(i) = seqs[i];
-//   }
-//   for (int i = 0; i < num_kmers; i++) {
-//     h_kmer_targets_v(i) = -1;
-//   }
-//   Kokkos::deep_copy(seqs_v, h_seqs_v);
-//   Kokkos::deep_copy(kmer_targets_v, h_kmer_targets_v);
+  Kokkos::View<char*> seqs_v("seqs_view", seqs_len);
+  Kokkos::View<int*> kmer_targets_v("kmer_targets_view", num_kmers);
+  Kokkos::View<char*>::HostMirror h_seqs_v = Kokkos::create_mirror_view(seqs_v);
+  Kokkos::View<int*>::HostMirror h_kmer_targets_v = Kokkos::create_mirror_view(kmer_targets_v);
+  for (int i = 0; i < seqs_len; i++) {
+    h_seqs_v(i) = seqs[i];
+  }
+  for (int i = 0; i < num_kmers; i++) {
+    h_kmer_targets_v(i) = -1;
+  }
+  Kokkos::deep_copy(seqs_v, h_seqs_v);
+  Kokkos::deep_copy(kmer_targets_v, h_kmer_targets_v);
 
-//   Kokkos::parallel_for( "parse_and_pack", num_kmers, KOKKOS_LAMBDA (int i) {
-//     uint64_t kmer[MAX_LONGS];
-//     if (pack_seq_to_kmer(&(seqs_v(i)), kmer_len, num_longs, kmer)) {
-//       uint64_t kmer_rc[MAX_LONGS];
-//       revcomp(kmer, kmer_rc, kmer_len, num_longs);
-//       kmer_targets_v(i) = gpu_minimizer_hash_fast(minimizer_len, kmer_len, num_longs, kmer, kmer_rc) % num_ranks;
-//     } else {
-//       // indicate invalid with -1
-//       kmer_targets_v(i) = -1;
-//     }
-//   });
+  Kokkos::parallel_for( "parse_and_pack", num_kmers, KOKKOS_LAMBDA (int i) {
+    uint64_t kmer[MAX_LONGS];
+    if (pack_seq_to_kmer(&(seqs_v(i)), kmer_len, num_longs, kmer)) {
+      uint64_t kmer_rc[MAX_LONGS];
+      revcomp(kmer, kmer_rc, kmer_len, num_longs);
+      kmer_targets_v(i) = gpu_minimizer_hash_fast(minimizer_len, kmer_len, num_longs, kmer, kmer_rc) % num_ranks;
+    } else {
+      // indicate invalid with -1
+      kmer_targets_v(i) = -1;
+    }
+  });
 
-// }
-// #endif
+}
+#endif
 
 
 
@@ -356,13 +371,13 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
   int gridsize, threadblocksize;
   get_kernel_config(seqs.length(), parse_and_pack, gridsize, threadblocksize);
   kernel_timer.start();
-#ifdef ENABLE_KOKKOS
+#ifndef ENABLE_KOKKOS
   LaunchKernel(parse_and_pack, gridsize, threadblocksize, dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(),
                dev_kmer_targets, upcxx_rank_n);
 #endif
-// #ifdef ENABLE_KOKKOS
-//   parse_and_pack(dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets, upcxx_rank_n);
-// #endif
+#ifdef ENABLE_KOKKOS
+  parse_and_pack(dev_seqs, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets, upcxx_rank_n);
+#endif
 
   ERROR_CHECK(Memset(dev_num_supermers, 0, sizeof(int)));
   ERROR_CHECK(Memset(dev_num_valid_kmers, 0, sizeof(int)));

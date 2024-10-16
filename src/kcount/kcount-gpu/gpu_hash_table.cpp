@@ -313,7 +313,7 @@ __device__ bool get_kmer_from_supermer(SupermerBuff supermer_buff, uint32_t buff
   int num_kmers = buff_len - kmer_len + 1;
   if (threadid >= num_kmers) return false;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
-  if (!pack_seq_to_kmer(&(supermer_buff.seqs[threadid]), kmer_len, N_LONGS, kmer)) return false;
+  // if (!pack_seq_to_kmer(&(supermer_buff.seqs[threadid]), kmer_len, N_LONGS, kmer)) return false;
   if (threadid + kmer_len >= buff_len) return false;  // printf("out of bounds %d >= %d\n", threadid + kmer_len, buff_len);
   left_ext = supermer_buff.seqs[threadid - 1];
   right_ext = supermer_buff.seqs[threadid + kmer_len];
@@ -335,7 +335,7 @@ __device__ bool get_kmer_from_supermer(SupermerBuff supermer_buff, uint32_t buff
     return false;
   }
   uint64_t kmer_rc[N_LONGS];
-  revcomp(kmer, kmer_rc, kmer_len, N_LONGS);
+  // revcomp(kmer, kmer_rc, kmer_len, N_LONGS);
   for (int l = 0; l < N_LONGS; l++) {
     if (kmer_rc[l] == kmer[l]) continue;
     if (kmer_rc[l] < kmer[l]) {

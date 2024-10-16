@@ -2,6 +2,9 @@ cmake_policy(SET CMP0074 NEW)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_CUDA_STANDARD 17)  
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
 set(SRCS parse_and_pack.cpp gpu_hash_table.cpp hashutil.cpp)
 
 string(ASCII 27 Esc)
@@ -19,7 +22,10 @@ if(ENABLE_CUDA)
   foreach(_SRC ${SRCS})
     set_source_files_properties(${_SRC} PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE
                                                                  CUDA)
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --extended-lambda")
+
   endforeach()
+
 
   option(KCOUNT_GPU_SHARED "kcount-GPU shared library" OFF)
   option(KCOUNT_GPU_STATIC "kcount-GPU static library" ON)
@@ -29,13 +35,13 @@ if(ENABLE_CUDA)
                 $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
     set_property(TARGET KCOUNT_GPU_LIBRARY_shared
                  PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-    target_link_libraries(KCOUNT_GPU_LIBRARY_shared INTERFACE)
+    target_link_libraries(KCOUNT_GPU_LIBRARY_shared INTERFACE Kokkos::kokkos)
     install(TARGETS KCOUNT_GPU_LIBRARY_shared LIBRARY DESTINATION lib)
   endif()
   if(KCOUNT_GPU_STATIC)
     add_library(KCOUNT_GPU_LIBRARY_static STATIC
                 $<TARGET_OBJECTS:KCOUNT_GPU_LIBRARY_obj>)
-    target_link_libraries(KCOUNT_GPU_LIBRARY_static INTERFACE)
+    target_link_libraries(KCOUNT_GPU_LIBRARY_static INTERFACE Kokkos::kokkos)
     # unsuccessful attempt to suppress warning about recursion
     target_link_options(
       KCOUNT_GPU_LIBRARY_static PRIVATE $<DEVICE_LINK:--nvlink-options
@@ -47,7 +53,7 @@ if(ENABLE_CUDA)
 
   # interface poggers/tcf with GPU library
   target_link_libraries(KCOUNT_GPU_LIBRARY_obj poggers)
-
+  target_link_libraries(KCOUNT_GPU_LIBRARY_obj Kokkos::kokkos)
 
 elseif(ENABLE_HIP)
   message(STATUS "Building for HIP")

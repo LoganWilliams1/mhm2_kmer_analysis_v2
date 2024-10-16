@@ -1,4 +1,9 @@
 cmake_policy(SET CMP0074 NEW)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_CUDA_STANDARD 17)  
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 if(ENABLE_HIP)
   message(STATUS "building GPU_UTILS using HIP")
@@ -33,7 +38,7 @@ elseif(ENABLE_CUDA)
     target_link_libraries(GPU_UTILS_LIBRARY_obj INTERFACE)
   endif()
 
-  target_link_libraries(GPU_UTILS_LIBRARY_obj)
+  target_link_libraries(GPU_UTILS_LIBRARY_obj Kokkos::kokkos)
 
   set_source_files_properties(gpu_utils.cpp gpu_common.cpp
                               PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)
@@ -45,13 +50,13 @@ elseif(ENABLE_CUDA)
                 $<TARGET_OBJECTS:GPU_UTILS_LIBRARY_obj>)
     set_property(TARGET GPU_UTILS_LIBRARY_shared
                  PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-    target_link_libraries(GPU_UTILS_LIBRARY_shared INTERFACE)
+    target_link_libraries(GPU_UTILS_LIBRARY_shared INTERFACE Kokkos::kokkos)
     install(TARGETS GPU_UTILS_LIBRARY_shared LIBRARY DESTINATION lib)
   endif()
   if(GPU_UTILS_STATIC)
     add_library(GPU_UTILS_LIBRARY_static STATIC
                 $<TARGET_OBJECTS:GPU_UTILS_LIBRARY_obj>)
-    target_link_libraries(GPU_UTILS_LIBRARY_static INTERFACE)
+    target_link_libraries(GPU_UTILS_LIBRARY_static INTERFACE Kokkos::kokkos)
     set_property(TARGET GPU_UTILS_LIBRARY_static
                  PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
     install(TARGETS GPU_UTILS_LIBRARY_static ARCHIVE DESTINATION lib)
