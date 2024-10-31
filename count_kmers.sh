@@ -5,6 +5,9 @@ usage() {
   exit 1
 }
 
+# upc++ gdb debugging tool
+export GASNET_BACKTRACE=1
+
 # build command
 
 args="$*"
@@ -47,6 +50,8 @@ file="$log_dir/mhm2.log"
 
 line=$(grep 'Total kmers' "$file")
 parent_count=$(echo "$line" | sed -n 's/.*Total kmers: *\([0-9]\+\).*/\1/p')
+line=$(grep 'Avg supermer' "$file")
+parent_sups=$(echo "$line" | sed -n 's/.*max \([0-9]*\).*/\1/p')
 line=$(grep 'Analyzing kmers' "$file")
 parent_time=$(echo "$line" | sed -n 's/.*Analyzing kmers *\(.*\)/\1/p')
 
@@ -63,6 +68,8 @@ file="$log_dir/mhm2.log"
 
 line=$(grep 'Total kmers' "$file")
 proxy_count=$(echo "$line" | sed -n 's/.*Total kmers: *\([0-9]\+\).*/\1/p')
+line=$(grep 'Avg supermer' "$file")
+proxy_sups=$(echo "$line" | sed -n 's/.*max \([0-9]*\).*/\1/p')
 line=$(grep 'Analyzing kmers' "$file")
 proxy_time=$(echo "$line" | sed -n 's/.*Analyzing kmers *\(.*\)/\1/p')
 
@@ -73,4 +80,7 @@ echo "Proxy Time: $proxy_time"
 echo
 echo "MHM2 kmers: $parent_count"
 echo "Proxy kmers: $proxy_count"
+echo
+echo "MHM2 max supermer inserts: $parent_sups"
+echo "Proxy max supermer inserts: $proxy_sups"
 

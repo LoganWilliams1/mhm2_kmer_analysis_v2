@@ -176,6 +176,13 @@ if(MHM2_VECTORS)
   endforeach()
 endif()
 
+option(ENABLE_KOKKOS "Whether to use Kokkos" OFF)
+if(ENABLE_KOKKOS)
+  message(STATUS "Building with Kokkos")
+  add_definitions(-DENABLE_KOKKOS -DDESUL_IMPL_CUDA_RDC -DDESUL_ATOMICS_ENABLE_CUDA_SEPARABLE_COMPILATION -DKOKKOS_ENABLE_CUDA_LAMBDA)
+  find_package(Kokkos REQUIRED)
+endif()
+
 option(ENABLE_GASNET_STATS "Turn on gasnet stats recording" OFF)
 message("Building ${CMAKE_BUILD_TYPE} version")
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
