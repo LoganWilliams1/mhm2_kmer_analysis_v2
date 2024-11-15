@@ -1,4 +1,4 @@
-set(SRCS kokkos_pnp.cpp)
+set(SRCS kokkos_pnp.cpp kokkos_gpu_ht.cpp)
 
 add_library(KCOUNT_KOKKOS_LIBRARY_obj OBJECT ${SRCS})
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13)
@@ -10,4 +10,4 @@ add_library(KCOUNT_KOKKOS_LIBRARY_static STATIC
 target_link_libraries(KCOUNT_KOKKOS_LIBRARY_static INTERFACE Kokkos::kokkos)
 install(TARGETS KCOUNT_KOKKOS_LIBRARY_static ARCHIVE DESTINATION lib)
 
-target_link_libraries(KCOUNT_KOKKOS_LIBRARY_obj Kokkos::kokkos)
+target_link_libraries(KCOUNT_KOKKOS_LIBRARY_obj Kokkos::kokkos ${UPCXX_LIBRARIES})
