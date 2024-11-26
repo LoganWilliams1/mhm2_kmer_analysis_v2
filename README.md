@@ -1,4 +1,36 @@
-# MetaHipMer2 - MHM2 #
+# MetaHipMer2 Proxy Apps
+
+Performance-portable proxy applications for accelerated routines MetaHipMer2 (de novo metagenome assembler)
+
+## [mhm2-kmer-analysis]()
+
+```
+git clone  tbd
+
+```
+
+
+# Third-Party Library Dependencies
+
+## [UPC++]()
+
+  - [UPC++](... URL for build recipe)
+  - Machine-specific builds for HPC queued systems below
+
+## [Kokkos]()
+
+  - Kokkos Quick Start 
+
+
+# Machines
+
+## LLNL Lassen
+
+## [LLNL Lassen]()
+
+## [LLNL RZAdams]()
+
+# MetaHipMer2 - MHM2 (Parent App)
 
 [MetaHipMer (*MHM*)](https://sites.google.com/lbl.gov/exabiome/downloads?authuser=0) is a *de novo* metagenome short-read assembler. This is version 2 (MHM2), which is written entirely in
 [UPC++](https://upcxx.lbl.gov), CUDA and HIP, and runs efficiently on both single servers and on multinode supercomputers, where it can scale up to
