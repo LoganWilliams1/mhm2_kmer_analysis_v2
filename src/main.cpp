@@ -348,7 +348,23 @@ string init_upcxx(BaseTimer &total_timer) {
 void test_kokkos() {
   if (!upcxx::rank_me()) {
     cout << "\n----------------------------------------\n\n" << "kokkos enabled\n" << endl;
-    Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
+// specified kokkos execution space 
+#ifdef ENABLE_KOKKOS_CUDA
+#define MemSpace Kokkos::CudaSpace
+#endif
+#ifdef ENABLE_KOKKOS_OPENMP
+#define MemSpace Kokkos::HostSpace
+#endif
+#ifdef MemSpace
+using ExecSpace = MemSpace::execution_space;
+#endif
+
+// unspecified kokkos default execution space
+#ifndef MemSpace
+using ExecSpace = Kokkos::DefaultExecutionSpace;
+using MemSpace = ExecSpace::memory_space;
+#endif    
+    ExecSpace().print_configuration(std::cout);
   }
 
   int N = pow(2, 12);         // number of rows 2^12

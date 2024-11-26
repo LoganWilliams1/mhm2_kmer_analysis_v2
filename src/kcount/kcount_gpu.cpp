@@ -45,11 +45,13 @@
 #include "kmer_dht.hpp"
 #include "devices_gpu.hpp"
 
-// #ifndef ENABLE_KOKKOS
 #include "gpu-utils/gpu_utils.hpp"
-// #include "kcount-gpu/parse_and_pack.hpp"
-// #include "kcount-gpu/gpu_hash_table.hpp"
-// #endif
+
+
+#ifndef ENABLE_KOKKOS
+#include "kcount-gpu/parse_and_pack.hpp"
+#include "kcount-gpu/gpu_hash_table.hpp"
+#endif
 
 #ifdef ENABLE_KOKKOS
 #include <Kokkos_Core.hpp>
@@ -108,32 +110,43 @@ static void process_block(SeqBlockInserter<MAX_K> *seq_block_inserter, dist_obje
   auto state = seq_block_inserter->state;
   bool from_ctgs = !state->depth_block.empty();
   state->num_block_calls++;
-  // future<bool> fut = execute_in_thread_pool(
-  //     [&state, &num_valid_kmers] { return state->pnp_gpu_driver->process_seq_block(state->seq_block, num_valid_kmers); });
-  // while (!fut.is_ready()) {
-  //   state->num_pnp_gpu_waits++;
-  //   progress();
-  // }
-  // bool success = fut.wait();
-  // if (!success) DIE("seq length is too high, ", state->seq_block.length(), " >= ", KCOUNT_SEQ_BLOCK_SIZE);
-  // state->bytes_kmers_sent += sizeof(KmerAndExt<MAX_K>) * num_valid_kmers;
-  // future<> fut_pnp = execute_in_thread_pool([&state] { state->pnp_gpu_driver->pack_seq_block(state->seq_block); });
-  // while (!fut_pnp.is_ready()) {
-  //   state->num_pnp_gpu_waits++;
-  //   progress();
-  // }
-  // fut_pnp.wait();
-  
+
+// NO KOKKOS
+#ifndef ENABLE_KOKKOS  
+  future<bool> fut = execute_in_thread_pool(
+      [&state, &num_valid_kmers] { return state->pnp_gpu_driver->process_seq_block(state->seq_block, num_valid_kmers); });
+  while (!fut.is_ready()) {
+    state->num_pnp_gpu_waits++;
+    progress();
+  }
+  bool success = fut.wait();
+  if (!success) DIE("seq length is too high, ", state->seq_block.length(), " >= ", KCOUNT_SEQ_BLOCK_SIZE);
+  state->bytes_kmers_sent += sizeof(KmerAndExt<MAX_K>) * num_valid_kmers;
+  future<> fut_pnp = execute_in_thread_pool([&state] { state->pnp_gpu_driver->pack_seq_block(state->seq_block); });
+  while (!fut_pnp.is_ready()) {
+    state->num_pnp_gpu_waits++;
+    progress();
+  }
+  fut_pnp.wait();
+  int num_targets = (int)state->pnp_gpu_driver->supermers.size();
+  for (int i = 0; i < num_targets; i++) {
+    auto target = state->pnp_gpu_driver->supermers[i].target;
+    auto offset = state->pnp_gpu_driver->supermers[i].offset;
+    auto len = state->pnp_gpu_driver->supermers[i].len;  
+#endif
+
+// KOKKOS
+#ifdef ENABLE_KOKKOS
   state->pnp_gpu_driver->process_seq_block(state->seq_block, num_valid_kmers);
   state->bytes_kmers_sent += sizeof(KmerAndExt<MAX_K>) * num_valid_kmers;
   state->pnp_gpu_driver->pack_seq_block(state->seq_block);
-
   int num_targets = (int)state->pnp_gpu_driver->h_num_supermers_v();
-
   for (int i = 0; i < num_targets; i++) {
     auto target = state->pnp_gpu_driver->h_supermers_v(i).target;
     auto offset = state->pnp_gpu_driver->h_supermers_v(i).offset;
     auto len = state->pnp_gpu_driver->h_supermers_v(i).len;
+#endif
+
     Supermer supermer;
     int packed_len = len / 2;
     if (offset % 2 || len % 2) packed_len++;

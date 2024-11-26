@@ -30,7 +30,7 @@ if ! $k_found; then
   usage
 fi
 
-command="./mhm2.py "$args" -s 0 --use-kmer-filter=false"
+command="upcxx-run "$args" --scaff-kmer-lens 0 --use-kmer-filter=false"
 
 
 proxy_path="$(pwd)/install/bin"
@@ -61,11 +61,10 @@ line=$(grep 'Avg supermer' "$file")
 parent_sups=$(echo "$line" | sed -n 's/.*max \([0-9]*\).*/\1/p')
 line=$(grep 'Analyzing kmers' "$file")
 parent_time="$(echo "$line" | sed -n 's/.*Analyzing kmers *\([0-9.]*\).*/\1/p') s"
-
 # run proxy
 cd "$proxy_path"
 
-command="./mhm2.py "$args" -s 0"
+command="upcxx-run "$args" --scaff-kmer-lens 0"
 
 #echo -n "running proxy..."
 eval $command #> /dev/null
@@ -94,8 +93,8 @@ echo -e "\n----------------------------\n"
 echo "MHM2 Time: $parent_time"
 echo "Proxy Time: $proxy_time"
 echo
-echo "MHM2 max supermer inserts: $parent_sups"
-echo "Proxy max supermer inserts: $proxy_sups"
-echo
 echo "MHM2 kmers: $parent_count"
 echo "Proxy kmers: $proxy_count"
+# echo
+# echo "MHM2 max supermer inserts: $parent_sups"
+# echo "Proxy max supermer inserts: $proxy_sups"

@@ -5,7 +5,7 @@ build_*
 .dir-locals.el
 scripts
 nbproject
-install
+install*
 .vscode
 .DS_Store
 contrib/collect_comm_stats

@@ -157,7 +157,7 @@ class HashTableGPUDriver {
   SupermerBuff unpacked_elem_buff_dev;
   SupermerBuff packed_elem_buff_dev;
 
-  InsertStats *read_kmers_stats;
+  InsertStats read_kmers_stats;
   InsertStats ctg_kmers_stats;
   // InsertStats *gpu_insert_stats;
   typename Kokkos::View<InsertStats>::HostMirror read_kmers_stats_v;
