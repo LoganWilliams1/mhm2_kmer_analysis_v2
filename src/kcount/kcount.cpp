@@ -103,54 +103,54 @@ static void count_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &pac
   if (all_num_bad_quals) SLOG_VERBOSE("Found ", perc_str(all_num_bad_quals, all_tot_read_len), " bad quality positions\n");
 };
 
+// template <int MAX_K>
+// static void add_ctg_kmers(unsigned kmer_len, unsigned prev_kmer_len, Contigs &ctgs, dist_object<KmerDHT<MAX_K>> &kmer_dht) {
+//   BarrierTimer timer(__FILEFUNC__);
+//   int64_t num_prev_kmers = kmer_dht->get_num_kmers();
+//   int64_t total_local_raw_kmers = 0;
+
+//   ProgressBar progbar(ctgs.size(), "Adding extra contig kmers from kmer length " + to_string(prev_kmer_len));
+//   auto start_local_num_kmers = kmer_dht->get_local_num_kmers();
+
+//   SeqBlockInserter<MAX_K> seq_block_inserter(0, kmer_dht->get_minimizer_len());
+//   barrier();
+//   DBG("After seq_block_inserter constructor, with ", ctgs.size(), " ctgs\n");
+//   // WARN("After seq_block_inserter constructor, with ", ctgs.size(), " ctgs\n");
+//   kmer_dht->init_ctg_kmers();
+//   barrier();
+//   DBG("after kmer_dht->init_ctg_kmers\n");
+//   DBG("looping over ", ctgs.size(), " ctgs\n");
+//   // WARN("after kmer_dht->init_ctg_kmers\n");
+//   // WARN("looping over ", ctgs.size(), " ctgs\n");
+//   for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
+//     auto ctg = it;
+//     progbar.update();
+//     if (ctg->seq.length() < kmer_len + 2) continue;
+//     total_local_raw_kmers += ctg->seq.length() - kmer_len + 1;
+//     seq_block_inserter.process_seq(ctg->seq, ctg->get_uint16_t_depth(), kmer_dht);
+//   }
+//   DBG("after ctgs loop\n");
+//   // WARN("after ctgs loop\n");
+//   seq_block_inserter.done_processing(kmer_dht);
+//   progbar.done();
+//   kmer_dht->flush_updates();
+//   auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
+//   auto all_raw_kmers = reduce_one(total_local_raw_kmers, op_fast_add, 0).wait();
+//   SLOG_VERBOSE("Processed a total of ", all_num_ctgs, " contigs and ", total_local_raw_kmers, " raw kmers\n");
+// };
+
 template <int MAX_K>
-static void add_ctg_kmers(unsigned kmer_len, unsigned prev_kmer_len, Contigs &ctgs, dist_object<KmerDHT<MAX_K>> &kmer_dht) {
-  BarrierTimer timer(__FILEFUNC__);
-  int64_t num_prev_kmers = kmer_dht->get_num_kmers();
-  int64_t total_local_raw_kmers = 0;
-
-  ProgressBar progbar(ctgs.size(), "Adding extra contig kmers from kmer length " + to_string(prev_kmer_len));
-  auto start_local_num_kmers = kmer_dht->get_local_num_kmers();
-
-  SeqBlockInserter<MAX_K> seq_block_inserter(0, kmer_dht->get_minimizer_len());
-  barrier();
-  DBG("After seq_block_inserter constructor, with ", ctgs.size(), " ctgs\n");
-  // WARN("After seq_block_inserter constructor, with ", ctgs.size(), " ctgs\n");
-  kmer_dht->init_ctg_kmers();
-  barrier();
-  DBG("after kmer_dht->init_ctg_kmers\n");
-  DBG("looping over ", ctgs.size(), " ctgs\n");
-  // WARN("after kmer_dht->init_ctg_kmers\n");
-  // WARN("looping over ", ctgs.size(), " ctgs\n");
-  for (auto it = ctgs.begin(); it != ctgs.end(); ++it) {
-    auto ctg = it;
-    progbar.update();
-    if (ctg->seq.length() < kmer_len + 2) continue;
-    total_local_raw_kmers += ctg->seq.length() - kmer_len + 1;
-    seq_block_inserter.process_seq(ctg->seq, ctg->get_uint16_t_depth(), kmer_dht);
-  }
-  DBG("after ctgs loop\n");
-  // WARN("after ctgs loop\n");
-  seq_block_inserter.done_processing(kmer_dht);
-  progbar.done();
-  kmer_dht->flush_updates();
-  auto all_num_ctgs = reduce_one(ctgs.size(), op_fast_add, 0).wait();
-  auto all_raw_kmers = reduce_one(total_local_raw_kmers, op_fast_add, 0).wait();
-  SLOG_VERBOSE("Processed a total of ", all_num_ctgs, " contigs and ", total_local_raw_kmers, " raw kmers\n");
-};
-
-template <int MAX_K>
-void analyze_kmers(unsigned kmer_len, unsigned prev_kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
-                   Contigs &ctgs, dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers) {
+void analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
+                   dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers) {
   BarrierTimer timer(__FILEFUNC__);
   _dmin_thres = dmin_thres;
-  size_t max_ctgs = upcxx::reduce_all(ctgs.size(), upcxx::op_fast_max).wait();
+  // size_t max_ctgs = upcxx::reduce_all(ctgs.size(), upcxx::op_fast_max).wait();
   count_kmers(kmer_len, qual_offset, packed_reads_list, kmer_dht);
   barrier();
-  if (max_ctgs) {
-    add_ctg_kmers(kmer_len, prev_kmer_len, ctgs, kmer_dht);
-    barrier();
-  }
+  // if (max_ctgs) {
+  //   add_ctg_kmers(kmer_len, prev_kmer_len, ctgs, kmer_dht);
+  //   barrier();
+  // }
   kmer_dht->finish_updates();
   if (dump_kmers) kmer_dht->dump_kmers();
   barrier();

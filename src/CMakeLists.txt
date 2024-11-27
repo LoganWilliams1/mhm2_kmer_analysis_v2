@@ -213,15 +213,11 @@ endforeach()
 foreach(
   tgt
   fastq
-  contigs
-  alignments
   packed_reads
   utils
   options
   adapters
   merge_reads
-  dbjg_traversal
-  histogrammer
   gasnet_stats
   linear_allocator_pool
   ${EXTERN_TEMPLATE_FILES})

@@ -65,7 +65,7 @@ parent_time="$(echo "$line" | sed -n 's/.*Analyzing kmers *\([0-9.]*\).*/\1/p') 
 # run proxy
 cd "$proxy_path"
 
-command="./mhm2.py "$args" -s 0"
+command="./mhm2.py "$args" "
 
 #echo -n "running proxy..."
 eval $command #> /dev/null

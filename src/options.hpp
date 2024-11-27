@@ -65,13 +65,9 @@ class Options {
 
   bool extract_previous_lens(vector<unsigned> &lens, unsigned k);
 
-  void get_restart_options();
-
   double setup_output_dir();
 
   double setup_log_file();
-
-  bool find_restart(string stage_type, int k);
 
   static string get_job_id();
 
@@ -81,38 +77,26 @@ class Options {
   vector<string> unpaired_fnames;
   bool adapter_trim = true;
   string adapter_fname;
-  vector<unsigned> kmer_lens = {21, 31, 47, 63, 95};
+  unsigned kmer_lens = 21;
   bool default_kmer_lens = true;
   int min_kmer_len = -1;
-  int max_kmer_len = 0;
-  int prev_kmer_len = 0;
-  vector<unsigned> scaff_kmer_lens = {95, 47, 31};
-  bool default_scaff_kmer_lens = true;
+
   int qual_offset = 33;
   bool verbose = false;
   int max_kmer_store_mb = 0;  // per rank - default to use 1% of node memory
   int max_rpcs_in_flight = 100;
   int dmin_thres = 2.0;
   int subsample_fastq_pct = 100;  // percentage of fastq files to read
-  int klign_rget_buf_size = KLIGN_RGET_BUF_SIZE;
   bool checkpoint = false;
   bool dump_merged = false;
-  bool post_assm = false;
-  bool post_assm_only = false;
-  bool post_assm_write_sam = true;
-  int post_assm_subsets = 1;
-  bool dump_gfa = false;
+
   bool show_progress = false;
   string pin_by = "numa";
   int max_worker_threads = 3;
-  string ctgs_fname;
   vector<int> insert_size = {0, 0};
   int min_ctg_print_len = 500;
-  int break_scaff_Ns = 10;
   string output_dir;
   string setup_time;
-  bool restart = false;
-  bool shuffle_reads = true;
   bool dump_kmers = false;
   bool use_qf = true;
   // very conservative so as not to drop kmers for low depth datasets

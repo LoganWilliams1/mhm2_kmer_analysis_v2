@@ -151,21 +151,20 @@ void calc_input_files_size(const vector<string> &reads_fnames) {
   }
 }
 
-void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contigs &ctgs, int &rlen_limit,
-                    Histogrammer &histogrammer) {
+void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
   BarrierTimer("Start Contigging");
 
-  int prev_kmer_len = options.prev_kmer_len;
-
   // contigging loops
-  if (options.kmer_lens.size()) {
-    for (auto kmer_len : options.kmer_lens) {
-      if (kmer_len <= 1) continue;  // short circuit to just load reads
+  // if (options.kmer_lens.size()) {
+  //   for (auto kmer_len : options.kmer_lens) {
+  //     if (kmer_len <= 1) continue;  // short circuit to just load reads
+  int kmer_len = options.kmer_lens;
+  
       auto max_k = (kmer_len / 32 + 1) * 32;
       LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
 #define CONTIG_K(KMER_LEN) \
-  case KMER_LEN: contigging<KMER_LEN>(kmer_len, prev_kmer_len, rlen_limit, packed_reads_list, ctgs, histogrammer, options); break
+  case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
 
       switch (max_k) {
         CONTIG_K(32);
@@ -185,9 +184,8 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contig
       }
 #undef CONTIG_K
 
-      prev_kmer_len = kmer_len;
-    }
-  }
+    // }
+  // }
 }
 
 void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
@@ -214,15 +212,13 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(before_merge_mem - after_merge_mem),
                " memory on node 0 for reads", KNORM, "\n");
 
-  if (avg_read_len < 110 && !options.restart && options.default_kmer_lens) {
-    options.kmer_lens.pop_back();
-    if (options.default_scaff_kmer_lens) options.scaff_kmer_lens.front() = options.kmer_lens.back();
-    SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
-    SOUT("  kmer-lens = ", Options::vec_to_str(options.kmer_lens), "\n");
-    SOUT("  scaff-kmer_lens = ", Options::vec_to_str(options.scaff_kmer_lens), "\n");
-  }
-  options.adjust_config_option("--kmer-lens", Options::vec_to_str(options.kmer_lens));
-  options.adjust_config_option("--scaff-kmer-lens", Options::vec_to_str(options.scaff_kmer_lens));
+  // if (avg_read_len < 110 && !options.restart && options.default_kmer_lens) {
+  //   options.kmer_lens.pop_back();
+  //   if (options.default_scaff_kmer_lens) options.scaff_kmer_lens.front() = options.kmer_lens.back();
+  //   SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
+  //   SOUT("  kmer-lens = ", Options::vec_to_str(options.kmer_lens), "\n");
+  // }
+  options.adjust_config_option("--kmer-lens", to_string(options.kmer_lens));
   // keep track of all the changes in the config file
   options.write_config_file();
 
@@ -233,16 +229,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   }
   Timings::wait_pending();  // report all I/O stats here
 
-  Contigs ctgs;
-
-  if (!options.ctgs_fname.empty()) {
-    stage_timers.load_ctgs->start();
-    ctgs.load_contigs(options.ctgs_fname, options.ctgs_fname.substr(0, 5) == "scaff" ? "scaffold_" : "contig_");
-    stage_timers.load_ctgs->stop();
-  }
-
-  Histogrammer histogrammer(options.insert_size[0], options.insert_size[1]);
-
   std::chrono::duration<double> init_t_elapsed = clock_now() - start_t;
   SLOG("\n");
   auto post_init_free_mem = get_free_mem(true);
@@ -251,7 +237,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
 
   done_init_devices();
 
-  run_contigging(options, packed_reads_list, ctgs, rlen_limit, histogrammer);
+  run_contigging(options, packed_reads_list, rlen_limit);
 
   // cleanup
   LOG_MEM("Preparing to close all fastq");
@@ -263,26 +249,26 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   packed_reads_list.clear();
   LOG_MEM("Closed all fastq");
   // output final assembly
-  SLOG(KBLUE "_________________________", KNORM, "\n");
-  stage_timers.dump_ctgs->start();
-  ctgs.dump_contigs("final_assembly.fasta", options.min_ctg_print_len, "scaffold_");
-  stage_timers.dump_ctgs->stop();
+  // SLOG(KBLUE "_________________________", KNORM, "\n");
+  // stage_timers.dump_ctgs->start();
+  // ctgs.dump_contigs("final_assembly.fasta", options.min_ctg_print_len, "scaffold_");
+  // stage_timers.dump_ctgs->stop();
 
-  SLOG(KBLUE "_________________________", KNORM, "\n");
-  ctgs.print_stats(options.min_ctg_print_len);
-  std::chrono::duration<double> fin_t_elapsed = clock_now() - finalization_start_t;
-  SLOG("\n");
-  auto post_finalize_free_mem = get_free_mem(true);
-  SLOG(KBLUE, "Completed finalization in ", setprecision(2), fixed, fin_t_elapsed.count(), " s at ", get_current_time(), " (",
-       get_size_str(post_finalize_free_mem), " free memory on node 0)", KNORM, "\n");
+  // SLOG(KBLUE "_________________________", KNORM, "\n");
+  // ctgs.print_stats(options.min_ctg_print_len);
+  // std::chrono::duration<double> fin_t_elapsed = clock_now() - finalization_start_t;
+  // SLOG("\n");
+  // auto post_finalize_free_mem = get_free_mem(true);
+  // SLOG(KBLUE, "Completed finalization in ", setprecision(2), fixed, fin_t_elapsed.count(), " s at ", get_current_time(), " (",
+  //      get_size_str(post_finalize_free_mem), " free memory on node 0)", KNORM, "\n");
 
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Stage timing:\n");
   SLOG("    Initialization: ", init_t_elapsed.count(), "\n");
-  if (!options.restart)
+  // if (!options.restart)
     SLOG("    ", stage_timers.merge_reads->get_final(), "\n");
-  else
-    SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
+  // else
+  //   SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
   SLOG("    ", stage_timers.analyze_kmers->get_final(), "\n");
   SLOG("    FASTQ total read time: ", FastqReader::get_io_time(), "\n");
   SLOG("    merged FASTQ write time: ", elapsed_write_io_t, "\n");
@@ -348,23 +334,8 @@ string init_upcxx(BaseTimer &total_timer) {
 void test_kokkos() {
   if (!upcxx::rank_me()) {
     cout << "\n----------------------------------------\n\n" << "kokkos enabled\n" << endl;
-// specified kokkos execution space 
-#ifdef ENABLE_KOKKOS_CUDA
-#define MemSpace Kokkos::CudaSpace
-#endif
-#ifdef ENABLE_KOKKOS_OPENMP
-#define MemSpace Kokkos::HostSpace
-#endif
-#ifdef MemSpace
-using ExecSpace = MemSpace::execution_space;
-#endif
-
-// unspecified kokkos default execution space
-#ifndef MemSpace
-using ExecSpace = Kokkos::DefaultExecutionSpace;
-using MemSpace = ExecSpace::memory_space;
-#endif    
-    ExecSpace().print_configuration(std::cout);
+   
+    Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
   }
 
   int N = pow(2, 12);         // number of rows 2^12
