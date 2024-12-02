@@ -1,8 +1,8 @@
 # MetaHipMer2 Proxy Apps
 
-Performance-portable proxy applications for accelerated routines MetaHipMer2 (de novo metagenome assembler)
+Performance-portable proxy applications derived from [MetaHipMer2 (de novo metagenome assembler)](https://bitbucket.org/berkeleylab/mhm2/src/master/)
 
-## [mhm2-kmer-analysis]()
+## [mhm2-kmer-analysis](github project here)
 
 ```
 git clone  tbd
@@ -12,26 +12,68 @@ git clone  tbd
 
 # Third-Party Library Dependencies
 
-## [UPC++]()
+## [UPC++:  a PGAS library for C++](https://bitbucket.org/berkeleylab/upcxx/src/master/)
 
-  - [UPC++](... URL for build recipe)
-  - Machine-specific builds for HPC queued systems below
+  - [UPC++ basic build recipe](https://bitbucket.org/berkeleylab/upcxx/src/master/INSTALL.md)
+  - [UPC++ Developers Guide](https://bytebucket.org/berkeleylab/upcxx/wiki/docs/guide.pdf?rev=767d43b34dd00f6b2765a49d6ebf55bee91f4579)
+  - [UPC++ Specification](https://bytebucket.org/berkeleylab/upcxx/wiki/docs/spec.pdf?rev=767d43b34dd00f6b2765a49d6ebf55bee91f4579)
 
-## [Kokkos]()
-
-  - Kokkos Quick Start 
+**Nota bene:  [UPC++ uses GASNet for PGAS communication primitives](https://bitbucket.org/berkeleylab/gasnet/src/stable/)**
 
 
-# Machines
+### UPC++ for Supercomputers
 
-## LLNL Lassen
+#### Architectures
 
-## [LLNL Lassen]()
+  - [Power9/NVIDIA V100](https://hpc.llnl.gov/hardware/compute-platforms/lassen)
 
-## [LLNL RZAdams]()
+```
+../configure \
+--with-cxx=`which mpicxx` \
+--with-cc=`which mpicc` \
+--enable-udp \
+--enable-mpi \
+--enable-cuda \
+--enable-ibv \
+--with-cxxflags=-std=c++17 \
+--prefix=${INSTALL_DIR}
+
+``
+
+-  [MI300A](https://hpc.llnl.gov/hardware/compute-platforms/rzadams)
+
+```
+# for rocm / cray env 
+export LD_LIBRARY_PATH=${CRAY_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}
+
+```
+
+
+```
+../configure \
+--with-cxx=mpicxx \
+--with-cc=mpicc \
+--with-pmi-rpath \
+--with-ofi-spawner=pmi \
+--enable-udp \
+--enable-hip \
+--enable-mpi \
+--enable-ofi \
+--with-cxxflags=-std=c++17 \
+--with-default-network=ofi \
+--with-ofi-provider=cxi \
+--prefix=${INSTALL_DIR}
+
+```
+
+
+## Kokkos
+
+  - [Kokkos Quick Start](https://kokkos.org/kokkos-core-wiki/quick_start.html) 
+
+
 
 # MetaHipMer2 - MHM2 (Parent App)
-
 [MetaHipMer (*MHM*)](https://sites.google.com/lbl.gov/exabiome/downloads?authuser=0) is a *de novo* metagenome short-read assembler. This is version 2 (MHM2), which is written entirely in
 [UPC++](https://upcxx.lbl.gov), CUDA and HIP, and runs efficiently on both single servers and on multinode supercomputers, where it can scale up to
 coassemble terabase-sized metagenomes. More information about MetaHipMer can be found under the [ExaBiome Project](https://sites.google.com/lbl.gov/exabiome) 
