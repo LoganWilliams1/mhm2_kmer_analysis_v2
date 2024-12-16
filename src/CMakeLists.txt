@@ -213,15 +213,11 @@ endforeach()
 foreach(
   tgt
   fastq
-  contigs
-  alignments
   packed_reads
   utils
   options
   adapters
   merge_reads
-  dbjg_traversal
-  histogrammer
   gasnet_stats
   linear_allocator_pool
   ${EXTERN_TEMPLATE_FILES})
@@ -261,12 +257,17 @@ set(MHM2_TARGET_OBJECTS
 
 add_executable(mhm2 main.cpp ${MHM2_TARGET_OBJECTS})
 
+if(ENABLE_KOKKOS)
+  set (KokkosLib Kokkos::kokkos)
+endif()
+
 set(MHM2_LINK_LIBRARIES
     Threads::Threads
     SSW_LIBRARY
     KCOUNT_LIBRARY
     ${ZLIB_LIBRARIES}
-    MHM2_VERSION_LIB)
+    MHM2_VERSION_LIB
+    ${KokkosLib})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 

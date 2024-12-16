@@ -46,8 +46,19 @@
 #include "devices_gpu.hpp"
 
 #include "gpu-utils/gpu_utils.hpp"
+
+
+#ifndef ENABLE_KOKKOS
 #include "kcount-gpu/parse_and_pack.hpp"
 #include "kcount-gpu/gpu_hash_table.hpp"
+#endif
+
+#ifdef ENABLE_KOKKOS
+#include <Kokkos_Core.hpp>
+#include "kcount-kokkos/kokkos_pnp.hpp"
+#include "kcount-kokkos/kokkos_gpu_ht.hpp"
+#endif
+
 
 // #define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
 #define SLOG_GPU SLOG_VERBOSE
@@ -99,6 +110,9 @@ static void process_block(SeqBlockInserter<MAX_K> *seq_block_inserter, dist_obje
   auto state = seq_block_inserter->state;
   bool from_ctgs = !state->depth_block.empty();
   state->num_block_calls++;
+
+// NO KOKKOS
+#ifndef ENABLE_KOKKOS  
   future<bool> fut = execute_in_thread_pool(
       [&state, &num_valid_kmers] { return state->pnp_gpu_driver->process_seq_block(state->seq_block, num_valid_kmers); });
   while (!fut.is_ready()) {
@@ -118,7 +132,21 @@ static void process_block(SeqBlockInserter<MAX_K> *seq_block_inserter, dist_obje
   for (int i = 0; i < num_targets; i++) {
     auto target = state->pnp_gpu_driver->supermers[i].target;
     auto offset = state->pnp_gpu_driver->supermers[i].offset;
-    auto len = state->pnp_gpu_driver->supermers[i].len;
+    auto len = state->pnp_gpu_driver->supermers[i].len;  
+#endif
+
+// KOKKOS
+#ifdef ENABLE_KOKKOS
+  state->pnp_gpu_driver->process_seq_block(state->seq_block, num_valid_kmers);
+  state->bytes_kmers_sent += sizeof(KmerAndExt<MAX_K>) * num_valid_kmers;
+  state->pnp_gpu_driver->pack_seq_block(state->seq_block);
+  int num_targets = (int)state->pnp_gpu_driver->h_num_supermers_v();
+  for (int i = 0; i < num_targets; i++) {
+    auto target = state->pnp_gpu_driver->h_supermers_v(i).target;
+    auto offset = state->pnp_gpu_driver->h_supermers_v(i).offset;
+    auto len = state->pnp_gpu_driver->h_supermers_v(i).len;
+#endif
+
     Supermer supermer;
     int packed_len = len / 2;
     if (offset % 2 || len % 2) packed_len++;
@@ -128,7 +156,7 @@ static void process_block(SeqBlockInserter<MAX_K> *seq_block_inserter, dist_obje
     supermer.count = (from_ctgs ? state->depth_block[offset + 1] : (kmer_count_t)1);
     state->bytes_supermers_sent += supermer.get_bytes();
     kmer_dht->add_supermer(supermer, target);
-    state->num_kmers += (2 * supermer.seq.length() - Kmer<MAX_K>::get_k());
+    state->num_kmers += (2 * supermer.seq.length() - Kmer<MAX_K>::get_k());    
     progress();
   }
 }
@@ -194,7 +222,8 @@ template <int MAX_K>
 void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size_t num_errors, bool use_qf) {
   barrier(local_team());
 #ifdef USE_TCF
-  this->use_qf = use_qf;
+  // this->use_qf = use_qf;
+  this->use_qf = false;
 #else
   this->use_qf = false;
 #endif
@@ -227,20 +256,20 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
 
 template <int MAX_K>
 void HashTableInserter<MAX_K>::init_ctg_kmers(size_t max_elems) {
-  barrier(local_team());
-  assert(state != nullptr);
-  auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
-  // we don't need to reserve space for either pnp or the read kmers because those have already reduced the gpu_avail_mem
-  auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();
-  SLOG_GPU("Available GPU memory per rank for ctg kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), "\n");
-  SLOG_GPU("Initializing ctg kmers hash table with max ", max_elems, " elements per rank\n");
-  state->ht_gpu_driver.init_ctg_kmers(max_elems, gpu_avail_mem_per_rank);
-  SLOG_GPU("GPU ctg kmers hash table has capacity per rank of ", state->ht_gpu_driver.get_capacity(), "\n");
-  barrier(local_team());
-  auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();
-  barrier(local_team());
-  SLOG_GPU("GPU ctg kmers hash table used ", get_size_str(gpu_used_mem), " memory on GPU out of ",
-           get_size_str(gpu_utils::get_gpu_tot_mem()), "\n");
+  // barrier(local_team());
+  // assert(state != nullptr);
+  // auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
+  // // we don't need to reserve space for either pnp or the read kmers because those have already reduced the gpu_avail_mem
+  // auto gpu_avail_mem_per_rank = get_gpu_avail_mem_per_rank();
+  // SLOG_GPU("Available GPU memory per rank for ctg kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), "\n");
+  // SLOG_GPU("Initializing ctg kmers hash table with max ", max_elems, " elements per rank\n");
+  // state->ht_gpu_driver.init_ctg_kmers(max_elems, gpu_avail_mem_per_rank);
+  // SLOG_GPU("GPU ctg kmers hash table has capacity per rank of ", state->ht_gpu_driver.get_capacity(), "\n");
+  // barrier(local_team());
+  // auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();
+  // barrier(local_team());
+  // SLOG_GPU("GPU ctg kmers hash table used ", get_size_str(gpu_used_mem), " memory on GPU out of ",
+  //          get_size_str(gpu_utils::get_gpu_tot_mem()), "\n");
 }
 
 template <int MAX_K>
@@ -322,7 +351,7 @@ void HashTableInserter<MAX_K>::flush_inserts() {
 
 template <int MAX_K>
 void HashTableInserter<MAX_K>::get_elapsed_time(double &insert_time, double &kernel_time) {
-  state->ht_gpu_driver.get_elapsed_time(insert_time, kernel_time);
+  // state->ht_gpu_driver.get_elapsed_time(insert_time, kernel_time);
 }
 
 template <int MAX_K>
@@ -456,6 +485,7 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   barrier();
   LOG_MEM("After insert_into_local_hashtable inserts");
   return avg_kmer_count;
+  return 0;
 }
 
 #define seq_block_inserter_K(KMER_LEN) template struct SeqBlockInserter<KMER_LEN>;

@@ -55,6 +55,15 @@
 
 #include "kmer.hpp"
 
+#ifdef ENABLE_KOKKOS
+#include <Kokkos_Core.hpp>
+#include <limits>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#endif
+
 using std::fixed;
 using std::setprecision;
 
@@ -142,21 +151,20 @@ void calc_input_files_size(const vector<string> &reads_fnames) {
   }
 }
 
-void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contigs &ctgs, int &rlen_limit,
-                    Histogrammer &histogrammer) {
+void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
   BarrierTimer("Start Contigging");
 
-  int prev_kmer_len = options.prev_kmer_len;
-
   // contigging loops
-  if (options.kmer_lens.size()) {
-    for (auto kmer_len : options.kmer_lens) {
-      if (kmer_len <= 1) continue;  // short circuit to just load reads
+  // if (options.kmer_lens.size()) {
+  //   for (auto kmer_len : options.kmer_lens) {
+  //     if (kmer_len <= 1) continue;  // short circuit to just load reads
+  int kmer_len = options.kmer_lens;
+  
       auto max_k = (kmer_len / 32 + 1) * 32;
       LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
 #define CONTIG_K(KMER_LEN) \
-  case KMER_LEN: contigging<KMER_LEN>(kmer_len, prev_kmer_len, rlen_limit, packed_reads_list, ctgs, histogrammer, options); break
+  case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
 
       switch (max_k) {
         CONTIG_K(32);
@@ -176,9 +184,8 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, Contig
       }
 #undef CONTIG_K
 
-      prev_kmer_len = kmer_len;
-    }
-  }
+    // }
+  // }
 }
 
 void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
@@ -205,15 +212,13 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG_VERBOSE(KBLUE, "Cache used ", setprecision(2), fixed, get_size_str(before_merge_mem - after_merge_mem),
                " memory on node 0 for reads", KNORM, "\n");
 
-  if (avg_read_len < 110 && !options.restart && options.default_kmer_lens) {
-    options.kmer_lens.pop_back();
-    if (options.default_scaff_kmer_lens) options.scaff_kmer_lens.front() = options.kmer_lens.back();
-    SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
-    SOUT("  kmer-lens = ", Options::vec_to_str(options.kmer_lens), "\n");
-    SOUT("  scaff-kmer_lens = ", Options::vec_to_str(options.scaff_kmer_lens), "\n");
-  }
-  options.adjust_config_option("--kmer-lens", Options::vec_to_str(options.kmer_lens));
-  options.adjust_config_option("--scaff-kmer-lens", Options::vec_to_str(options.scaff_kmer_lens));
+  // if (avg_read_len < 110 && !options.restart && options.default_kmer_lens) {
+  //   options.kmer_lens.pop_back();
+  //   if (options.default_scaff_kmer_lens) options.scaff_kmer_lens.front() = options.kmer_lens.back();
+  //   SOUT("Average read length is ", avg_read_len, ". Adjusting value of k:\n");
+  //   SOUT("  kmer-lens = ", Options::vec_to_str(options.kmer_lens), "\n");
+  // }
+  options.adjust_config_option("--kmer-lens", to_string(options.kmer_lens));
   // keep track of all the changes in the config file
   options.write_config_file();
 
@@ -224,16 +229,6 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   }
   Timings::wait_pending();  // report all I/O stats here
 
-  Contigs ctgs;
-
-  if (!options.ctgs_fname.empty()) {
-    stage_timers.load_ctgs->start();
-    ctgs.load_contigs(options.ctgs_fname, options.ctgs_fname.substr(0, 5) == "scaff" ? "scaffold_" : "contig_");
-    stage_timers.load_ctgs->stop();
-  }
-
-  Histogrammer histogrammer(options.insert_size[0], options.insert_size[1]);
-
   std::chrono::duration<double> init_t_elapsed = clock_now() - start_t;
   SLOG("\n");
   auto post_init_free_mem = get_free_mem(true);
@@ -242,7 +237,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
 
   done_init_devices();
 
-  run_contigging(options, packed_reads_list, ctgs, rlen_limit, histogrammer);
+  run_contigging(options, packed_reads_list, rlen_limit);
 
   // cleanup
   LOG_MEM("Preparing to close all fastq");
@@ -254,26 +249,26 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   packed_reads_list.clear();
   LOG_MEM("Closed all fastq");
   // output final assembly
-  SLOG(KBLUE "_________________________", KNORM, "\n");
-  stage_timers.dump_ctgs->start();
-  ctgs.dump_contigs("final_assembly.fasta", options.min_ctg_print_len, "scaffold_");
-  stage_timers.dump_ctgs->stop();
+  // SLOG(KBLUE "_________________________", KNORM, "\n");
+  // stage_timers.dump_ctgs->start();
+  // ctgs.dump_contigs("final_assembly.fasta", options.min_ctg_print_len, "scaffold_");
+  // stage_timers.dump_ctgs->stop();
 
-  SLOG(KBLUE "_________________________", KNORM, "\n");
-  ctgs.print_stats(options.min_ctg_print_len);
-  std::chrono::duration<double> fin_t_elapsed = clock_now() - finalization_start_t;
-  SLOG("\n");
-  auto post_finalize_free_mem = get_free_mem(true);
-  SLOG(KBLUE, "Completed finalization in ", setprecision(2), fixed, fin_t_elapsed.count(), " s at ", get_current_time(), " (",
-       get_size_str(post_finalize_free_mem), " free memory on node 0)", KNORM, "\n");
+  // SLOG(KBLUE "_________________________", KNORM, "\n");
+  // ctgs.print_stats(options.min_ctg_print_len);
+  // std::chrono::duration<double> fin_t_elapsed = clock_now() - finalization_start_t;
+  // SLOG("\n");
+  // auto post_finalize_free_mem = get_free_mem(true);
+  // SLOG(KBLUE, "Completed finalization in ", setprecision(2), fixed, fin_t_elapsed.count(), " s at ", get_current_time(), " (",
+  //      get_size_str(post_finalize_free_mem), " free memory on node 0)", KNORM, "\n");
 
   SLOG(KBLUE "_________________________", KNORM, "\n");
   SLOG("Stage timing:\n");
   SLOG("    Initialization: ", init_t_elapsed.count(), "\n");
-  if (!options.restart)
+  // if (!options.restart)
     SLOG("    ", stage_timers.merge_reads->get_final(), "\n");
-  else
-    SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
+  // else
+  //   SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
   SLOG("    ", stage_timers.analyze_kmers->get_final(), "\n");
   SLOG("    FASTQ total read time: ", FastqReader::get_io_time(), "\n");
   SLOG("    merged FASTQ write time: ", elapsed_write_io_t, "\n");
@@ -335,9 +330,104 @@ string init_upcxx(BaseTimer &total_timer) {
   return fut_report_init_timings.wait();
 }
 
+#ifdef ENABLE_KOKKOS
+void test_kokkos() {
+  if (!upcxx::rank_me()) {
+    cout << "\n----------------------------------------\n\n" << "kokkos enabled\n" << endl;
+   
+    Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
+  }
+
+  int N = pow(2, 12);         // number of rows 2^12
+  int M = pow(2, 10);         // number of columns 2^10
+  int S = pow(2, 22);         // total size 2^22
+  int nrepeat = 100;  // number of repeats of the test
+
+  // For the sake of simplicity in this exercise, we're using std::malloc directly, but
+  // later on we'll learn a better way, so generally don't do this in Kokkos programs.
+  // Allocate y, x vectors and Matrix A:
+  auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
+  auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
+  auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
+
+  // Initialize y vector.
+  Kokkos::parallel_for( "y_init", N, KOKKOS_LAMBDA ( int i ) {
+    y[ i ] = 1;
+  });
+
+  // Initialize x vector.
+  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
+    x[ i ] = 1;
+  });
+
+  // Initialize A matrix, note 2D indexing computation.
+  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
+    for ( int i = 0; i < M; ++i ) {
+      A[ j * M + i ] = 1;
+    }
+  });
+
+  // Timer products.
+  Kokkos::Timer timer;
+
+  for ( int repeat = 0; repeat < nrepeat; repeat++ ) {
+    // Application: <y,Ax> = y^T*A*x
+    double result = 0;
+
+    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double &update ) {
+      double temp2 = 0;
+
+      for ( int i = 0; i < M; ++i ) {
+        temp2 += A[ j * M + i ] * x[ i ];
+      }
+
+      update += y[ j ] * temp2;
+    }, result );
+
+    // Output result.
+    if (!upcxx::rank_me() && repeat == ( nrepeat - 1 ) ) {
+      printf( "  Computed result for %d x %d is %lf\n", N, M, result );
+    }
+
+    const double solution = (double) N * (double) M;
+
+    if ( result != solution ) {
+      printf( "  Error: result( %lf ) != solution( %lf )\n", result, solution );
+    }
+  }
+
+  double time = timer.seconds();
+
+  // Calculate bandwidth.
+  // Each matrix A row (each of length M) is read once.
+  // The x vector (of length M) is read N times.
+  // The y vector (of length N) is read once.
+  // double Gbytes = 1.0e-9 * double( sizeof(double) * ( 2 * M * N + N ) );
+  double Gbytes = 1.0e-9 * double( sizeof(double) * ( M + M * N + N ) );
+
+  // Print results (problem size, time and bandwidth in GB/s).
+  if (!upcxx::rank_me()) {
+    printf( "  N( %d ) M( %d ) nrepeat ( %d ) problem( %g MB ) time( %g s ) bandwidth( %g GB/s )\n",
+          N, M, nrepeat, Gbytes * 1000, time, Gbytes * nrepeat / time );
+      
+    cout << "\n----------------------------------------\n" << endl;
+
+  }
+  Kokkos::kokkos_free(A);
+  Kokkos::kokkos_free(y);
+  Kokkos::kokkos_free(x);
+}
+#endif
+
 int main(int argc, char **argv, char **envp) {
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
+  auto am_root = !rank_me();
+
+#ifdef ENABLE_KOKKOS
+  Kokkos::initialize(argc, argv);
+  {
+#endif
 
 #ifdef CIDS_FROM_HASH
   SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
@@ -390,7 +480,6 @@ int main(int argc, char **argv, char **envp) {
   LOG("Done waiting for all pending.\n");
   barrier();
   LOG("All ranks done. Flushing logs and finalizing.\n");
-  auto am_root = !rank_me();
 
   BaseTimer flush_logs_timer("flush_logger", nullptr);  // no PromiseReduce possible
   flush_logs_timer.start();
@@ -411,9 +500,19 @@ int main(int argc, char **argv, char **envp) {
   SLOG_VERBOSE("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
+#ifdef ENABLE_KOKKOS
+  test_kokkos();
+  }
+#endif
+
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
   finalize_timer.start();
   upcxx::finalize();
+
+#ifdef ENABLE_KOKKOS
+  Kokkos::finalize();
+#endif
+
   finalize_timer.stop();
   total_timer.stop();
   if (am_root)

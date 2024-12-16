@@ -44,7 +44,6 @@
 
 #include <vector>
 
-#include "contigs.hpp"
 #include "kmer_dht.hpp"
 #include "packed_reads.hpp"
 #include "upcxx/upcxx.hpp"
@@ -69,11 +68,11 @@ struct SeqBlockInserter {
 };
 
 template <int MAX_K>
-void analyze_kmers(unsigned kmer_len, unsigned prev_kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
-                   Contigs &ctgs, dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers);
+void analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
+                    dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers);
 
 #define __MACRO_KCOUNT__(KMER_LEN, MODIFIER)                                                        \
-  MODIFIER void analyze_kmers<KMER_LEN>(unsigned, unsigned, int, PackedReadsList &, int, Contigs &, \
+  MODIFIER void analyze_kmers<KMER_LEN>(unsigned, int, PackedReadsList &, int,  \
                                         dist_object<KmerDHT<KMER_LEN>> &, bool)
 
 // Reduce compile time by instantiating templates of common types

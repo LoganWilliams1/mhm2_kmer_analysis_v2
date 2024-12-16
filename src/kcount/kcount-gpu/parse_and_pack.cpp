@@ -308,6 +308,13 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
   ERROR_CHECK(Memcpy(&num_supermers, dev_num_supermers, sizeof(unsigned int), MemcpyDeviceToHost));
   supermers.resize(num_supermers);
   ERROR_CHECK(Memcpy(&(supermers[0]), dev_supermers, num_supermers * sizeof(SupermerInfo), MemcpyDeviceToHost));
+
+  if (!(upcxx_rank_me % 2)) {
+    // cout << "Rank: " << upcxx_rank_me << " PNP- num_supermers: " << num_supermers << "\n" << endl;
+    printf("Rank: %d PNP- num_supermers: %d\n", upcxx_rank_me, num_supermers);
+    fflush(stdout);
+  }
+  
   ERROR_CHECK(EventSynchronize(dstate->event));
   ERROR_CHECK(EventDestroy(dstate->event));
   kernel_timer.stop();

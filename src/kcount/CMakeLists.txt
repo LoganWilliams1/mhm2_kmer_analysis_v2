@@ -20,7 +20,19 @@ foreach(tgt kmer_dht)
   list(APPEND KCOUNT_TARGET_OBJECTS $<TARGET_OBJECTS:${tgt}>)
 endforeach()
 
-if(ENABLE_CUDA)
+
+if(ENABLE_KOKKOS)
+  set(tgt kcount_gpu)
+  add_library(${tgt} OBJECT ${tgt}.cpp)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
+    target_link_libraries(${tgt} ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES} Kokkos::kokkos)
+  endif()
+  list(APPEND KCOUNT_TARGET_OBJECTS $<TARGET_OBJECTS:${tgt}>)
+  set(KCOUNT_TARGET_OBJECTS
+      ${KCOUNT_TARGET_OBJECTS}
+      PARENT_SCOPE)  
+
+elseif(ENABLE_CUDA)
   set(tgt kcount_gpu)
   add_library(${tgt} OBJECT ${tgt}.cpp)
   if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
@@ -59,7 +71,12 @@ add_library(KCOUNT_LIBRARY ${KCOUNT_TARGET_FILES} ${KCOUNT_TARGET_OBJECTS})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-if(ENABLE_CUDA)
+if(ENABLE_KOKKOS)
+  include_directories("kcount-kokkos")
+  add_subdirectory(kcount-kokkos)
+  set(MHM2_LINK_LIBRARIES ${MHM2_LINK_LIBRARIES} KCOUNT_KOKKOS_LIBRARY_static)
+  
+elseif(ENABLE_CUDA)
   add_definitions(-DUSE_TCF)
   set_property(TARGET KCOUNT_LIBRARY PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
   include_directories("kcount-gpu")

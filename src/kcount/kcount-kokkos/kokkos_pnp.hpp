@@ -1,5 +1,3 @@
-#pragma once
-
 /*
  HipMer v 2.0, Copyright (c) 2020, The Regents of the University of California,
  through Lawrence Berkeley National Laboratory (subject to receipt of any required
@@ -42,29 +40,60 @@
  form.
 */
 
-#include "options.hpp"
-#include "packed_reads.hpp"
+#pragma once
 
-template <int MAX_K>
-void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Options &options);
+#include <vector>
 
-#define __MACRO_CONTIGGING__(KMER_LEN, MODIFIER) \
-  MODIFIER void contigging<KMER_LEN>(int, int &, PackedReadsList &, Options &);
+#include <Kokkos_Core.hpp>
 
-// Reduce compile time by instantiating templates of common types
-// extern template declarations are in contigging.hpp
-// template instantiations each happen in src/CMakeLists via contigging-extern-template.in.cpp
+namespace kcount_gpu {
 
-__MACRO_CONTIGGING__(32, extern template);
-#if MAX_BUILD_KMER >= 64
-__MACRO_CONTIGGING__(64, extern template);
-#endif
-#if MAX_BUILD_KMER >= 96
-__MACRO_CONTIGGING__(96, extern template);
-#endif
-#if MAX_BUILD_KMER >= 128
-__MACRO_CONTIGGING__(128, extern template);
-#endif
-#if MAX_BUILD_KMER >= 160
-__MACRO_CONTIGGING__(160, extern template);
-#endif
+struct ParseAndPackDriverState;
+
+struct SupermerInfo {
+  int target;
+  int offset;
+  uint16_t len;
+};
+
+class ParseAndPackGPUDriver {
+
+  int upcxx_rank_me;
+  int upcxx_rank_n;
+  int max_kmers;
+  int kmer_len;
+  int qual_offset;
+  int num_kmer_longs;
+  int minimizer_len;
+  double t_func = 0, t_malloc = 0, t_cp = 0, t_kernel = 0;
+
+  Kokkos::View<char*> dev_seqs_v;
+  Kokkos::View<int*> dev_kmer_targets_v;
+  Kokkos::View<SupermerInfo*> dev_supermers_v;
+  Kokkos::View<char*> dev_packed_seqs_v;
+  Kokkos::View<unsigned int> dev_num_supermers_v;
+  Kokkos::View<unsigned int> dev_num_valid_kmers_v;
+
+  Kokkos::View<char*>::HostMirror h_seqs_v;
+  Kokkos::View<char*>::HostMirror h_packed_seqs_v;
+  Kokkos::View<unsigned int>::HostMirror h_num_valid_kmers_v;
+
+  Kokkos::View<uint64_t[256]> twins_v;
+  Kokkos::View<uint64_t[32]> mask_v;
+
+
+ public:
+  std::string packed_seqs;
+  Kokkos::View<SupermerInfo*>::HostMirror h_supermers_v;
+  Kokkos::View<unsigned int>::HostMirror h_num_supermers_v;
+  
+
+  ParseAndPackGPUDriver(int upcxx_rank_me, int upcxx_rank_n, int qual_offset, int kmer_len, int num_kmer_longs, int minimizer_len,
+                        double &init_time);
+  ~ParseAndPackGPUDriver();
+  bool process_seq_block(const std::string &seqs, unsigned int &num_valid_kmers);
+  void pack_seq_block(const std::string &seqs);
+  std::tuple<double, double> get_elapsed_times();
+};
+
+}  // namespace kcount_gpu
