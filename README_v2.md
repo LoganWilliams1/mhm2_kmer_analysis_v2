@@ -11,7 +11,7 @@ For a given set of FASTQ input files and desired kmer length *k*, MKAPA (?) buil
 (output?)
 (overall goals?)
 
-For more MHM2 information and source code, see the [JGI home page.](https://jgi.doe.gov/data-and-tools/software-tools/metahipmer/)
+For more MHM2 information and source code, see the [JGI home page](https://jgi.doe.gov/data-and-tools/software-tools/metahipmer/) and the [MHM2 Guide.](https://bitbucket.org/berkeleylab/mhm2/src/660ae5ab13f6a2c576b17d8c9925d44cffb98c6d/docs/mhm_guide.md)
 
 ## Install dependencies
 
@@ -43,9 +43,21 @@ Kokkos is a parallel programming library for performance portability. This appli
 mhm2 compare script? python script?
 which options to keep?
 
-A basic run command requires two inputs: FASTQ input and kmer length.
+A basic run command *requires* two inputs: FASTQ input and kmer length.
 
-`upcxx-run ./mhm2 -p seq1.fastq seq2.fastq -k 21`
+`upcxx-run ./mhm2 -p seqs_1.fastq seqs_2.fastq -k 21`
+
+Use the -k flag to denote the desired kmer length.
+
+Use one of the following flags for FASTQ input: -p, -r, -u.
+- -p denotes files containing separate paired reads. The first of paired files must be immediately followed by the second. For example, to count kmers in two libraries of separate paired reads, the option should be specified as: <br>
+`-p lib1_1.fastq lib1_2.fastq lib2_1.fastq lib2_2.fastq`
+
+- -r denotes files containing interleaved paired reads
+
+- -u denotes files containing unpaired reads
+
+Multiple files must be comma or space separated.
 
 
 
