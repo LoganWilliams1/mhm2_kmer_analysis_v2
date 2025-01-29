@@ -71,6 +71,15 @@
 
 // #define __PPC64__
 
+// Kokkos
+#ifdef ENABLE_KOKKOS
+#include <type_traits>
+#include <limits>
+#endif
+
+
+
+
 #if defined(__PPC64__)
 #include "sse_to_altivec.hpp"
 #elif defined(__x86_64__)

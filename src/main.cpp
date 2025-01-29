@@ -43,6 +43,12 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <random>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <iomanip>
 
 #include "contigging.hpp"
 #include "fastq.hpp"
@@ -160,11 +166,14 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
   //     if (kmer_len <= 1) continue;  // short circuit to just load reads
   int kmer_len = options.kmer_lens;
   
-      auto max_k = (kmer_len / 32 + 1) * 32;
-      LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
+  auto max_k = (kmer_len / 32 + 1) * 32;
+  LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
+
+
 
 #define CONTIG_K(KMER_LEN) \
   case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
+
 
       switch (max_k) {
         CONTIG_K(32);
@@ -186,6 +195,7 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
 
     // }
   // }
+
 }
 
 void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
@@ -235,7 +245,9 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
        get_size_str(post_init_free_mem), " free memory on node 0)", KNORM, "\n");
 
+  #if !defined(ENABLE_KOKKOS)
   done_init_devices();
+  #endif
 
   run_contigging(options, packed_reads_list, rlen_limit);
 
@@ -277,6 +289,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   memory_tracker.stop();
   std::chrono::duration<double> t_elapsed = clock_now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
+
 }
 
 
@@ -333,9 +346,8 @@ string init_upcxx(BaseTimer &total_timer) {
 #ifdef ENABLE_KOKKOS
 void test_kokkos() {
   if (!upcxx::rank_me()) {
-    cout << "\n----------------------------------------\n\n" << "Kokkos enabled\n" << endl;
+    cout << "\n----------------------------------------\n\n" << "kokkos enabled\n" << endl;
    
-    std::cout << "Kokkos Execution Space:    " << std::endl;
     Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
   }
 
@@ -346,87 +358,45 @@ void test_kokkos() {
 
   // For the sake of simplicity in this exercise, we're using std::malloc directly, but
   // later on we'll learn a better way, so generally don't do this in Kokkos programs.
-  // Allocate x, y vectors and Matrix A as Kokkos Views:
+  // Allocate y, x vectors and Matrix A:
+  auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
+  auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
+  auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
 
-// Kokkos-Tools kernel logger
-// see:  https://github.com/kokkos/kokkos-tools/wiki/KernelLogger
-
-  Kokkos::Profiling::pushRegion("Initializing Views x, y, A");
-
-  
-  //auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
-  Kokkos::View<double*> x("x", M);
-  
-  //auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
-  Kokkos::View<double*> y("y", N);
-  
-  //auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
-  Kokkos::View<double**> A("A", N,M);
-
-  // Initialize x
-
-  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
-    x(i) = 1;
-  });
-
-  Kokkos::fence();
-  
-  // Initialize y
+  // Initialize y vector.
   Kokkos::parallel_for( "y_init", N, KOKKOS_LAMBDA ( int i ) {
-    y(i) = 1;
+    y[ i ] = 1;
   });
 
-  Kokkos::fence();
-
-
-// Initialize A matrix, note 2D indexing computation.
-//  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
-//    for ( int i = 0; i < M; ++i ) {
-//      A( j * M + i ) = 1;
-//    }
-//  });
-
-// CORRECT?
-/*
-  Kokkos::parallel_for( "A_matrix_init", N, KOKKOS_LAMBDA ( int j ) {
-    for ( int i = 0; i < M; ++i ) 
-      A(i, j) = 1;
+  // Initialize x vector.
+  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
+    x[ i ] = 1;
   });
-*/
 
-  Kokkos::parallel_for( "matrix_init_A", N, KOKKOS_LAMBDA ( int j) {
+  // Initialize A matrix, note 2D indexing computation.
+  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
     for ( int i = 0; i < M; ++i ) {
-      //A( j * M + i ) = 1;
-      A(i, j) = 1;
+      A[ j * M + i ] = 1;
     }
-});
+  });
 
-  Kokkos::fence();
-  Kokkos::Profiling::popRegion();
-  
-// Timer products.
+  // Timer products.
   Kokkos::Timer timer;
 
-  Kokkos::Profiling::pushRegion("Reduction");
   for ( int repeat = 0; repeat < nrepeat; repeat++ ) {
     // Application: <y,Ax> = y^T*A*x
     double result = 0;
 
-    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double& update ) {
+    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double &update ) {
       double temp2 = 0;
 
       for ( int i = 0; i < M; ++i ) {
-        //temp2 += A( j * M +i) * x(i);
-        temp2 += A(i, j) * x( i );
+        temp2 += A[ j * M + i ] * x[ i ];
       }
 
-      update += y( j ) * temp2;
+      update += y[ j ] * temp2;
     }, result );
-    
-    
-    Kokkos::fence();
-  Kokkos::Profiling::popRegion();
-    //
+
     // Output result.
     if (!upcxx::rank_me() && repeat == ( nrepeat - 1 ) ) {
       printf( "  Computed result for %d x %d is %lf\n", N, M, result );
@@ -440,8 +410,6 @@ void test_kokkos() {
   }
 
   double time = timer.seconds();
-  
-
 
   // Calculate bandwidth.
   // Each matrix A row (each of length M) is read once.
@@ -458,31 +426,24 @@ void test_kokkos() {
     cout << "\n----------------------------------------\n" << endl;
 
   }
-  //Kokkos::kokkos_free(A);
-  //Kokkos::kokkos_free(y);
-  //Kokkos::kokkos_free(x);
+  Kokkos::kokkos_free(A);
+  Kokkos::kokkos_free(y);
+  Kokkos::kokkos_free(x);
 }
 #endif
 
 int main(int argc, char **argv, char **envp) {
-
-printf("Entering main ... ");
-
+  
+#ifdef ENABLE_KOKKOS
+  Kokkos::initialize(argc, argv);
+  double kokkos_elapsed_time;
+  Kokkos::Timer kokkos_timer;
+    //test_kokkos();
+#endif
 
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
-
-
-printf("Kokkos should be initialized AFTER MPI_Init ... ");
-
-#ifdef ENABLE_KOKKOS
-  printf("Kokkos enabled  ...... \n\n");
-  Kokkos::initialize(argc, argv);
-  bool kokkos_init_status = Kokkos::is_initialized();
-  printf("Kokkos initialization status:   %d ...\n\n ", kokkos_init_status);
-#endif
-
 
 #ifdef CIDS_FROM_HASH
   SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
@@ -522,7 +483,10 @@ printf("Kokkos should be initialized AFTER MPI_Init ... ");
   update_rlimits(options.reads_fnames.size());
   set_thread_pool(options.max_worker_threads);
   calc_input_files_size(options.reads_fnames);
-  init_devices();
+  
+  #if !defined (ENABLE_KOKKOS)
+  init_devices(); //Avoid using vendor API for device initialization
+  #endif
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
@@ -555,35 +519,88 @@ printf("Kokkos should be initialized AFTER MPI_Init ... ");
   SLOG_VERBOSE("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
-#ifdef ENABLE_KOKKOS
-Kokkos::Timer timer;
-double kokkos_time = timer.seconds();
-  {
-  printf("void test_kokkos() .....\n\n");
-  test_kokkos();
-  Kokkos::fence();
-  }
-  printf("FENCE - after test_kokkos\n\n");
-printf("\n\n  Kokkos mhm2-Executable Runtime:  (%g s)\n\n", kokkos_time);
-#endif
+  if (am_root) upcxx_utils::close_logger();
 
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
   finalize_timer.start();
   upcxx::finalize();
-
-
-#ifdef ENABLE_KOKKOS
-  Kokkos::fence();
-  Kokkos::finalize();
-  printf("FENCE - after Kokkos::finalize()\n\n");
-#endif
-
   finalize_timer.stop();
   total_timer.stop();
   if (am_root)
     cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
          << finalize_timer.get_elapsed() << " s)" << endl;
 
+
+#ifdef ENABLE_KOKKOS
+  kokkos_elapsed_time = kokkos_timer.seconds();
+  Kokkos::finalize();
+#endif
+
+
+  // parse proxy results from log file and print
+  if (am_root) {
+
+    ifstream log_file("mhm2.log");
+    if (!log_file) {
+      perror("Cannot open mhm2.log");
+      return 1;
+    }
+
+    cout << "\n\n\n----------------------------\n\n" <<
+    "proxy_results_summary.csv can be found in " << options.output_dir << 
+    "\n\n" << endl;
+
+    string line, token, total_kmers, unique_kmers, mem, read_count;
+
+    std::unordered_map<string, std::pair<int, string*>> results_map = {
+      {"tot_num_reads", {6, &read_count}},
+      {"Total kmer count sum", {7, &total_kmers}},
+      {"Total kmers", {5, &unique_kmers}},         
+      {"Peak memory", {10, &mem}}
+    };
+
+    while (std::getline(log_file, line)) {
+      for (const auto& [phrase, pair] : results_map) {
+        if (line.find(phrase) != string::npos) {
+          std::istringstream iss(line);
+          for (int i = 0; i < pair.first; i++) {
+            iss >> token;
+          }
+          *pair.second = token;
+          // fix mem token e.g. 4GB -> 4 GB
+          // fix reads token
+          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); } 
+          else if (phrase == "tot_num_reads") { pair.second->erase(0, 15); }
+          break;          
+        }
+      }
+    }
+
+    //cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
+
+    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+
+    ofstream csv("proxy_results_summary.csv");
+
+    // column headers
+    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
+    
+    // results
+    csv << read_count << "," << 
+            unique_kmers << "," << 
+            total_kmers << "," << 
+            std::fixed << std::setprecision(3) << frac << "," << 
+            std::setprecision(2) << mem << "," <<
+#ifdef ENABLE_KOKKOS
+            kokkos_elapsed_time << "\n";
+#endif
+#ifndef ENABLE_KOKKOS
+            total_timer.get_elapsed() << "\n";
+#endif
+    
+
+    csv.close();
+  }
 
   return 0;
 }

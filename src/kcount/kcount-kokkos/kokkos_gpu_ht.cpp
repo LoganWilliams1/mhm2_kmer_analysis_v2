@@ -317,7 +317,7 @@ void gpu_unpack_supermer_block(SupermerBuff unpacked_supermer_buff, SupermerBuff
     if (packed_supermer_buff.counts_v.size() > 1) unpacked_supermer_buff.counts_v(i * 2 + 1) = packed_supermer_buff.counts_v(i);
   });  
 
-  // Kokkos::fence();
+   Kokkos::fence();
 
 }
 
@@ -642,11 +642,11 @@ template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
   
-  printf("\n\n ... FIONA0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
+  printf("\n\n ... DEBUG_0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
   // ht_capacity TIOGA:  1 248 138 943 
-  printf("\n\n FIONA1 - ht_capacity: %d\n\n", ht_capacity);
+  printf("\n\n DEBUG_1 - ht_capacity: %d\n\n", ht_capacity);
   // MAX_K TIOGA:  32
-  printf("\n\n FIONA2 - MAX_K:  %d\n\n", MAX_K);
+  printf("\n\n DEBUG_2 - MAX_K:  %d\n\n", MAX_K);
    
    // Create 1D Kokkos View containing keys view with sized as "capacity"
    keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys from capacity", capacity);
