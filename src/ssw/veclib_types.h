@@ -16,12 +16,20 @@
 /*                                                                            */
 /******************************************************************************/
 
+
 #ifndef _H_VECLIB_TYPES
 #define _H_VECLIB_TYPES
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+// Kokkos
+#ifdef ENABLE_KOKKOS
+#include <type_traits>
+#include <limits>
+#endif
+
 
 /******************************************************************************/
 
@@ -54,6 +62,7 @@ extern "C" {
 #ifdef __GNUC__
 /* GCC version */
 #define __GCC_VERSION__ (__GNUC__ * 100 + __GNUC_MINOR__ * 10 + __GNUC_PATCHLEVEL__)
+#pragma message "__GCC_VERSION__:  " __GCC_VERSION__
 #endif
 
 /* Control double precision */
@@ -96,6 +105,8 @@ extern "C" {
 #else
 #error Compiler not supported yet.
 #endif
+
+
 
 /** Types **/
 

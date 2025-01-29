@@ -16,6 +16,14 @@
 /*                                                                            */
 /******************************************************************************/
 
+// Kokkos
+#ifdef ENABLE_KOKKOS
+#include<type_traits>
+#include<limits>
+#endif
+
+
+
 #ifndef _H_VEC128INT
 #define _H_VEC128INT
 
@@ -211,8 +219,12 @@ VECLIB_INLINE __m128i vec_Zerouppersd(__m128i v) {
 #if (defined __ibmxl__) || (defined __GNUC__) && (__GCC_VERSION__ >= 492)
   vector signed int zeroes = {0x00000000, 0x00000000, 0x00000000, 0x00000000};
   return (__m128i)vec_mergeh((vector unsigned long long)v, (vector unsigned long long)zeroes);
-#elif (defined __GNUC__) && (__GCC_VERSION__ < 492)
+#elif (defined __GNUC__) && (defined __GCC_VERSION__ < 492)
   vector signed int mask = {0xffffffff, 0xffffffff, 0x00000000, 0x00000000};
+  return (__m128i)vec_and((vector unsigned int)v, (vector unsigned int)mask);
+#endif
+#elif __BIG_ENDIAN__
+  vector signed int mask = {0x00000000, 0x00000000, 0xffffffff, 0xffffffff};
   return (__m128i)vec_and((vector unsigned int)v, (vector unsigned int)mask);
 #endif
 #elif __BIG_ENDIAN__
@@ -1643,5 +1655,4 @@ VECLIB_INLINE __m128i vec_Cast2dpto4sw(__m128d from) {
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
-
 #endif

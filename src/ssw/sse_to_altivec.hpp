@@ -42,6 +42,14 @@
  form.
 */
 
+// Kokkos
+#ifdef ENABLE_KOKKOS
+#include <type_traits>
+#include <limits>
+#endif
+
+
+
 #include "vec128int.h"
 
 #ifdef __BIG_ENDIAN__

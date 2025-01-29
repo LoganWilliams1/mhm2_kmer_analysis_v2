@@ -333,8 +333,9 @@ string init_upcxx(BaseTimer &total_timer) {
 #ifdef ENABLE_KOKKOS
 void test_kokkos() {
   if (!upcxx::rank_me()) {
-    cout << "\n----------------------------------------\n\n" << "kokkos enabled\n" << endl;
+    cout << "\n----------------------------------------\n\n" << "Kokkos enabled\n" << endl;
    
+    std::cout << "Kokkos Execution Space:    " << std::endl;
     Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
   }
 
@@ -345,27 +346,44 @@ void test_kokkos() {
 
   // For the sake of simplicity in this exercise, we're using std::malloc directly, but
   // later on we'll learn a better way, so generally don't do this in Kokkos programs.
-  // Allocate y, x vectors and Matrix A:
-  auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
-  auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
-  auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
+  // Allocate x, y vectors and Matrix A as Kokkos Views:
+  
+  //auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
+  Kokkos::View<double*> x("x", M);
+  
+  //auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
+  Kokkos::View<double*> y("y", N);
+  
+  //auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
+  Kokkos::View<double**> A("A", N,M);
+
+  // Initialize Views
+  // Initialize x vector.
+  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
+    //x(i) = 1;
+  });
+
+  Kokkos::fence();
 
   // Initialize y vector.
   Kokkos::parallel_for( "y_init", N, KOKKOS_LAMBDA ( int i ) {
-    y[ i ] = 1;
+    //y(i) = 1;
   });
 
-  // Initialize x vector.
-  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
-    x[ i ] = 1;
-  });
+  Kokkos::fence();
 
-  // Initialize A matrix, note 2D indexing computation.
-  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
-    for ( int i = 0; i < M; ++i ) {
-      A[ j * M + i ] = 1;
-    }
+// Initialize A matrix, note 2D indexing computation.
+//  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
+//    for ( int i = 0; i < M; ++i ) {
+//      A( j * M + i ) = 1;
+//    }
+//  });
+
+  Kokkos::parallel_for( "A_matrix_init", N, KOKKOS_LAMBDA ( int j ) {
+    //for ( int i = 0; i < M; ++i ) 
+    //  A(i, j) = 1;
   });
+  Kokkos::fence();
 
   // Timer products.
   Kokkos::Timer timer;
@@ -378,11 +396,15 @@ void test_kokkos() {
       double temp2 = 0;
 
       for ( int i = 0; i < M; ++i ) {
-        temp2 += A[ j * M + i ] * x[ i ];
+        temp2 += A(i, j) * x( i );
       }
 
-      update += y[ j ] * temp2;
+      update += y( j ) * temp2;
     }, result );
+    
+    
+    Kokkos::fence();
+
 
     // Output result.
     if (!upcxx::rank_me() && repeat == ( nrepeat - 1 ) ) {
@@ -413,21 +435,31 @@ void test_kokkos() {
     cout << "\n----------------------------------------\n" << endl;
 
   }
-  Kokkos::kokkos_free(A);
-  Kokkos::kokkos_free(y);
-  Kokkos::kokkos_free(x);
+  //Kokkos::kokkos_free(A);
+  //Kokkos::kokkos_free(y);
+  //Kokkos::kokkos_free(x);
 }
 #endif
 
 int main(int argc, char **argv, char **envp) {
+
+printf("Entering main ... ");
+
+
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
 
+
+printf("Kokkos should be initialized AFTER MPI_Init ... ");
+
 #ifdef ENABLE_KOKKOS
+  printf("Kokkos enabled  ... ");
   Kokkos::initialize(argc, argv);
-  {
+  bool kokkos_init_status = Kokkos::is_initialized();
+  printf("Kokkos initialization status:   %s ...\n ", kokkos_init_status);
 #endif
+
 
 #ifdef CIDS_FROM_HASH
   SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
@@ -501,16 +533,23 @@ int main(int argc, char **argv, char **envp) {
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
 #ifdef ENABLE_KOKKOS
+  {
+  printf("void test_kokkos() .....\n\n");
   test_kokkos();
+  Kokkos::fence();
   }
+  printf("FENCE - after test_kokkos\n\n");
 #endif
 
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
   finalize_timer.start();
   upcxx::finalize();
 
+
 #ifdef ENABLE_KOKKOS
+  Kokkos::fence();
   Kokkos::finalize();
+  printf("FENCE - after Kokkos::finalize()\n\n");
 #endif
 
   finalize_timer.stop();
@@ -518,6 +557,7 @@ int main(int argc, char **argv, char **envp) {
   if (am_root)
     cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
          << finalize_timer.get_elapsed() << " s)" << endl;
+
 
   return 0;
 }

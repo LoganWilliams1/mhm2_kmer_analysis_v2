@@ -317,7 +317,7 @@ void gpu_unpack_supermer_block(SupermerBuff unpacked_supermer_buff, SupermerBuff
     if (packed_supermer_buff.counts_v.size() > 1) unpacked_supermer_buff.counts_v(i * 2 + 1) = packed_supermer_buff.counts_v(i);
   });  
 
-  // Kokkos::fence();
+   Kokkos::fence();
 
 }
 
