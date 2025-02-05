@@ -98,7 +98,7 @@ class Options {
   string output_dir;
   string setup_time;
   bool dump_kmers = false;
-  bool use_qf = true;
+  bool use_qf = false;
   // very conservative so as not to drop kmers for low depth datasets
   int sequencing_depth = 4;
   string optimize_for = "default";
