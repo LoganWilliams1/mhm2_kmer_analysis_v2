@@ -119,6 +119,7 @@ struct KmerExtsMap {
   int64_t capacity = 0;
 
   void init(int64_t ht_capacity);
+
   void clear();
 };
 

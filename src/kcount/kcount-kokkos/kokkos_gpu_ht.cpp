@@ -54,6 +54,7 @@
 #include "upcxx_utils/colors.h"
 // #include "gpu-utils/gpu_common.hpp"
 
+//#include <Kokkos_Core.hpp>
 #include "kokkos_gpu_ht.hpp"
 #include "prime.hpp"
 #include "kokkos_gpu_hash_funcs.hpp"
@@ -630,11 +631,13 @@ struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
   two_choice_filter::TCF *tcf = nullptr;
 };
 
-// template <int MAX_K>
-// void KmerArray<MAX_K>::set(const uint64_t *kmer) {
-//   memcpy(longs, kmer, N_LONGS * sizeof(uint64_t));
-// }
-
+// Amy uncommented feb. 12, 2025
+/*
+template <int MAX_K>
+void KmerArray<MAX_K>::set(const uint64_t *kmer) {
+  memcpy(longs, kmer, N_LONGS * sizeof(uint64_t));
+ }
+*/
 
 // Function to create & initialize Kokkos keys & values Views from KmerArray & CountsArray structs
 
@@ -665,8 +668,73 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   Kokkos::deep_copy(keys_v, h_keys_v);
 
   vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
+  
+  Kokkos::Profiling::popRegion();
 
 }
+
+template <int MAX_K>
+void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
+
+  Kokkos::Profiling::pushRegion("CountsMap Keys from ht_capacity");
+
+  printf("\n\n ...in KmerCountsMap<MAX_K>::init(int64_t ht_capacity) function ... \n\n");
+
+  // On Tioga:  ht_capacity:  1078189297, of ~ 1 Gbyte
+  printf("ht_capacity:  %ld\n\n", ht_capacity);
+  
+  capacity = ht_capacity;
+
+  printf("capacity:  %ld\n\n", capacity);
+  
+  //KmerArray struct info
+  //MAX_K:  32
+  printf("MAX_K:  %d\n\n",MAX_K);
+
+  //FIXME
+  //terminate called after throwing an instance of 'std::runtime_error'
+  //what():  Kokkos ERROR: HIP memory space failed to allocate 5.96 GiB (label="CountsMap keys - JAN").
+  //*** Caught a fatal signal (proc 0): SIGABRT(6)
+  
+  // Kokkos View from KmerArray struct
+  keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys - JAN", capacity);
+  
+  // Basic sanity check
+  const long int N = 10;
+  Kokkos::View<double*> myView(" ... proof-of-concept - N\n\n", N);
+  parallel_for("Init TEST", N, KOKKOS_LAMBDA(int i){
+      myView(i) = i*1000; 
+});
+
+   
+  std::cout << "TEST View contents:  " << std::endl;
+  
+  for (int i = 0; i < N; i++) {
+      std::cout << "myView: " << i << myView(i) << std::endl;
+
+}  
+   
+
+
+  //auto test_v = Kokkos::View<double*>("CountsMap keys - JAN", 1000);
+  //printf("test_v: %ld", test_v.data());  
+
+  Kokkos::View<KmerArray<MAX_K>*, Kokkos::DefaultHostExecutionSpace> h_keys_v("CountsMap keys - HOST", capacity);
+  //Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HOST", capacity);
+  
+  for (int64_t i = 0; i < capacity; i++) {
+    for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {
+      h_keys_v(i).longs[j] = 0xffffffffffffffff;
+    }
+  }
+  Kokkos::deep_copy(keys_v, h_keys_v);
+  // Kokkos View from CountsArray struct 
+  vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
+
+}
+
+
+
 
 
 
@@ -781,7 +849,11 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // find the first prime number lower than the available slots, and no more than 3x the max number of elements
   primes::Prime prime;
   prime.set(max_read_kmers, false);
+  // JAN - max_read_kmers is 1118881598
+  printf("JAN - max_read_kmers is %zu\n\n", max_read_kmers);
   auto ht_capacity = prime.get();
+  printf("JAN - ht_capacity is %lu\n\n", ht_capacity);
+
   auto ht_bytes_used = ht_capacity * elem_size;
 
   log_msgs << "GPU read kmers hash table has capacity per rank of " << ht_capacity << " and uses " << ht_bytes_used << " (QF uses "

@@ -57,7 +57,7 @@ else
         rm -rf *
         rm -rf $INSTALL_PATH/cmake
         cmake $rootdir -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH \
-              -DMHM2_ENABLE_TESTING=$testing -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -std=c++17" $MHM2_CMAKE_EXTRAS "${@:2}"
+              -DMHM2_ENABLE_TESTING=$testing -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -std=c++17" -DCMAKE_BUILD_TYPE=Debug $MHM2_CMAKE_EXTRAS "${@:2}"
     fi
     #make -j ${MHM2_BUILD_THREADS} all || make VERBOSE=1 all
     make -j ${MHM2_BUILD_THREADS} all
