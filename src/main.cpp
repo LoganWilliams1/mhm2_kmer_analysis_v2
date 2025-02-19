@@ -347,6 +347,12 @@ void test_kokkos() {
   // For the sake of simplicity in this exercise, we're using std::malloc directly, but
   // later on we'll learn a better way, so generally don't do this in Kokkos programs.
   // Allocate x, y vectors and Matrix A as Kokkos Views:
+
+// Kokkos-Tools kernel logger
+// see:  https://github.com/kokkos/kokkos-tools/wiki/KernelLogger
+
+  Kokkos::Profiling::pushRegion("Initializing Views x, y, A");
+
   
   //auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
   Kokkos::View<double*> x("x", M);
@@ -357,20 +363,21 @@ void test_kokkos() {
   //auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
   Kokkos::View<double**> A("A", N,M);
 
-  // Initialize Views
-  // Initialize x vector.
+  // Initialize x
+
   Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
-    //x(i) = 1;
+    x(i) = 1;
   });
 
   Kokkos::fence();
-
-  // Initialize y vector.
+  
+  // Initialize y
   Kokkos::parallel_for( "y_init", N, KOKKOS_LAMBDA ( int i ) {
-    //y(i) = 1;
+    y(i) = 1;
   });
 
   Kokkos::fence();
+
 
 // Initialize A matrix, note 2D indexing computation.
 //  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
@@ -379,23 +386,37 @@ void test_kokkos() {
 //    }
 //  });
 
+// CORRECT?
+/*
   Kokkos::parallel_for( "A_matrix_init", N, KOKKOS_LAMBDA ( int j ) {
-    //for ( int i = 0; i < M; ++i ) 
-    //  A(i, j) = 1;
+    for ( int i = 0; i < M; ++i ) 
+      A(i, j) = 1;
   });
-  Kokkos::fence();
+*/
 
-  // Timer products.
+  Kokkos::parallel_for( "matrix_init_A", N, KOKKOS_LAMBDA ( int j) {
+    for ( int i = 0; i < M; ++i ) {
+      //A( j * M + i ) = 1;
+      A(i, j) = 1;
+    }
+});
+
+  Kokkos::fence();
+  Kokkos::Profiling::popRegion();
+  
+// Timer products.
   Kokkos::Timer timer;
 
+  Kokkos::Profiling::pushRegion("Reduction");
   for ( int repeat = 0; repeat < nrepeat; repeat++ ) {
     // Application: <y,Ax> = y^T*A*x
     double result = 0;
 
-    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double &update ) {
+    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double& update ) {
       double temp2 = 0;
 
       for ( int i = 0; i < M; ++i ) {
+        //temp2 += A( j * M +i) * x(i);
         temp2 += A(i, j) * x( i );
       }
 
@@ -404,8 +425,8 @@ void test_kokkos() {
     
     
     Kokkos::fence();
-
-
+  Kokkos::Profiling::popRegion();
+    //
     // Output result.
     if (!upcxx::rank_me() && repeat == ( nrepeat - 1 ) ) {
       printf( "  Computed result for %d x %d is %lf\n", N, M, result );
@@ -454,10 +475,10 @@ printf("Entering main ... ");
 printf("Kokkos should be initialized AFTER MPI_Init ... ");
 
 #ifdef ENABLE_KOKKOS
-  printf("Kokkos enabled  ... ");
+  printf("Kokkos enabled  ...... \n\n");
   Kokkos::initialize(argc, argv);
   bool kokkos_init_status = Kokkos::is_initialized();
-  printf("Kokkos initialization status:   %s ...\n ", kokkos_init_status);
+  printf("Kokkos initialization status:   %d ...\n\n ", kokkos_init_status);
 #endif
 
 
