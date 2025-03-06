@@ -635,22 +635,40 @@ struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
 //   memcpy(longs, kmer, N_LONGS * sizeof(uint64_t));
 // }
 
+
+// Function to create & initialize Kokkos keys & values Views from KmerArray & CountsArray structs
+
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
-
-  keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys", capacity);
-  typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
-  for (int64_t i = 0; i < capacity; i++) {
-    for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {
+  
+  printf("\n\n ... FIONA0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
+  // ht_capacity TIOGA:  1 248 138 943 
+  printf("\n\n FIONA1 - ht_capacity: %d\n\n", ht_capacity);
+  // MAX_K TIOGA:  32
+  printf("\n\n FIONA2 - MAX_K:  %d\n\n", MAX_K);
+   
+   // Create 1D Kokkos View containing keys view with sized as "capacity"
+   keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys from capacity", capacity);
+  
+   //typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
+   
+   // create 1D host space view of keys (suggested by Jan)
+   Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HOST", capacity);
+  // initialize to hexadecimal integer
+  for (int64_t i = 0; i < capacity; i++) {                 // rows
+    for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {  // cols
       h_keys_v(i).longs[j] = 0xffffffffffffffff;
     }
   }
+  // Copy h_keys_v vals to keys_v
   Kokkos::deep_copy(keys_v, h_keys_v);
 
   vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
 
 }
+
+
 
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::clear() {
