@@ -233,6 +233,15 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   DBG("Finding available memory on GPU ", gpu_utils::get_gpu_uuid(), "\n");
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   auto gpu_avail_mem_per_rank = (get_gpu_avail_mem_per_rank() - bytes_for_pnp) * 0.9;
+
+  // print debug amd
+  if (!rank_me()) {
+    std::cout << "\n\n\n***AMD DEBUG***\nkcount_gpu.cpp, HashTableInserter::init()\n" << 
+                  "\ninit_gpu_mem: " << fixed << setprecision(2) << init_gpu_mem / (1024 * 1024 * 1024) << " GB" <<
+                  "\ngpu_avail_mem_per_rank: " << fixed << setprecision(2) << gpu_avail_mem_per_rank  / (1024 * 1024 * 1024) << " GB" <<
+                  "\n" << endl;
+  }
+
   SLOG_GPU("Available GPU memory per rank for kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), 
            " accounting for PnP of ", get_size_str(bytes_for_pnp/0.9), "\n");
   SLOG_GPU("Initializing read kmers hash table with max ", max_elems, " elems (with max ", max_ctg_elems,

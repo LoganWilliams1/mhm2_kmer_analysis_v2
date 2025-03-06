@@ -640,6 +640,7 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
 
   keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys", capacity);
+
   typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
   for (int64_t i = 0; i < capacity; i++) {
     for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {
@@ -649,7 +650,6 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   Kokkos::deep_copy(keys_v, h_keys_v);
 
   vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
-
 }
 
 template <int MAX_K>
@@ -771,6 +771,20 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
   // uncomment to debug OOMs
   // cout << "ht bytes used " << (ht_bytes_used / 1024 / 1024) << "MB\n";
+
+  // print debug amd
+  if (!upcxx_rank_me) {
+    std::cout << "\n\n\n***AMD DEBUG***\nkokkos_gpu_ht.cpp, HashTableGPUDriver::init()\n" <<
+                  "\nmax_elems: " << max_elems <<
+                  "\nnum_errors: " << num_errors <<
+                  "\nload_multiplier: " << load_multiplier <<
+                  "\ninitial max_read_kmers: " << fixed << setprecision(0) << load_multiplier * (max_elems + max_ctg_elems + (use_qf ? 0 : num_errors)) <<
+                  "\nmem_ratio: " << fixed << setprecision(2) << mem_ratio <<
+                  "\nmax_read_kmers: " << max_read_kmers << 
+                  "\nht_capacity: " << ht_capacity <<
+                  "\nht_GB_used: " << fixed << setprecision(2) << ht_bytes_used / (1024.0 * 1024 * 1024) << " GB"
+                  "\n\n\n" << endl;
+  }
 
   read_kmers_dev.init(ht_capacity);
 

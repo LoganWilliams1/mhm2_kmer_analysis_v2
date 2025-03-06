@@ -151,7 +151,7 @@ void calc_input_files_size(const vector<string> &reads_fnames) {
   }
 }
 
-void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
+int64_t run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
   BarrierTimer("Start Contigging");
 
   // contigging loops
@@ -160,11 +160,15 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
   //     if (kmer_len <= 1) continue;  // short circuit to just load reads
   int kmer_len = options.kmer_lens;
   
-      auto max_k = (kmer_len / 32 + 1) * 32;
-      LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
+  auto max_k = (kmer_len / 32 + 1) * 32;
+  LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
+
+
+  int64_t total_kmers = 0;
 
 #define CONTIG_K(KMER_LEN) \
-  case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
+  case KMER_LEN: total_kmers = contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
+
 
       switch (max_k) {
         CONTIG_K(32);
@@ -186,9 +190,11 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
 
     // }
   // }
+
+  return total_kmers;
 }
 
-void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
+int64_t run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
   memory_tracker.start();
   LOG_MEM("Preparing to load reads\n");
   PackedReadsList packed_reads_list;
@@ -237,7 +243,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
 
   done_init_devices();
 
-  run_contigging(options, packed_reads_list, rlen_limit);
+  int64_t total_kmers = run_contigging(options, packed_reads_list, rlen_limit);
 
   // cleanup
   LOG_MEM("Preparing to close all fastq");
@@ -277,6 +283,8 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   memory_tracker.stop();
   std::chrono::duration<double> t_elapsed = clock_now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
+
+  return total_kmers;
 }
 
 
@@ -424,9 +432,12 @@ int main(int argc, char **argv, char **envp) {
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
 
+  int64_t total_kmers;
+
 #ifdef ENABLE_KOKKOS
   Kokkos::initialize(argc, argv);
   {
+    //test_kokkos();
 #endif
 
 #ifdef CIDS_FROM_HASH
@@ -471,7 +482,7 @@ int main(int argc, char **argv, char **envp) {
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
-  run_pipeline(options, memory_tracker, start_t);
+  total_kmers = run_pipeline(options, memory_tracker, start_t);
 
   LOG("Cleaning up and completing remaining tasks\n");
 
@@ -501,7 +512,6 @@ int main(int argc, char **argv, char **envp) {
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
 #ifdef ENABLE_KOKKOS
-  test_kokkos();
   }
 #endif
 
@@ -516,8 +526,9 @@ int main(int argc, char **argv, char **envp) {
   finalize_timer.stop();
   total_timer.stop();
   if (am_root)
-    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
-         << finalize_timer.get_elapsed() << " s)" << endl;
+    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx and kokkos finalize in "
+         << finalize_timer.get_elapsed() << " s)\n" 
+         << "\nTotal unique kmers: " << total_kmers << endl;
 
   return 0;
 }
