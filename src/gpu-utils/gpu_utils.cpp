@@ -98,6 +98,9 @@ static DeviceProp &get_gpu_properties(int device_id = -1) {
 }
 
 void gpu_utils::set_gpu_device(int rank_me) {
+  #if defined (ENABLE_KOKKOS)
+  return;
+  #endif
   if (rank_me == -1) {
     std::cerr << KLRED "Cannot set GPU device for rank -1; device is not yet initialized\n" KNORM;
     exit(1);

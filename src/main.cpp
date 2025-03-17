@@ -245,7 +245,9 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
        get_size_str(post_init_free_mem), " free memory on node 0)", KNORM, "\n");
 
+  #if !defined(ENABLE_KOKKOS)
   done_init_devices();
+  #endif
 
   run_contigging(options, packed_reads_list, rlen_limit);
 
@@ -403,7 +405,10 @@ printf("Entering main ...\n\n");
   update_rlimits(options.reads_fnames.size());
   set_thread_pool(options.max_worker_threads);
   calc_input_files_size(options.reads_fnames);
-  init_devices();
+  
+  #if !defined (ENABLE_KOKKOS)
+  init_devices(); //Avoid using vendor API for device initialization
+  #endif
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
