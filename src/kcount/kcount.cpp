@@ -140,7 +140,7 @@ static void count_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &pac
 // };
 
 template <int MAX_K>
-int64_t analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
+void analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
                    dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers) {
   BarrierTimer timer(__FILEFUNC__);
   _dmin_thres = dmin_thres;
@@ -158,5 +158,4 @@ int64_t analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packe
   auto msm_num_local = upcxx_utils::min_sum_max_reduce_one(kmer_dht->get_local_num_kmers(),0).wait();
   SLOG_VERBOSE("Local kmers: ", msm_num_local.to_string(), "\n");
   SLOG_VERBOSE("Total kmers: ", msm_num_local.sum, "\n");
-  return msm_num_local.sum;
 };

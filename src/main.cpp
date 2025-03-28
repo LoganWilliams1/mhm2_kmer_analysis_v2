@@ -43,6 +43,12 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <random>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <iomanip>
 
 #include "contigging.hpp"
 #include "fastq.hpp"
@@ -151,7 +157,7 @@ void calc_input_files_size(const vector<string> &reads_fnames) {
   }
 }
 
-int64_t run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
+void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
   BarrierTimer("Start Contigging");
 
   // contigging loops
@@ -164,10 +170,9 @@ int64_t run_contigging(Options &options, PackedReadsList &packed_reads_list, int
   LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
 
 
-  int64_t total_kmers = 0;
 
 #define CONTIG_K(KMER_LEN) \
-  case KMER_LEN: total_kmers = contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
+  case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
 
 
       switch (max_k) {
@@ -191,10 +196,9 @@ int64_t run_contigging(Options &options, PackedReadsList &packed_reads_list, int
     // }
   // }
 
-  return total_kmers;
 }
 
-int64_t run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
+void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
   memory_tracker.start();
   LOG_MEM("Preparing to load reads\n");
   PackedReadsList packed_reads_list;
@@ -243,7 +247,7 @@ int64_t run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, time
 
   done_init_devices();
 
-  int64_t total_kmers = run_contigging(options, packed_reads_list, rlen_limit);
+  run_contigging(options, packed_reads_list, rlen_limit);
 
   // cleanup
   LOG_MEM("Preparing to close all fastq");
@@ -284,7 +288,6 @@ int64_t run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, time
   std::chrono::duration<double> t_elapsed = clock_now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
 
-  return total_kmers;
 }
 
 
@@ -340,22 +343,23 @@ string init_upcxx(BaseTimer &total_timer) {
 
 
 int main(int argc, char **argv, char **envp) {
-
-printf("Entering main ... ");
-
+  
+printf("Entering main ...\n\n");
 
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
 
-  printf("Kokkos initialized AFTER MPI_Init ... ");
   int64_t total_kmers;
 
 #ifdef ENABLE_KOKKOS
   printf("Kokkos enabled  ...... \n\n");
   Kokkos::initialize(argc, argv);
+  printf("Kokkos initializing AFTER MPI_Init ...\n\n");
   bool kokkos_init_status = Kokkos::is_initialized();
   printf("Check Kokkos initialization status:   %d ...\n\n ", kokkos_init_status);
+  double kokkos_elapsed_time;
+  Kokkos::Timer kokkos_timer;
 #endif
 
 // TODO:  REMOVE?
@@ -403,7 +407,7 @@ printf("Entering main ... ");
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
-  total_kmers = run_pipeline(options, memory_tracker, start_t);
+  run_pipeline(options, memory_tracker, start_t);
 
   LOG("Cleaning up and completing remaining tasks\n");
 
@@ -438,26 +442,96 @@ double kokkos_time = timer.seconds();
   {
   Kokkos::fence();
   }
-printf("\n\n  Kokkos mhm2 Runtime:  (%g s)\n\n", kokkos_time);
+printf("\n\n mhm2-kmer-analysis Kokkos executable runtime:  (%g s)\n\n", kokkos_time);
 #endif
+
 
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
   finalize_timer.start();
   upcxx::finalize();
 
 
-#ifdef ENABLE_KOKKOS
-  Kokkos::fence();
-  Kokkos::finalize();
-  printf("FENCE - after Kokkos::finalize()\n\n");
-#endif
 
   finalize_timer.stop();
   total_timer.stop();
   if (am_root)
-    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx and kokkos finalize in "
-         << finalize_timer.get_elapsed() << " s)\n" 
-         << "\nTotal unique kmers: " << total_kmers << endl;
+    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
+         << finalize_timer.get_elapsed() << " s)" << endl;
+
+
+#ifdef ENABLE_KOKKOS
+  Kokkos::fence();
+  kokkos_elapsed_time = kokkos_timer.seconds();
+  Kokkos::fence();
+  Kokkos::finalize();
+  Kokkos::fence();
+  printf("Kokkos::finalizing .... \n\n");
+#endif
+
+
+  // parse proxy results from log file and print
+  if (am_root) {
+
+    ifstream log_file("mhm2.log");
+    if (!log_file) {
+      perror("Cannot open mhm2.log");
+      return 1;
+    }
+
+    cout << "\n\n\n----------------------------\n\n" <<
+    "proxy_results_summary.csv can be found in " << options.output_dir << 
+    "\n\n" << endl;
+
+    string line, token, total_kmers, unique_kmers, mem, read_count;
+
+    std::unordered_map<string, std::pair<int, string*>> results_map = {
+      {"Total number of reads:  ", {6, &read_count}},
+      {"Total kmer count:  ", {7, &total_kmers}},
+      {"Total unique kmers:  ", {5, &unique_kmers}},         
+      {"Peak memory usage:  ", {10, &mem}}
+    };
+
+    while (std::getline(log_file, line)) {
+      for (const auto& [phrase, pair] : results_map) {
+        if (line.find(phrase) != string::npos) {
+          std::istringstream iss(line);
+          for (int i = 0; i < pair.first; i++) {
+            iss >> token;
+          }
+          *pair.second = token;
+          // fix mem token e.g. 4GB -> 4 GB
+          // fix reads token
+          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); } 
+          else if (phrase == "tot_num_reads") { pair.second->erase(0, 15); }
+          break;          
+        }
+      }
+    }
+
+    // TODO:  Move output lines method & call method from main
+    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+
+    ofstream csv("proxy_results_summary.csv");
+
+    // column headers
+    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
+    
+    // results
+    csv << read_count << "," << 
+            unique_kmers << "," << 
+            total_kmers << "," << 
+            std::fixed << std::setprecision(3) << frac << "," << 
+            std::setprecision(2) << mem << "," <<
+#ifdef ENABLE_KOKKOS
+            kokkos_elapsed_time << "\n";
+#endif
+#ifndef ENABLE_KOKKOS
+            total_timer.get_elapsed() << "\n";
+#endif
+    
+
+    csv.close();
+  }
 
 
   return 0;
