@@ -541,7 +541,7 @@ KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, 
       int prev_count = Kokkos::atomic_fetch_add(&vals_view(slot).kmer_count, kmer_count);
       if (!prev_count) new_inserts++;
     }
-    ext_count_t kmer_count_uint16 = min(kmer_count, UINT16_MAX);
+    ext_count_t kmer_count_uint16 = std::min(kmer_count, static_cast<kcount_gpu::count_t>(UINT16_MAX));
     inc_ext(left_ext, kmer_count_uint16, ext_counts);
     inc_ext(right_ext, kmer_count_uint16, ext_counts + 4);
     if (use_qf && !update_only && !kmer_found_in_ht && !ctg_kmers) {
