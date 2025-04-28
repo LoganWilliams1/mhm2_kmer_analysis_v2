@@ -631,16 +631,8 @@ struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
   two_choice_filter::TCF *tcf = nullptr;
 };
 
-// Amy uncommented feb. 12, 2025
-/*
-template <int MAX_K>
-void KmerArray<MAX_K>::set(const uint64_t *kmer) {
-  memcpy(longs, kmer, N_LONGS * sizeof(uint64_t));
- }
-*/
 
 // Function to create & initialize Kokkos keys & values Views from KmerArray & CountsArray structs
-
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
