@@ -653,17 +653,19 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
    
    // Create 1D Kokkos View containing keys view with sized as "capacity"
    keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys from capacity", capacity);
-  
-   //typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
    
    // create 1D host space view of keys (suggested by Jan)
-   Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HOST", capacity);
+   Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HostSpace", capacity);
+
   // initialize to hexadecimal integer
   for (int64_t i = 0; i < capacity; i++) {                 // rows
     for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {  // cols
+      // FIXME: square brackets for "j" cols indexing variable needed b/c range specifier, "KmerArray<MAX_K>::N_LONGS" \
+      // is not a pointer 
       h_keys_v(i).longs[j] = 0xffffffffffffffff;
     }
   }
+  
   // Copy h_keys_v vals to keys_v
   Kokkos::deep_copy(keys_v, h_keys_v);
 
@@ -672,70 +674,6 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   Kokkos::Profiling::popRegion();
 
 }
-
-template <int MAX_K>
-void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
-
-  Kokkos::Profiling::pushRegion("CountsMap Keys from ht_capacity");
-
-  printf("\n\n ...in KmerCountsMap<MAX_K>::init(int64_t ht_capacity) function ... \n\n");
-
-  // On Tioga:  ht_capacity:  1078189297, of ~ 1 Gbyte
-  printf("ht_capacity:  %ld\n\n", ht_capacity);
-  
-  capacity = ht_capacity;
-
-  printf("capacity:  %ld\n\n", capacity);
-  
-  //KmerArray struct info
-  //MAX_K:  32
-  printf("MAX_K:  %d\n\n",MAX_K);
-
-  //FIXME
-  //terminate called after throwing an instance of 'std::runtime_error'
-  //what():  Kokkos ERROR: HIP memory space failed to allocate 5.96 GiB (label="CountsMap keys - JAN").
-  //*** Caught a fatal signal (proc 0): SIGABRT(6)
-  
-  // Kokkos View from KmerArray struct
-  keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys - JAN", capacity);
-  
-  // Basic sanity check
-  const long int N = 10;
-  Kokkos::View<double*> myView(" ... proof-of-concept - N\n\n", N);
-  parallel_for("Init TEST", N, KOKKOS_LAMBDA(int i){
-      myView(i) = i*1000; 
-});
-
-   
-  std::cout << "TEST View contents:  " << std::endl;
-  
-  for (int i = 0; i < N; i++) {
-      std::cout << "myView: " << i << myView(i) << std::endl;
-
-}  
-   
-
-
-  //auto test_v = Kokkos::View<double*>("CountsMap keys - JAN", 1000);
-  //printf("test_v: %ld", test_v.data());  
-
-  Kokkos::View<KmerArray<MAX_K>*, Kokkos::DefaultHostExecutionSpace> h_keys_v("CountsMap keys - HOST", capacity);
-  //Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HOST", capacity);
-  
-  for (int64_t i = 0; i < capacity; i++) {
-    for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {
-      h_keys_v(i).longs[j] = 0xffffffffffffffff;
-    }
-  }
-  Kokkos::deep_copy(keys_v, h_keys_v);
-  // Kokkos View from CountsArray struct 
-  vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
-
-}
-
-
-
-
 
 
 template <int MAX_K>
