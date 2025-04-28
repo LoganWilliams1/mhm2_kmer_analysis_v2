@@ -82,13 +82,6 @@ void teardown_devices();
 int merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
 
-void print_exec_cmd(int argc, char **argv) {
-  string executed = argv[0];
-  executed += ".py";  // assume the python wrapper was actually called
-  for (int i = 1; i < argc; i++) executed = executed + " " + argv[i];
-  SLOG_VERBOSE("Executed as: ", executed, "\n");
-}
-
 void set_process_affinity(const string pin_by) {
   SLOG_VERBOSE("Process 0 on node 0 is initially pinned to ", get_proc_pin(), "\n");
   // pin ranks only in production
@@ -245,9 +238,9 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
        get_size_str(post_init_free_mem), " free memory on node 0)", KNORM, "\n");
 
-  #if !defined(ENABLE_KOKKOS)
+#if !defined(ENABLE_KOKKOS)
   done_init_devices();
-  #endif
+#endif
 
   run_contigging(options, packed_reads_list, rlen_limit);
 
@@ -342,6 +335,8 @@ string init_upcxx(BaseTimer &total_timer) {
   // prom_report_init_timings.fulfill_anonymous(1);
   return fut_report_init_timings.wait();
 }
+
+// TODO: REMOVE
 
 #ifdef ENABLE_KOKKOS
 void test_kokkos() {
@@ -438,7 +433,6 @@ int main(int argc, char **argv, char **envp) {
   Kokkos::initialize(argc, argv);
   double kokkos_elapsed_time;
   Kokkos::Timer kokkos_timer;
-    //test_kokkos();
 #endif
 
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
@@ -484,9 +478,9 @@ int main(int argc, char **argv, char **envp) {
   set_thread_pool(options.max_worker_threads);
   calc_input_files_size(options.reads_fnames);
   
-  #if !defined (ENABLE_KOKKOS)
+#if !defined (ENABLE_KOKKOS)
   init_devices(); //Avoid using vendor API for device initialization
-  #endif
+#endif
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
@@ -536,7 +530,7 @@ int main(int argc, char **argv, char **envp) {
   Kokkos::finalize();
 #endif
 
-
+  //TODO:  Move CSV output into a method
   // parse proxy results from log file and print
   if (am_root) {
 
@@ -545,6 +539,7 @@ int main(int argc, char **argv, char **envp) {
       perror("Cannot open mhm2.log");
       return 1;
     }
+
 
     cout << "\n\n\n----------------------------\n\n" <<
     "proxy_results_summary.csv can be found in " << options.output_dir << 
