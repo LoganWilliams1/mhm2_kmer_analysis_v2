@@ -519,9 +519,10 @@ printf("\n\n mhm2-kmer-analysis Kokkos executable runtime:  (%g s)\n\n", kokkos_
     // terminate called after throwing an instance of 'std::invalid_argument'
     // what():  stold
     // https://en.cppreference.com/w/cpp/string/basic_string/stof
-    // Are "unique_kmers" & "total_kmers" strings that need to be converted to a float?
+    // Are "unique_kmers" & "total_kmers" in fact strings that need to be converted to a float?  I would guess they're already some numerical type
+     // The std::stold function in C++ converts a string to a long double value. It is part of the <string> header and is available since C++11.
 
-    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+    long double frac = std::stold(unique_kmers) / std::stold(total_kmers);
 
     ofstream csv("proxy_results_summary.csv");
 
