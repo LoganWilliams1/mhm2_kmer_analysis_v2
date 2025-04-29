@@ -65,7 +65,7 @@ using std::vector;
 //                int qual_offset, Contigs &ctgs, const Alns &alns);
 
 template <int MAX_K>
-void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Options &options) {
+int64_t contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Options &options) {
   auto loop_start_t = clock_now();
   SLOG(KBLUE, "_________________________", KNORM, "\n");
   SLOG(KBLUE, "Contig generation k = ", kmer_len, KNORM, "\n");
@@ -95,7 +95,7 @@ void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_lis
   LOG_MEM("Allocated kmer_dht");
   barrier();
   begin_gasnet_stats("kmer_analysis k = " + to_string(kmer_len));
-  analyze_kmers(kmer_len, options.qual_offset, packed_reads_list, options.dmin_thres, kmer_dht,
+  int64_t total_kmers = analyze_kmers(kmer_len, options.qual_offset, packed_reads_list, options.dmin_thres, kmer_dht,
                 options.dump_kmers);
   LOG_MEM("Analyzed kmers");
   end_gasnet_stats();
@@ -190,4 +190,6 @@ void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_lis
   LOG_MEM("After contig round k = " + to_string(kmer_len));
   Timings::wait_pending();
   barrier();
+
+  return total_kmers;
 }

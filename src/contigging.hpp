@@ -46,10 +46,10 @@
 #include "packed_reads.hpp"
 
 template <int MAX_K>
-void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Options &options);
+int64_t contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_list, Options &options);
 
 #define __MACRO_CONTIGGING__(KMER_LEN, MODIFIER) \
-  MODIFIER void contigging<KMER_LEN>(int, int &, PackedReadsList &, Options &);
+  MODIFIER int64_t contigging<KMER_LEN>(int, int &, PackedReadsList &, Options &);
 
 // Reduce compile time by instantiating templates of common types
 // extern template declarations are in contigging.hpp

@@ -642,19 +642,17 @@ template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
   
-  printf("\n\n ... FIONA0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
+  printf("\n\n ... DEBUG_0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
   // ht_capacity TIOGA:  1 248 138 943 
-  printf("\n\n FIONA1 - ht_capacity: %d\n\n", ht_capacity);
+  printf("\n\n DEBUG_1 - ht_capacity: %d\n\n", ht_capacity);
   // MAX_K TIOGA:  32
-  printf("\n\n FIONA2 - MAX_K:  %d\n\n", MAX_K);
+  printf("\n\n DEBUG_2 - MAX_K:  %d\n\n", MAX_K);
    
    // Create 1D Kokkos View containing keys view with sized as "capacity"
    keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys from capacity", capacity);
-  
-   //typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
    
    // create 1D host space view of keys (suggested by Jan)
-   Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HOST", capacity);
+   Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HostSpace", capacity);
   // initialize to hexadecimal integer
   for (int64_t i = 0; i < capacity; i++) {                 // rows
     for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {  // cols
@@ -665,7 +663,6 @@ void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   Kokkos::deep_copy(keys_v, h_keys_v);
 
   vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
-
 }
 
 
@@ -789,6 +786,20 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
   // uncomment to debug OOMs
   // cout << "ht bytes used " << (ht_bytes_used / 1024 / 1024) << "MB\n";
+
+  // print debug amd
+  if (!upcxx_rank_me) {
+    std::cout << "\n\n\n***AMD DEBUG***\nkokkos_gpu_ht.cpp, HashTableGPUDriver::init()\n" <<
+                  "\nmax_elems: " << max_elems <<
+                  "\nnum_errors: " << num_errors <<
+                  "\nload_multiplier: " << load_multiplier <<
+                  "\ninitial max_read_kmers: " << fixed << setprecision(0) << load_multiplier * (max_elems + max_ctg_elems + (use_qf ? 0 : num_errors)) <<
+                  "\nmem_ratio: " << fixed << setprecision(2) << mem_ratio <<
+                  "\nmax_read_kmers: " << max_read_kmers << 
+                  "\nht_capacity: " << ht_capacity <<
+                  "\nht_GB_used: " << fixed << setprecision(2) << ht_bytes_used / (1024.0 * 1024 * 1024) << " GB"
+                  "\n\n\n" << endl;
+  }
 
   read_kmers_dev.init(ht_capacity);
 

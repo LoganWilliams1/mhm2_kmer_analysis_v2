@@ -151,7 +151,7 @@ void calc_input_files_size(const vector<string> &reads_fnames) {
   }
 }
 
-void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
+int64_t run_contigging(Options &options, PackedReadsList &packed_reads_list, int &rlen_limit) {
   BarrierTimer("Start Contigging");
 
   // contigging loops
@@ -160,11 +160,15 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
   //     if (kmer_len <= 1) continue;  // short circuit to just load reads
   int kmer_len = options.kmer_lens;
   
-      auto max_k = (kmer_len / 32 + 1) * 32;
-      LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
+  auto max_k = (kmer_len / 32 + 1) * 32;
+  LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
+
+
+  int64_t total_kmers = 0;
 
 #define CONTIG_K(KMER_LEN) \
-  case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
+  case KMER_LEN: total_kmers = contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
+
 
       switch (max_k) {
         CONTIG_K(32);
@@ -186,9 +190,11 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
 
     // }
   // }
+
+  return total_kmers;
 }
 
-void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
+int64_t run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
   memory_tracker.start();
   LOG_MEM("Preparing to load reads\n");
   PackedReadsList packed_reads_list;
@@ -237,7 +243,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
 
   done_init_devices();
 
-  run_contigging(options, packed_reads_list, rlen_limit);
+  int64_t total_kmers = run_contigging(options, packed_reads_list, rlen_limit);
 
   // cleanup
   LOG_MEM("Preparing to close all fastq");
@@ -277,6 +283,8 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   memory_tracker.stop();
   std::chrono::duration<double> t_elapsed = clock_now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
+
+  return total_kmers;
 }
 
 
@@ -330,139 +338,6 @@ string init_upcxx(BaseTimer &total_timer) {
   return fut_report_init_timings.wait();
 }
 
-#ifdef ENABLE_KOKKOS
-void test_kokkos() {
-  if (!upcxx::rank_me()) {
-    cout << "\n----------------------------------------\n\n" << "Kokkos enabled\n" << endl;
-   
-    std::cout << "Kokkos Execution Space:    " << std::endl;
-    Kokkos::DefaultExecutionSpace().print_configuration(std::cout);
-  }
-
-  int N = pow(2, 12);         // number of rows 2^12
-  int M = pow(2, 10);         // number of columns 2^10
-  int S = pow(2, 22);         // total size 2^22
-  int nrepeat = 100;  // number of repeats of the test
-
-  // For the sake of simplicity in this exercise, we're using std::malloc directly, but
-  // later on we'll learn a better way, so generally don't do this in Kokkos programs.
-  // Allocate x, y vectors and Matrix A as Kokkos Views:
-
-// Kokkos-Tools kernel logger
-// see:  https://github.com/kokkos/kokkos-tools/wiki/KernelLogger
-
-  Kokkos::Profiling::pushRegion("Initializing Views x, y, A");
-
-  
-  //auto x = static_cast<double*>(Kokkos::kokkos_malloc<>(M * sizeof(double)));
-  Kokkos::View<double*> x("x", M);
-  
-  //auto y = static_cast<double*>(Kokkos::kokkos_malloc<>(N * sizeof(double)));
-  Kokkos::View<double*> y("y", N);
-  
-  //auto A = static_cast<double*>(Kokkos::kokkos_malloc<>(N * M * sizeof(double)));
-  Kokkos::View<double**> A("A", N,M);
-
-  // Initialize x
-
-  Kokkos::parallel_for( "x_init", M, KOKKOS_LAMBDA ( int i ) {
-    x(i) = 1;
-  });
-
-  Kokkos::fence();
-  
-  // Initialize y
-  Kokkos::parallel_for( "y_init", N, KOKKOS_LAMBDA ( int i ) {
-    y(i) = 1;
-  });
-
-  Kokkos::fence();
-
-
-// Initialize A matrix, note 2D indexing computation.
-//  Kokkos::parallel_for( "matrix_init", N, KOKKOS_LAMBDA ( int j ) {
-//    for ( int i = 0; i < M; ++i ) {
-//      A( j * M + i ) = 1;
-//    }
-//  });
-
-// CORRECT?
-/*
-  Kokkos::parallel_for( "A_matrix_init", N, KOKKOS_LAMBDA ( int j ) {
-    for ( int i = 0; i < M; ++i ) 
-      A(i, j) = 1;
-  });
-*/
-
-  Kokkos::parallel_for( "matrix_init_A", N, KOKKOS_LAMBDA ( int j) {
-    for ( int i = 0; i < M; ++i ) {
-      //A( j * M + i ) = 1;
-      A(i, j) = 1;
-    }
-});
-
-  Kokkos::fence();
-  Kokkos::Profiling::popRegion();
-  
-// Timer products.
-  Kokkos::Timer timer;
-
-  Kokkos::Profiling::pushRegion("Reduction");
-  for ( int repeat = 0; repeat < nrepeat; repeat++ ) {
-    // Application: <y,Ax> = y^T*A*x
-    double result = 0;
-
-    Kokkos::parallel_reduce( "yAx", N, KOKKOS_LAMBDA ( int j, double& update ) {
-      double temp2 = 0;
-
-      for ( int i = 0; i < M; ++i ) {
-        //temp2 += A( j * M +i) * x(i);
-        temp2 += A(i, j) * x( i );
-      }
-
-      update += y( j ) * temp2;
-    }, result );
-    
-    
-    Kokkos::fence();
-  Kokkos::Profiling::popRegion();
-    //
-    // Output result.
-    if (!upcxx::rank_me() && repeat == ( nrepeat - 1 ) ) {
-      printf( "  Computed result for %d x %d is %lf\n", N, M, result );
-    }
-
-    const double solution = (double) N * (double) M;
-
-    if ( result != solution ) {
-      printf( "  Error: result( %lf ) != solution( %lf )\n", result, solution );
-    }
-  }
-
-  double time = timer.seconds();
-  
-
-
-  // Calculate bandwidth.
-  // Each matrix A row (each of length M) is read once.
-  // The x vector (of length M) is read N times.
-  // The y vector (of length N) is read once.
-  // double Gbytes = 1.0e-9 * double( sizeof(double) * ( 2 * M * N + N ) );
-  double Gbytes = 1.0e-9 * double( sizeof(double) * ( M + M * N + N ) );
-
-  // Print results (problem size, time and bandwidth in GB/s).
-  if (!upcxx::rank_me()) {
-    printf( "  N( %d ) M( %d ) nrepeat ( %d ) problem( %g MB ) time( %g s ) bandwidth( %g GB/s )\n",
-          N, M, nrepeat, Gbytes * 1000, time, Gbytes * nrepeat / time );
-      
-    cout << "\n----------------------------------------\n" << endl;
-
-  }
-  //Kokkos::kokkos_free(A);
-  //Kokkos::kokkos_free(y);
-  //Kokkos::kokkos_free(x);
-}
-#endif
 
 int main(int argc, char **argv, char **envp) {
 
@@ -473,22 +348,23 @@ printf("Entering main ... ");
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
 
-
-printf("Kokkos should be initialized AFTER MPI_Init ... ");
+  printf("Kokkos initialized AFTER MPI_Init ... ");
+  int64_t total_kmers;
 
 #ifdef ENABLE_KOKKOS
   printf("Kokkos enabled  ...... \n\n");
   Kokkos::initialize(argc, argv);
   bool kokkos_init_status = Kokkos::is_initialized();
-  printf("Kokkos initialization status:   %d ...\n\n ", kokkos_init_status);
+  printf("Check Kokkos initialization status:   %d ...\n\n ", kokkos_init_status);
 #endif
 
-
+// TODO:  REMOVE?
 #ifdef CIDS_FROM_HASH
   SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
         "consistency across small runs");
 #endif
 
+// TODO:  REMOVE?
   const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 #if defined(ENABLE_GASNET_STATS)
   if (gasnet_statsfile) _gasnet_stats = true;
@@ -496,6 +372,7 @@ printf("Kokkos should be initialized AFTER MPI_Init ... ");
   if (gasnet_statsfile) SWARN("No GASNet statistics will be collected - use Debug or RelWithDebInfo modes to enable collection.");
 #endif
 
+// TODO:  HOW MUCH OF LINES 376 - 433 CAN BE REMOVED?
   srand(rank_me() + 10);
   auto start_t = clock_now();
   Options options;
@@ -526,7 +403,7 @@ printf("Kokkos should be initialized AFTER MPI_Init ... ");
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
-  run_pipeline(options, memory_tracker, start_t);
+  total_kmers = run_pipeline(options, memory_tracker, start_t);
 
   LOG("Cleaning up and completing remaining tasks\n");
 
@@ -559,12 +436,9 @@ printf("Kokkos should be initialized AFTER MPI_Init ... ");
 Kokkos::Timer timer;
 double kokkos_time = timer.seconds();
   {
-  printf("void test_kokkos() .....\n\n");
-  test_kokkos();
   Kokkos::fence();
   }
-  printf("FENCE - after test_kokkos\n\n");
-printf("\n\n  Kokkos mhm2-Executable Runtime:  (%g s)\n\n", kokkos_time);
+printf("\n\n  Kokkos mhm2 Runtime:  (%g s)\n\n", kokkos_time);
 #endif
 
   BaseTimer finalize_timer("upcxx::finalize", nullptr);  // no PromiseReduce possible
@@ -581,8 +455,9 @@ printf("\n\n  Kokkos mhm2-Executable Runtime:  (%g s)\n\n", kokkos_time);
   finalize_timer.stop();
   total_timer.stop();
   if (am_root)
-    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
-         << finalize_timer.get_elapsed() << " s)" << endl;
+    cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx and kokkos finalize in "
+         << finalize_timer.get_elapsed() << " s)\n" 
+         << "\nTotal unique kmers: " << total_kmers << endl;
 
 
   return 0;

@@ -68,11 +68,11 @@ struct SeqBlockInserter {
 };
 
 template <int MAX_K>
-void analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
+int64_t analyze_kmers(unsigned kmer_len, int qual_offset, PackedReadsList &packed_reads_list, int dmin_thres,
                     dist_object<KmerDHT<MAX_K>> &kmer_dht, bool dump_kmers);
 
 #define __MACRO_KCOUNT__(KMER_LEN, MODIFIER)                                                        \
-  MODIFIER void analyze_kmers<KMER_LEN>(unsigned, int, PackedReadsList &, int,  \
+  MODIFIER int64_t analyze_kmers<KMER_LEN>(unsigned, int, PackedReadsList &, int,  \
                                         dist_object<KmerDHT<KMER_LEN>> &, bool)
 
 // Reduce compile time by instantiating templates of common types
