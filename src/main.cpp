@@ -513,7 +513,14 @@ printf("\n\n mhm2-kmer-analysis Kokkos executable runtime:  (%g s)\n\n", kokkos_
       }
     }
 
-    // TODO:  Move output lines method & call method from main
+    // TODO:  Move output lines out of main & into method & call method (from main)
+    //
+    // TODO:  Fix "stold" error:
+    // terminate called after throwing an instance of 'std::invalid_argument'
+    // what():  stold
+    // https://en.cppreference.com/w/cpp/string/basic_string/stof
+    // Are "unique_kmers" & "total_kmers" strings that need to be converted to a float?
+
     double frac = std::stold(unique_kmers) / std::stold(total_kmers);
 
     ofstream csv("proxy_results_summary.csv");
