@@ -235,7 +235,9 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG(KBLUE, "Completed initialization in ", setprecision(2), fixed, init_t_elapsed.count(), " s at ", get_current_time(), " (",
        get_size_str(post_init_free_mem), " free memory on node 0)", KNORM, "\n");
 
+#ifndef ENABLE_KOKKOS
   done_init_devices();
+#endif ENABLE_KOKKOS
 
   run_contigging(options, packed_reads_list, rlen_limit);
 
@@ -419,13 +421,88 @@ void test_kokkos() {
 }
 #endif
 
+
+
+
+
+void print_log_results(string output_dir, double elapsed_time) {
+    // parse proxy results from log file and print
+  
+
+    ifstream log_file("mhm2.log");
+    if (!log_file) {
+      perror("Cannot open mhm2.log");
+      return;
+    }
+
+    cout << "\n\n\n----------------------------\n\n" <<
+    "proxy_results_summary.csv can be found in " << output_dir <<
+    "\n\n" << endl;
+
+    string line, token, total_kmers, unique_kmers, mem, read_count;
+
+    std::unordered_map<string, std::pair<int, string*>> results_map = {
+      {"tot_num_reads", {6, &read_count}},
+      {"Total kmer count sum", {7, &total_kmers}},
+      {"Total kmers", {5, &unique_kmers}},
+      {"Peak memory", {10, &mem}}
+    };
+
+    while (std::getline(log_file, line)) {
+      for (const auto& [phrase, pair] : results_map) {
+        if (line.find(phrase) != string::npos) {
+          std::istringstream iss(line);
+          for (int i = 0; i < pair.first; i++) {
+            iss >> token;
+          }
+          *pair.second = token;
+          // fix mem token e.g. 4GB -> 4 GB
+          // fix reads token
+          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); }
+          else if (phrase == "tot_num_reads") { pair.second->erase(0, 14); }
+          break;
+        }
+      }
+    }
+
+    //cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
+
+    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+
+    ofstream csv("proxy_results_summary.csv");
+
+    // column headers
+    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
+
+    // results
+    csv << read_count << "," <<
+            unique_kmers << "," <<
+            total_kmers << "," <<
+            std::fixed << std::setprecision(3) << frac << "," <<
+            std::setprecision(2) << mem << "," <<
+            elapsed_time << "\n";
+
+
+    csv.close();
+ 
+
+}
+
+
+
+
+
+
 int main(int argc, char **argv, char **envp) {
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
+  Options options;
 
 #ifdef ENABLE_KOKKOS
   Kokkos::initialize(argc, argv);
+   double kokkos_elapsed_time;
+  Kokkos::Timer kokkos_timer;
   {
 #endif
 
@@ -443,7 +520,7 @@ int main(int argc, char **argv, char **envp) {
 
   srand(rank_me() + 10);
   auto start_t = clock_now();
-  Options options;
+  
   // if we don't load, return "command not found"
   if (!options.load(argc, argv)) return 127;
   print_exec_cmd(argc, argv);
@@ -467,7 +544,10 @@ int main(int argc, char **argv, char **envp) {
   update_rlimits(options.reads_fnames.size());
   set_thread_pool(options.max_worker_threads);
   calc_input_files_size(options.reads_fnames);
+
+#ifndef ENABLE_KOKKOS
   init_devices();
+#endif
 
   MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
@@ -501,7 +581,7 @@ int main(int argc, char **argv, char **envp) {
   SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
 #ifdef ENABLE_KOKKOS
-  test_kokkos();
+  //test_kokkos();
   }
 #endif
 
@@ -510,14 +590,24 @@ int main(int argc, char **argv, char **envp) {
   upcxx::finalize();
 
 #ifdef ENABLE_KOKKOS
+  kokkos_elapsed_time = kokkos_timer.seconds();
   Kokkos::finalize();
 #endif
 
   finalize_timer.stop();
   total_timer.stop();
-  if (am_root)
+  if (am_root) {
     cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
          << finalize_timer.get_elapsed() << " s)" << endl;
+
+
+#ifdef ENABLE_KOKKOS   
+    print_log_results(options.output_dir, kokkos_elapsed_time);
+#else
+    print_log_results(options.output_dir, total_timer.get_elapsed());
+#endif
+  }
+  
 
   return 0;
 }
