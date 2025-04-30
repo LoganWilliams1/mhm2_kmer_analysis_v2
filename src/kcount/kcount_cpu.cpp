@@ -593,6 +593,9 @@ double HashTableInserter<MAX_K>::insert_into_local_hashtable(dist_object<KmerMap
   auto all_sum_kmer_counts = reduce_all(sum_kmer_counts, op_fast_add).wait();
   double avg_kmer_count = (double)all_sum_kmer_counts / all_kmers_inserted;
   SLOG_CPU_HT("For ", all_kmers_inserted, " kmers, average kmer count (depth): ", fixed, setprecision(2), avg_kmer_count, "\n");
+
+  SLOG_CPU_HT("Total kmer count sum: ", all_sum_kmer_counts, "\n");
+
   return avg_kmer_count;
 }
 
