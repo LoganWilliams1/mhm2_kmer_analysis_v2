@@ -344,6 +344,69 @@ string init_upcxx(BaseTimer &total_timer) {
 }
 
 
+
+void print_log_results(string output_dir, double elapsed_time) {
+     // parse proxy results from log file and print
+     ifstream log_file("mhm2.log");
+     if (!log_file) {
+       perror("Cannot open mhm2.log");
+       return;
+     }
+
+     cout << "\n\n\n----------------------------\n\n" <<
+     "proxy_results_summary.csv can be found in " << output_dir <<
+     "\n\n" << endl;
+ 
+     string line, token, total_kmers, unique_kmers, mem, read_count;
+ 
+    std::unordered_map<string, std::pair<int, string*>> results_map = {
+      {"tot_num_reads", {6, &read_count}},
+      {"Total kmer count sum", {7, &total_kmers}},
+      {"Total kmers", {5, &unique_kmers}},
+      {"Peak memory", {10, &mem}}
+    };
+ 
+    while (std::getline(log_file, line)) {
+      for (const auto& [phrase, pair] : results_map) {
+        if (line.find(phrase) != string::npos) {
+          std::istringstream iss(line);
+          for (int i = 0; i < pair.first; i++) {
+            iss >> token;
+          }
+          *pair.second = token;
+          // fix mem token e.g. 4GB -> 4 GB
+          // fix reads token
+          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); }
+          else if (phrase == "tot_num_reads") { pair.second->erase(0, 14); }
+          break;
+        }
+      }
+    }
+
+    //cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
+
+    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+
+    ofstream csv("proxy_results_summary.csv");
+
+    // column headers
+    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
+
+    // results
+    csv << read_count << "," <<
+            unique_kmers << "," <<
+            total_kmers << "," <<
+            std::fixed << std::setprecision(3) << frac << "," <<
+            std::setprecision(2) << mem << "," <<
+            elapsed_time << "\n";
+
+    csv.close();
+
+}
+
+
+
+
 int main(int argc, char **argv, char **envp) {
   
 printf("Entering main ...\n\n");
@@ -471,80 +534,10 @@ printf("\n\n mhm2-kmer-analysis Kokkos executable runtime:  (%g s)\n\n", kokkos_
   Kokkos::finalize();
   Kokkos::fence();
   printf("Kokkos::finalizing .... \n\n");
+  print_log_results(options.output_dir, kokkos_elapsed_time);
+#else
+  print_log_results(options.output_dir, total_timer.get_elapsed());
 #endif
-
-
-  // parse proxy results from log file and print
-  if (am_root) {
-
-    ifstream log_file("mhm2.log");
-    if (!log_file) {
-      perror("Cannot open mhm2.log");
-      return 1;
-    }
-
-    cout << "\n\n\n----------------------------\n\n" <<
-    "proxy_results_summary.csv can be found in " << options.output_dir << 
-    "\n\n" << endl;
-
-    string line, token, total_kmers, unique_kmers, mem, read_count;
-
-    std::unordered_map<string, std::pair<int, string*>> results_map = {
-      {"Total number of reads:  ", {6, &read_count}},
-      {"Total kmer count:  ", {7, &total_kmers}},
-      {"Total unique kmers:  ", {5, &unique_kmers}},         
-      {"Peak memory usage:  ", {10, &mem}}
-    };
-
-    while (std::getline(log_file, line)) {
-      for (const auto& [phrase, pair] : results_map) {
-        if (line.find(phrase) != string::npos) {
-          std::istringstream iss(line);
-          for (int i = 0; i < pair.first; i++) {
-            iss >> token;
-          }
-          *pair.second = token;
-          // fix mem token e.g. 4GB -> 4 GB
-          // fix reads token
-          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); } 
-          else if (phrase == "tot_num_reads") { pair.second->erase(0, 15); }
-          break;          
-        }
-      }
-    }
-
-    // TODO:  Move output lines out of main & into method & call method (from main)
-    //
-    // TODO:  Fix "stold" error:
-    // terminate called after throwing an instance of 'std::invalid_argument'
-    // what():  stold
-    // https://en.cppreference.com/w/cpp/string/basic_string/stof
-    // Are "unique_kmers" & "total_kmers" in fact strings that need to be converted to a float?  I would guess they're already some numerical type
-     // The std::stold function in C++ converts a string to a long double value. It is part of the <string> header and is available since C++11.
-
-    long double frac = std::stold(unique_kmers) / std::stold(total_kmers);
-
-    ofstream csv("proxy_results_summary.csv");
-
-    // column headers
-    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
-    
-    // results
-    csv << read_count << "," << 
-            unique_kmers << "," << 
-            total_kmers << "," << 
-            std::fixed << std::setprecision(3) << frac << "," << 
-            std::setprecision(2) << mem << "," <<
-#ifdef ENABLE_KOKKOS
-            kokkos_elapsed_time << "\n";
-#endif
-#ifndef ENABLE_KOKKOS
-            total_timer.get_elapsed() << "\n";
-#endif
-    
-
-    csv.close();
-  }
 
 
   return 0;

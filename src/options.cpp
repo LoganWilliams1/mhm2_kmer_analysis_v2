@@ -251,7 +251,7 @@ Options::Options() {
   }
   upcxx::broadcast(buf, sizeof(buf), 0, world()).wait();
   setup_time = string(buf);
-  output_dir = string("mhm2-run-<reads_fname[0]>-n") + to_string(upcxx::rank_n()) + "-N" +
+  output_dir = string("mhm2-kmer-analysis-output-n") + to_string(upcxx::rank_n()) + "-N" +
                to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
 }
 
@@ -432,7 +432,7 @@ bool Options::load(int argc, char **argv) {
     first_read_fname = remove_file_ext(get_basename(first_read_fname));
     auto spos = first_read_fname.find_first_of(':');
     if (spos != string::npos) first_read_fname = first_read_fname.substr(0, spos);
-    output_dir = "mhm2-run-" + first_read_fname + "-n" + to_string(upcxx::rank_n()) + "-N" +
+    output_dir = "mhm2-kmer-analysis-output-n" + to_string(upcxx::rank_n()) + "-N" +
                  to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time + "-" + get_job_id();
     output_dir_opt->default_val(output_dir);
   }
