@@ -480,7 +480,8 @@ bool Options::load(int argc, char **argv) {
 
   SLOG(KLBLUE, full_version_str, KNORM, "\n");
 
-
+// https://www.intel.com/content/www/us/en/docs/dpcpp-cpp-compiler/developer-guide-reference/2023-2/use-predefined-macros-to-specify-intel-compilers.html
+#if !defined(__INTEL_LLVM_COMPILER)
   if (upcxx::rank_me() == 0) {
     // print out all compiler definitions
     SLOG_VERBOSE(KLBLUE, "_________________________", KNORM, "\n");
@@ -494,6 +495,7 @@ bool Options::load(int argc, char **argv) {
     for (auto &opt_str : all_opts_strings) SLOG(KLBLUE, opt_str, KNORM, "\n");
     SLOG(KLBLUE, "_________________________", KNORM, "\n");
   }
+#endif
   auto num_nodes = upcxx::rank_n() / upcxx::local_team().rank_n();
   SLOG(KBLUE, "Starting run with ", upcxx::rank_n(), " processes on ", num_nodes, " node", (num_nodes > 1 ? "s" : ""), " at ",
        get_current_time(), KNORM, "\n");
