@@ -237,7 +237,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
 
 #ifndef ENABLE_KOKKOS
   done_init_devices();
-#endif ENABLE_KOKKOS
+#endif 
 
   run_contigging(options, packed_reads_list, rlen_limit);
 

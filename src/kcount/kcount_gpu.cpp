@@ -45,19 +45,30 @@
 #include "kmer_dht.hpp"
 #include "devices_gpu.hpp"
 
-#include "gpu-utils/gpu_utils.hpp"
 
 
 #ifndef ENABLE_KOKKOS
-#include "kcount-gpu/parse_and_pack.hpp"
-#include "kcount-gpu/gpu_hash_table.hpp"
+  #include "kcount-gpu/parse_and_pack.hpp"
+  #include "kcount-gpu/gpu_hash_table.hpp"
 #endif
 
+
+
 #ifdef ENABLE_KOKKOS
-#include <Kokkos_Core.hpp>
-#include "kcount-kokkos/kokkos_pnp.hpp"
-#include "kcount-kokkos/kokkos_gpu_ht.hpp"
+  #include <Kokkos_Core.hpp>
+  #include "kcount-kokkos/kokkos_pnp.hpp"
+  #include "kcount-kokkos/kokkos_gpu_ht.hpp"
+  #if !defined(ENABLE_CUDA) && !defined(ENABLE_HIP)
+    #define KOKKOS_CPU
+  #endif
 #endif
+
+
+
+#ifndef KOKKOS_CPU
+  #include "gpu-utils/gpu_utils.hpp"
+#endif
+
 
 
 // #define SLOG_GPU(...) SLOG(KLMAGENTA, __VA_ARGS__, KNORM)
@@ -230,11 +241,18 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   state = new HashTableInserterState();
   // calculate total slots for hash table. Reserve space for parse and pack
   size_t bytes_for_pnp = KCOUNT_SEQ_BLOCK_SIZE * (2 + Kmer<MAX_K>::get_N_LONGS() * sizeof(uint64_t) + sizeof(int));
+
+
+#if !defined(KOKKOS_CPU)
   DBG("Finding available memory on GPU ", gpu_utils::get_gpu_uuid(), "\n");
   auto init_gpu_mem = gpu_utils::get_gpu_avail_mem();
   auto gpu_avail_mem_per_rank = (get_gpu_avail_mem_per_rank() - bytes_for_pnp) * 0.9;
   SLOG_GPU("Available GPU memory per rank for kmers hash table is ", get_size_str(gpu_avail_mem_per_rank), 
            " accounting for PnP of ", get_size_str(bytes_for_pnp/0.9), "\n");
+#elif defined(KOKKOS_CPU)
+  auto gpu_avail_mem_per_rank = 0;
+#endif
+
   SLOG_GPU("Initializing read kmers hash table with max ", max_elems, " elems (with max ", max_ctg_elems,
            " elems for ctg hash table}\n");
   assert(state != nullptr);
@@ -248,10 +266,13 @@ void HashTableInserter<MAX_K>::init(size_t max_elems, size_t max_ctg_elems, size
   if (!driver_warnings.empty()) SWARN(driver_warnings);
   SLOG_GPU("Initialized hash table GPU driver in ", fixed, setprecision(3), t.get_elapsed(), " s\n");
   barrier(local_team());
+
+#if !defined(KOKKOS_CPU)
   auto gpu_used_mem = init_gpu_mem - gpu_utils::get_gpu_avail_mem();
   barrier(local_team());
   SLOG_GPU("GPU read kmers hash table used ", get_size_str(gpu_used_mem), " memory on GPU out of ",
            get_size_str(gpu_utils::get_gpu_tot_mem()), "\n");
+#endif
 }
 
 template <int MAX_K>
