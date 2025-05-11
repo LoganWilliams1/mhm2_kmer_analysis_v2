@@ -543,7 +543,7 @@ KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, 
       if (!prev_count) new_inserts++;
     }
     //FIXME: error: no matching function for call to 'min' w/ IntelOneAPI on GR CPU
-    ext_count_t kmer_count_uint16 = min(kmer_count, UINT16_MAX);
+    ext_count_t kmer_count_uint16 = min(kmer_count, static_cast<uint32_t>(UINT16_MAX));
     inc_ext(left_ext, kmer_count_uint16, ext_counts);
     inc_ext(right_ext, kmer_count_uint16, ext_counts + 4);
     if (use_qf && !update_only && !kmer_found_in_ht && !ctg_kmers) {
@@ -711,7 +711,9 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
   // reserve space for the fixed size buffer for passing data to the GPU
   size_t elem_buff_size = KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * (3 + sizeof(count_t));
-  gpu_avail_mem -= elem_buff_size;
+  if (gpu_avail_mem > 0) {
+    gpu_avail_mem -= elem_buff_size;
+  }
   ostringstream log_msgs, log_warnings;
   log_msgs << "Elem buff size " << elem_buff_size << " (avail mem now " << gpu_avail_mem << ")\n";
   size_t elem_size = sizeof(KmerArray<MAX_K>) + sizeof(CountsArray);
@@ -754,7 +756,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
            << ", compact ht " << compact_kmers_size << ", total " << tot_size << "\n";
 
   // keep some in reserve as a buffer
-  double mem_ratio = (double)(0.8 * gpu_avail_mem) / tot_size;
+  double mem_ratio = (gpu_avail_mem > 0) ? (double)(0.8 * gpu_avail_mem) / tot_size : 1;
   if (mem_ratio < 0.9)
     log_warnings << "Insufficent memory for " << fixed << setprecision(3) << target_load_factor
                  << " load factor across all data structures; reducing to " << (mem_ratio * target_load_factor)
