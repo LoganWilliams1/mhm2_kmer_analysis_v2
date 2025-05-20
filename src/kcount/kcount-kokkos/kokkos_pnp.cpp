@@ -292,7 +292,7 @@ void pack_seqs(Kokkos::View<char*> dev_seqs_v, Kokkos::View<char*>dev_packed_seq
     int seqs_i = i * 2;
     char packed = get_packed_val(dev_seqs_v(seqs_i));
     if ((int)packed == 11) {
-      printf("INVALID dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs_v(seqs_i),
+      Kokkos::printf("INVALID dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs_v(seqs_i),
              packed << 4, packed, seqs_len, packed_seqs_len);
     }
     packed = packed << 4;
@@ -300,7 +300,7 @@ void pack_seqs(Kokkos::View<char*> dev_seqs_v, Kokkos::View<char*>dev_packed_seq
       // do not overflow as each thread handles 1-2 characters in the sequence
       char packed_ = get_packed_val(dev_seqs_v(seqs_i + 1));
       if ((int)packed_ == 11) {
-        printf("INVALID dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
+        Kokkos::printf("INVALID dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
                dev_seqs_v(seqs_i), seqs_i + 1, dev_seqs_v(seqs_i + 1), packed_ << 4, packed_, seqs_len, packed_seqs_len);
       }
       packed |= packed_;
