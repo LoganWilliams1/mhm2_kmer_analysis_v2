@@ -103,10 +103,12 @@ KOKKOS_FUNCTION void kmer_set(KmerArray<MAX_K> &kmer1, const KmerArray<MAX_K> &k
   uint64_t old_key;
   for (int i = 0; i < N_LONGS - 1; i++) {
     old_key = Kokkos::atomic_exchange((unsigned long long *)&(kmer1.longs[i]), kmer2.longs[i]);
-    if (old_key != KEY_EMPTY) WARN("old key should be KEY_EMPTY");
+    //if (old_key != KEY_EMPTY) WARN("old key should be KEY_EMPTY");
+    if (old_key != KEY_EMPTY) Kokkos::printf("old key should be KEY_EMPTY");
   }
   old_key = Kokkos::atomic_exchange((unsigned long long *)&(kmer1.longs[N_LONGS - 1]), kmer2.longs[N_LONGS - 1]);
-  if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
+  //if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
+  if (old_key != KEY_TRANSITION) Kokkos::printf("old key should be KEY_TRANSITION");
 }
 
 template <int MAX_K>
@@ -240,7 +242,8 @@ void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> compact_elems
           // compute exts
           int8_t left_ext = get_ext(vals_view(i), 0, ext_map);
           int8_t right_ext = get_ext(vals_view(i), 4, ext_map);
-          if (vals_view(i).kmer_count < 2) WARN("elem should have been purged, count %d", vals_view(i).kmer_count);
+          //if (vals_view(i).kmer_count < 2) WARN("elem should have been purged, count %d", vals_view(i).kmer_count);
+          if (vals_view(i).kmer_count < 2) Kokkos::printf("elem should have been purged, count %d", vals_view(i).kmer_count);
           compact_vals_view(slot).count = vals_view(i).kmer_count;
           compact_vals_view(slot).left = left_ext;
           compact_vals_view(slot).right = right_ext;
@@ -285,7 +288,8 @@ void gpu_purge_invalid(KmerCountsMap<MAX_K> elems, uint64_t& num_purged, uint64_
 
 KOKKOS_INLINE_FUNCTION char to_base_func(int index, int pp) {
   if (index > 9) {
-    WARN("index out of range for to_base: %d, packed seq pos %d", index, pp);
+    //WARN("index out of range for to_base: %d, packed seq pos %d", index, pp);
+    Kokkos::printf("index out of range for to_base: %d, packed seq pos %d", index, pp);
     return 0;
   }
   if (index == 0) return '_';
@@ -459,11 +463,13 @@ KOKKOS_FUNCTION bool get_kmer_from_supermer(Kokkos::View<char*> seqs_view, Kokko
     if (bad_qual(right_ext)) right_ext = '0';
   }
   if (!is_valid_base(left_ext)) {
-    WARN("threadid %d, invalid char for left nucleotide %d", kokkos_index, (uint8_t)left_ext);
+    //WARN("threadid %d, invalid char for left nucleotide %d", kokkos_index, (uint8_t)left_ext);
+    Kokkos::printf("threadid %d, invalid char for left nucleotide %d", kokkos_index, (uint8_t)left_ext);
     return false;
   }
   if (!is_valid_base(right_ext)) {
-    WARN("threadid %d, invalid char for right nucleotide %d", kokkos_index, (uint8_t)right_ext);
+    //WARN("threadid %d, invalid char for right nucleotide %d", kokkos_index, (uint8_t)right_ext);
+    Kokkos::printf("threadid %d, invalid char for right nucleotide %d", kokkos_index, (uint8_t)right_ext);
     return false;
   }
   uint64_t kmer_rc[N_LONGS];
@@ -509,7 +515,8 @@ KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, 
         if (old_key == KEY_EMPTY) {
           if (update_only) {
             old_key = Kokkos::atomic_exchange((unsigned long long *)&(keys_view(slot).longs[N_LONGS - 1]), KEY_EMPTY);
-            if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
+            //if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
+            if (old_key != KEY_TRANSITION) Kokkos::printf("old key should be KEY_TRANSITION");
             return false;
           }
           kmer_set(keys_view(slot), kmer);
@@ -581,8 +588,10 @@ void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBuff supermer
       char left_ext, right_ext;
       uint32_t kmer_count;
       if (get_kmer_from_supermer<MAX_K>(seqs_view, counts_view, buff_len, kmer_len, kmer.longs, left_ext, right_ext, kmer_count, kokkos_index, twins_v)) {
-        if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) WARN("block equal to KEY_EMPTY");
-        if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) WARN("block equal to KEY_TRANSITION");
+        //if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) WARN("block equal to KEY_EMPTY");
+        if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) Kokkos::printf("block equal to KEY_EMPTY");
+        //if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) WARN("block equal to KEY_TRANSITION");
+        if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) Kokkos::printf("block equal to KEY_TRANSITION");
         auto hash_val = kmer_hash(kmer);
         char prev_left_ext = '0', prev_right_ext = '0';
         // bool use_qf = (tcf != nullptr);
