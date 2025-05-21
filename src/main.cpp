@@ -79,6 +79,15 @@ void init_devices();
 void done_init_devices();
 void teardown_devices();
 
+
+void print_exec_cmd(int argc, char **argv) {
+  string executed = argv[0];
+  executed += ".py";  // assume the python wrapper was actually called
+  for (int i = 1; i < argc; i++) executed = executed + " " + argv[i];
+    SLOG_VERBOSE("Executed as: ", executed, "\n");
+}
+
+
 int merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
 
@@ -601,10 +610,8 @@ int main(int argc, char **argv, char **envp) {
 
 #ifdef ENABLE_KOKKOS   
     print_log_results(options.output_dir, kokkos_elapsed_time);
-    Kokkos::printf("Generating results for Kokkos executable run ....");
 #else
     print_log_results(options.output_dir, total_timer.get_elapsed());
-    Kokkos::printf("Generating results for non-Kokkos executable run ....");
 #endif
   }
   
