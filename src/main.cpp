@@ -517,6 +517,7 @@ int main(int argc, char **argv, char **envp) {
 
 #ifdef ENABLE_KOKKOS   
     print_log_results(options.output_dir, kokkos_elapsed_time);
+    Kokkos::printf("Generating results for Kokkos executable");
 #else
     print_log_results(options.output_dir, total_timer.get_elapsed());
 #endif
