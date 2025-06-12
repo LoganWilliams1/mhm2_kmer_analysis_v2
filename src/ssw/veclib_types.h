@@ -16,7 +16,6 @@
 /*                                                                            */
 /******************************************************************************/
 
-
 #ifndef _H_VECLIB_TYPES
 #define _H_VECLIB_TYPES
 
@@ -29,7 +28,6 @@ extern "C" {
 #include <type_traits>
 #include <limits>
 #endif
-
 
 /******************************************************************************/
 
@@ -106,8 +104,6 @@ extern "C" {
 #error Compiler not supported yet.
 #endif
 
-
-
 /** Types **/
 
 typedef VECLIB_ALIGNED8 unsigned long long __m64;
@@ -139,13 +135,13 @@ typedef VECLIB_ALIGNED16 struct {
 
 /** Parameter Types **/
 
-typedef const long intlit;   /* general int literal */
-typedef const long intlit1;  /* 1 bit int literal */
-typedef const long intlit2;  /* 2 bit int literal */
-typedef const long intlit3;  /* 3 bit int literal */
-typedef const long intlit4;  /* 4 bit int literal */
-typedef const long intlit5;  /* 5 bit int literal */
-typedef const long intlit8;  /* 8 bit int literal */
+typedef const long intlit;  /* general int literal */
+typedef const long intlit1; /* 1 bit int literal */
+typedef const long intlit2; /* 2 bit int literal */
+typedef const long intlit3; /* 3 bit int literal */
+typedef const long intlit4; /* 4 bit int literal */
+typedef const long intlit5; /* 5 bit int literal */
+typedef const long intlit8; /* 8 bit int literal */
 
 typedef const long uintlit;  /* general unsigned int literal */
 typedef const long uintlit1; /* 1 bit unsigned int literal */

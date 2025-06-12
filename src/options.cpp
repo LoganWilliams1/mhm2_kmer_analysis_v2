@@ -83,22 +83,16 @@ bool Options::extract_previous_lens(vector<unsigned> &lens, unsigned k) {
   return false;
 }
 
-
-
-
 double Options::setup_output_dir() {
   auto t_start = clock_now();
   if (output_dir.empty()) DIE("Invalid empty ouput_dir");
   if (!upcxx::rank_me()) {
     // create the output directory (and possibly stripe it)
 
-
-
     // always try to make the output_dir
     if (mkdir(output_dir.c_str(), S_IRWXU | S_IRWXG | S_IRWXO | S_ISGID /*use default mode/umask */) == -1) {
       // could not create the directory
       if (errno != EEXIST) {
-      
         SDIE("Could not create output directory '", output_dir, "': ", strerror(errno), "\n");
       }
     }
@@ -215,7 +209,7 @@ double Options::setup_log_file() {
       if (rename("mhm2.log", new_log_fname.c_str()) == -1) DIE("Could not rename mhm2.log: ", strerror(errno));
       // also unlink the rank0 per_rank file (a hard link if it exists)
       unlink("per_rank/00000000/00000000/mhm2.log");  // ignore any errors
-    } 
+    }
   }
   upcxx::barrier();
   chrono::duration<double> t_elapsed = clock_now() - t_start;
@@ -413,14 +407,10 @@ bool Options::load(int argc, char **argv) {
 
   if (!adapter_trim) adapter_fname.clear();
 
-
   if (reads_fnames.empty()) {
-    if (!rank_me())
-      cerr << "\nError in command line:\nRequire read names\nRun with --help for more information\n";
+    if (!rank_me()) cerr << "\nError in command line:\nRequire read names\nRun with --help for more information\n";
     return false;
   }
-
-
 
   upcxx::barrier();
 
@@ -433,7 +423,7 @@ bool Options::load(int argc, char **argv) {
     auto spos = first_read_fname.find_first_of(':');
     if (spos != string::npos) first_read_fname = first_read_fname.substr(0, spos);
     output_dir = string("mhm2-kmer-analysis-output-n") + to_string(upcxx::rank_n()) + "-N" +
-               to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time;
+                 to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + setup_time;
     output_dir_opt->default_val(output_dir);
   }
 
@@ -442,7 +432,6 @@ bool Options::load(int argc, char **argv) {
   setup_time += setup_log_file();
 
   min_kmer_len = kmer_lens;
-
 
   if (!app.get_option("--kmer-lens")->empty()) default_kmer_lens = false;
 

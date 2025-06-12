@@ -814,7 +814,7 @@ void HashTableGPUDriver<MAX_K>::get_elapsed_time(double &insert_time, double &ke
   kernel_time = dstate->kernel_timer.get_elapsed();
 }
 
-template<int MAX_K>
+template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::begin_iterate() {
   output_index = 0;
 }

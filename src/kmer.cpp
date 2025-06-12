@@ -314,7 +314,7 @@ void Kmer<MAX_K>::set_kmer(const char *s) {
     longs[l] |= ((x + ((x ^ (*s & 2)) >> 1)) << (2 * (31 - j)));
 #else
     // This is the same, but broken down...
-    x = ((*s) & 4) >> 1;         // i.e. Gg/Tt will set bit 1, so x == 2 | 0
+    x = ((*s) & 4) >> 1;  // i.e. Gg/Tt will set bit 1, so x == 2 | 0
     assert(x == 2 || x == 0);
     x |= (x ^ ((*s) & 2)) >> 1;  // i.e. Cc/Gg will not set bit 0, Aa/Tt will set bit 0
     assert(x >= 0 && x <= 3);
@@ -638,7 +638,7 @@ ostream &operator<<(ostream &out, const Kmer<MAX_K> &k) {
   return out << k.to_string();
 }
 
-#define KMER_K(KMER_LEN) template ostream &operator<< <KMER_LEN>(ostream &out, const Kmer<KMER_LEN> &k);
+#define KMER_K(KMER_LEN) template ostream &operator<< <KMER_LEN>(ostream & out, const Kmer<KMER_LEN> &k);
 
 KMER_K(32);
 #if MAX_BUILD_KMER >= 64

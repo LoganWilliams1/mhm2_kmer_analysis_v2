@@ -130,7 +130,7 @@ __host__ __device__ uint64_t MurmurHash64B(const void *key, int len, unsigned in
 // <https://gist.github.com/lh3/59882d6b96166dfc3d8d> for a snapshot.
 
 __host__ __device__ uint64_t hash_64(uint64_t key, uint64_t mask) {
-  key = (~key + (key << 21)) & mask;               // key = (key << 21) - key - 1;
+  key = (~key + (key << 21)) & mask;  // key = (key << 21) - key - 1;
   key = key ^ key >> 24;
   key = ((key + (key << 3)) + (key << 8)) & mask;  // key * 265
   key = key ^ key >> 14;

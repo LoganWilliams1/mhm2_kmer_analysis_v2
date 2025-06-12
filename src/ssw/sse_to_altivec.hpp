@@ -48,8 +48,6 @@
 #include <limits>
 #endif
 
-
-
 #include "vec128int.h"
 
 #ifdef __BIG_ENDIAN__

@@ -98,9 +98,8 @@ static DeviceProp &get_gpu_properties(int device_id = -1) {
 }
 
 void gpu_utils::set_gpu_device(int rank_me) {
-
 #ifdef ENABLE_KOKKOS
-	return;
+  return;
 #endif
 
   if (rank_me == -1) {

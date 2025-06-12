@@ -132,8 +132,7 @@ static void aggregate_stats() {
   } else {
     string line;
     // this stage will always be last in the stats file
-    while (getline(stats_file, line) && line.find(_current_stats_stage) == string::npos)
-      ;
+    while (getline(stats_file, line) && line.find(_current_stats_stage) == string::npos);
     // SLOG(line, "\n");
     while (getline(stats_file, line)) {
       // SLOG(line, "\n");

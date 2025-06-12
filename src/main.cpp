@@ -79,14 +79,12 @@ void init_devices();
 void done_init_devices();
 void teardown_devices();
 
-
 void print_exec_cmd(int argc, char **argv) {
   string executed = argv[0];
   executed += ".py";  // assume the python wrapper was actually called
   for (int i = 1; i < argc; i++) executed = executed + " " + argv[i];
-    SLOG_VERBOSE("Executed as: ", executed, "\n");
+  SLOG_VERBOSE("Executed as: ", executed, "\n");
 }
-
 
 int merge_reads(vector<string> reads_fname_list, int qual_offset, double &elapsed_write_io_t, PackedReadsList &packed_reads_list,
                 bool checkpoint, const string &adapter_fname, int min_kmer_len, int subsample_pct, bool use_blastn_scores);
@@ -167,37 +165,33 @@ void run_contigging(Options &options, PackedReadsList &packed_reads_list, int &r
   //   for (auto kmer_len : options.kmer_lens) {
   //     if (kmer_len <= 1) continue;  // short circuit to just load reads
   int kmer_len = options.kmer_lens;
-  
+
   auto max_k = (kmer_len / 32 + 1) * 32;
   LOG(upcxx_utils::GasNetVars::getUsedShmMsg(), "\n");
-
-
 
 #define CONTIG_K(KMER_LEN) \
   case KMER_LEN: contigging<KMER_LEN>(kmer_len, rlen_limit, packed_reads_list, options); break
 
-
-      switch (max_k) {
-        CONTIG_K(32);
+  switch (max_k) {
+    CONTIG_K(32);
 #if MAX_BUILD_KMER >= 64
-        CONTIG_K(64);
+    CONTIG_K(64);
 #endif
 #if MAX_BUILD_KMER >= 96
-        CONTIG_K(96);
+    CONTIG_K(96);
 #endif
 #if MAX_BUILD_KMER >= 128
-        CONTIG_K(128);
+    CONTIG_K(128);
 #endif
 #if MAX_BUILD_KMER >= 160
-        CONTIG_K(160);
+    CONTIG_K(160);
 #endif
-        default: DIE("Built for max k = ", MAX_BUILD_KMER, " not k = ", max_k);
-      }
+    default: DIE("Built for max k = ", MAX_BUILD_KMER, " not k = ", max_k);
+  }
 #undef CONTIG_K
 
-    // }
   // }
-
+  // }
 }
 
 void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoint_t start_t) {
@@ -249,7 +243,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
 
 #ifndef ENABLE_KOKKOS
   done_init_devices();
-#endif 
+#endif
 
   run_contigging(options, packed_reads_list, rlen_limit);
 
@@ -280,7 +274,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   SLOG("Stage timing:\n");
   SLOG("    Initialization: ", init_t_elapsed.count(), "\n");
   // if (!options.restart)
-    SLOG("    ", stage_timers.merge_reads->get_final(), "\n");
+  SLOG("    ", stage_timers.merge_reads->get_final(), "\n");
   // else
   //   SLOG("    ", stage_timers.cache_reads->get_final(), "\n");
   SLOG("    ", stage_timers.analyze_kmers->get_final(), "\n");
@@ -291,9 +285,7 @@ void run_pipeline(Options &options, MemoryTrackerThread &memory_tracker, timepoi
   memory_tracker.stop();
   std::chrono::duration<double> t_elapsed = clock_now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(), " for ", MHM2_VERSION, "\n");
-
 }
-
 
 string init_upcxx(BaseTimer &total_timer) {
   total_timer.start();
@@ -346,145 +338,114 @@ string init_upcxx(BaseTimer &total_timer) {
 }
 
 void print_log_results(string output_dir, double elapsed_time) {
-    // parse proxy results from log file and print
-  
+  // parse proxy results from log file and print
 
-    ifstream log_file("mhm2.log");
-    if (!log_file) {
-      perror("Cannot open mhm2.log");
-      return;
-    }
+  ifstream log_file("mhm2.log");
+  if (!log_file) {
+    perror("Cannot open mhm2.log");
+    return;
+  }
 
-    cout << "\n\n\n----------------------------\n\n" <<
-    "proxy_results_summary.csv can be found in " << output_dir <<
-    "\n\n" << endl;
+  cout << "\n\n\n----------------------------\n\n" << "proxy_results_summary.csv can be found in " << output_dir << "\n\n" << endl;
 
-    string line, token, total_kmers, unique_kmers, mem, read_count;
+  string line, token, total_kmers, unique_kmers, mem, read_count;
 
-    std::unordered_map<string, std::pair<int, string*>> results_map = {
-      {"tot_num_reads", {6, &read_count}},
-      {"Total kmer count sum", {7, &total_kmers}},
-      {"Total kmers", {5, &unique_kmers}},
-      {"Peak memory", {10, &mem}}
-    };
+  std::unordered_map<string, std::pair<int, string *>> results_map = {{"tot_num_reads", {6, &read_count}},
+                                                                      {"Total kmer count sum", {7, &total_kmers}},
+                                                                      {"Total kmers", {5, &unique_kmers}},
+                                                                      {"Peak memory", {10, &mem}}};
 
-    while (std::getline(log_file, line)) {
-      for (const auto& [phrase, pair] : results_map) {
-        if (line.find(phrase) != string::npos) {
-          std::istringstream iss(line);
-          for (int i = 0; i < pair.first; i++) {
-            iss >> token;
-          }
-          *pair.second = token;
-          // fix mem token e.g. 4GB -> 4 GB
-          // fix reads token
-          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); }
-          else if (phrase == "tot_num_reads") { pair.second->erase(0, 14); }
-          break;
+  while (std::getline(log_file, line)) {
+    for (const auto &[phrase, pair] : results_map) {
+      if (line.find(phrase) != string::npos) {
+        std::istringstream iss(line);
+        for (int i = 0; i < pair.first; i++) {
+          iss >> token;
         }
+        *pair.second = token;
+        // fix mem token e.g. 4GB -> 4 GB
+        // fix reads token
+        if (phrase == "Peak memory") {
+          pair.second->erase(pair.second->size() - 2);
+        } else if (phrase == "tot_num_reads") {
+          pair.second->erase(0, 14);
+        }
+        break;
       }
     }
+  }
 
-    //cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
+  // cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
 
-    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+  double frac = std::stold(unique_kmers) / std::stold(total_kmers);
 
-    ofstream csv("proxy_results_summary.csv");
+  ofstream csv("proxy_results_summary.csv");
 
-    // column headers
-    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
+  // column headers
+  csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
 
-    // results
-    csv << read_count << "," <<
-            unique_kmers << "," <<
-            total_kmers << "," <<
-            std::fixed << std::setprecision(3) << frac << "," <<
-            std::setprecision(2) << mem << "," <<
-            elapsed_time << "\n";
+  // results
+  csv << read_count << "," << unique_kmers << "," << total_kmers << "," << std::fixed << std::setprecision(3) << frac << ","
+      << std::setprecision(2) << mem << "," << elapsed_time << "\n";
 
-
-    csv.close();
- 
-
+  csv.close();
 }
-
-
-
-
-
-
-
 
 void print_log_results(string output_dir, double elapsed_time) {
-    // parse proxy results from log file and print
-  
+  // parse proxy results from log file and print
 
-    ifstream log_file("mhm2.log");
-    if (!log_file) {
-      perror("Cannot open mhm2.log");
-      return;
-    }
+  ifstream log_file("mhm2.log");
+  if (!log_file) {
+    perror("Cannot open mhm2.log");
+    return;
+  }
 
-    cout << "\n\n\n----------------------------\n\n" <<
-    "proxy_results_summary.csv can be found in " << output_dir <<
-    "\n\n" << endl;
+  cout << "\n\n\n----------------------------\n\n" << "proxy_results_summary.csv can be found in " << output_dir << "\n\n" << endl;
 
-    string line, token, total_kmers, unique_kmers, mem, read_count;
+  string line, token, total_kmers, unique_kmers, mem, read_count;
 
-    std::unordered_map<string, std::pair<int, string*>> results_map = {
-      {"tot_num_reads", {6, &read_count}},
-      {"Total kmer count sum", {7, &total_kmers}},
-      {"Total kmers", {5, &unique_kmers}},
-      {"Peak memory", {10, &mem}}
-    };
+  std::unordered_map<string, std::pair<int, string *>> results_map = {{"tot_num_reads", {6, &read_count}},
+                                                                      {"Total kmer count sum", {7, &total_kmers}},
+                                                                      {"Total kmers", {5, &unique_kmers}},
+                                                                      {"Peak memory", {10, &mem}}};
 
-    while (std::getline(log_file, line)) {
-      for (const auto& [phrase, pair] : results_map) {
-        if (line.find(phrase) != string::npos) {
-          std::istringstream iss(line);
-          for (int i = 0; i < pair.first; i++) {
-            iss >> token;
-          }
-          *pair.second = token;
-          // fix mem token e.g. 4GB -> 4 GB
-          // fix reads token
-          if (phrase == "Peak memory") { pair.second->erase(pair.second->size() - 2); }
-          else if (phrase == "tot_num_reads") { pair.second->erase(0, 14); }
-          break;
+  while (std::getline(log_file, line)) {
+    for (const auto &[phrase, pair] : results_map) {
+      if (line.find(phrase) != string::npos) {
+        std::istringstream iss(line);
+        for (int i = 0; i < pair.first; i++) {
+          iss >> token;
         }
+        *pair.second = token;
+        // fix mem token e.g. 4GB -> 4 GB
+        // fix reads token
+        if (phrase == "Peak memory") {
+          pair.second->erase(pair.second->size() - 2);
+        } else if (phrase == "tot_num_reads") {
+          pair.second->erase(0, 14);
+        }
+        break;
       }
     }
+  }
 
-    //cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
+  // cout << "uniq test: " << unique_kmers << "\ntot test: " << total_kmers << "\nread test: " << read_count << endl;
 
-    double frac = std::stold(unique_kmers) / std::stold(total_kmers);
+  double frac = std::stold(unique_kmers) / std::stold(total_kmers);
 
-    ofstream csv("proxy_results_summary.csv");
+  ofstream csv("proxy_results_summary.csv");
 
-    // column headers
-    csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
+  // column headers
+  csv << "Reads,Unique kmers,Total kmers,Fraction of Unique Kmers,Peak Memory (GB),Timing (seconds)\n";
 
-    // results
-    csv << read_count << "," <<
-            unique_kmers << "," <<
-            total_kmers << "," <<
-            std::fixed << std::setprecision(3) << frac << "," <<
-            std::setprecision(2) << mem << "," <<
-            elapsed_time << "\n";
+  // results
+  csv << read_count << "," << unique_kmers << "," << total_kmers << "," << std::fixed << std::setprecision(3) << frac << ","
+      << std::setprecision(2) << mem << "," << elapsed_time << "\n";
 
-
-    csv.close();
- 
-
+  csv.close();
 }
 
-
-
-
-
-
 int main(int argc, char **argv, char **envp) {
-  
   BaseTimer total_timer("Total Time", nullptr);  // no PromiseReduce possible
   auto init_timings = init_upcxx(total_timer);
   auto am_root = !rank_me();
@@ -492,89 +453,89 @@ int main(int argc, char **argv, char **envp) {
 
 #ifdef ENABLE_KOKKOS
   Kokkos::initialize(argc, argv);
-   double kokkos_elapsed_time;
+  double kokkos_elapsed_time;
   Kokkos::Timer kokkos_timer;
   {
 #endif
 
 #ifdef CIDS_FROM_HASH
-  SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
-        "consistency across small runs");
+    SWARN("Generating contig IDs with hashing - this could result in duplicate CIDs and should only be used for checking "
+          "consistency across small runs");
 #endif
 
-  const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
+    const char *gasnet_statsfile = getenv("GASNET_STATSFILE");
 
 #if defined(ENABLE_GASNET_STATS)
-  if (gasnet_statsfile) _gasnet_stats = true;
+    if (gasnet_statsfile) _gasnet_stats = true;
 #else
   if (gasnet_statsfile) SWARN("No GASNet statistics will be collected - use Debug or RelWithDebInfo modes to enable collection.");
 #endif
 
-  srand(rank_me() + 10);
-  auto start_t = clock_now();
-  
-  // if we don't load, return "command not found"
-  if (!options.load(argc, argv)) return 127;
-  print_exec_cmd(argc, argv);
-  vector<string> envvars;
-  for (char **env = envp; *env != 0; env++) {
-    if (!strncmp(*env, "GASNET", strlen("GASNET"))) envvars.push_back(string(*env));
-    if (!strncmp(*env, "UPCXX", strlen("UPCXX"))) envvars.push_back(string(*env));
-    if (!strncmp(*env, "FI_", strlen("FI_"))) envvars.push_back(string(*env));
-  }
-  sort(envvars.begin(), envvars.end());
-  SLOG_VERBOSE(KBLUE "_________________________", KNORM, "\n");
-  SLOG_VERBOSE(KLBLUE "GASNet/UPCXX/OFI environment variables:", KNORM, "\n");
-  for (auto envvar : envvars) SLOG_VERBOSE(KBLUE, "  ", envvar, KNORM, "\n");
-  SLOG_VERBOSE(KBLUE "_________________________", KNORM, "\n");
-  SLOG_VERBOSE(KLCYAN, "Timing reported as min/my/average/max, balance", KNORM, "\n");
-  // only write them here to honor the verbose flag in options
-  SLOG_VERBOSE(init_timings);
-  ProgressBar::SHOW_PROGRESS = options.show_progress;
-  set_process_affinity(options.pin_by);
-  log_env();
-  update_rlimits(options.reads_fnames.size());
-  set_thread_pool(options.max_worker_threads);
-  calc_input_files_size(options.reads_fnames);
+    srand(rank_me() + 10);
+    auto start_t = clock_now();
+
+    // if we don't load, return "command not found"
+    if (!options.load(argc, argv)) return 127;
+    print_exec_cmd(argc, argv);
+    vector<string> envvars;
+    for (char **env = envp; *env != 0; env++) {
+      if (!strncmp(*env, "GASNET", strlen("GASNET"))) envvars.push_back(string(*env));
+      if (!strncmp(*env, "UPCXX", strlen("UPCXX"))) envvars.push_back(string(*env));
+      if (!strncmp(*env, "FI_", strlen("FI_"))) envvars.push_back(string(*env));
+    }
+    sort(envvars.begin(), envvars.end());
+    SLOG_VERBOSE(KBLUE "_________________________", KNORM, "\n");
+    SLOG_VERBOSE(KLBLUE "GASNet/UPCXX/OFI environment variables:", KNORM, "\n");
+    for (auto envvar : envvars) SLOG_VERBOSE(KBLUE, "  ", envvar, KNORM, "\n");
+    SLOG_VERBOSE(KBLUE "_________________________", KNORM, "\n");
+    SLOG_VERBOSE(KLCYAN, "Timing reported as min/my/average/max, balance", KNORM, "\n");
+    // only write them here to honor the verbose flag in options
+    SLOG_VERBOSE(init_timings);
+    ProgressBar::SHOW_PROGRESS = options.show_progress;
+    set_process_affinity(options.pin_by);
+    log_env();
+    update_rlimits(options.reads_fnames.size());
+    set_thread_pool(options.max_worker_threads);
+    calc_input_files_size(options.reads_fnames);
 
 #ifndef ENABLE_KOKKOS
-  init_devices();
+    init_devices();
 #endif
 
-  MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
+    MemoryTrackerThread memory_tracker;  // write only to mhm2.log file(s), not a separate one too
 
-  run_pipeline(options, memory_tracker, start_t);
+    run_pipeline(options, memory_tracker, start_t);
 
-  LOG("Cleaning up and completing remaining tasks\n");
+    LOG("Cleaning up and completing remaining tasks\n");
 
-  upcxx_utils::ThreadPool::join_single_pool();  // cleanup singleton thread pool
-  upcxx_utils::Timings::wait_pending();         // ensure all outstanding timing summaries have printed
-  LOG("Done waiting for all pending.\n");
-  barrier();
-  LOG("All ranks done. Flushing logs and finalizing.\n");
+    upcxx_utils::ThreadPool::join_single_pool();  // cleanup singleton thread pool
+    upcxx_utils::Timings::wait_pending();         // ensure all outstanding timing summaries have printed
+    LOG("Done waiting for all pending.\n");
+    barrier();
+    LOG("All ranks done. Flushing logs and finalizing.\n");
 
-  BaseTimer flush_logs_timer("flush_logger", nullptr);  // no PromiseReduce possible
-  flush_logs_timer.start();
+    BaseTimer flush_logs_timer("flush_logger", nullptr);  // no PromiseReduce possible
+    flush_logs_timer.start();
 
 #ifdef DEBUG
-  _dbgstream.flush();
-  while (close_dbg());
-  LOG("closed DBG.\n");
+    _dbgstream.flush();
+    while (close_dbg());
+    LOG("closed DBG.\n");
 #endif
 
-  if (am_root)
-    upcxx_utils::flush_logger();
-  else
-    upcxx_utils::close_logger();
+    if (am_root)
+      upcxx_utils::flush_logger();
+    else
+      upcxx_utils::close_logger();
 
-  flush_logs_timer.stop();
-  auto sh_flush_timings = flush_logs_timer.reduce_timings().wait();
-  barrier();
-  SLOG_VERBOSE("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
-  SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
+    flush_logs_timer.stop();
+    auto sh_flush_timings = flush_logs_timer.reduce_timings().wait();
+    barrier();
+    SLOG_VERBOSE("Total time before close and finalize: ", total_timer.get_elapsed_since_start(), "\n");
+    SLOG_VERBOSE("All ranks flushed logs: ", sh_flush_timings->to_string(), "\n");
 
 #ifdef ENABLE_KOKKOS
-  //test_kokkos();
+    // test_kokkos();
   }
 #endif
 
@@ -593,13 +554,12 @@ int main(int argc, char **argv, char **envp) {
     cout << "Total time: " << fixed << setprecision(3) << total_timer.get_elapsed() << " s (upcxx::finalize in "
          << finalize_timer.get_elapsed() << " s)" << endl;
 
-#ifdef ENABLE_KOKKOS   
+#ifdef ENABLE_KOKKOS
     print_log_results(options.output_dir, kokkos_elapsed_time);
 #else
     print_log_results(options.output_dir, total_timer.get_elapsed());
 #endif
   }
-  
 
   return 0;
 }

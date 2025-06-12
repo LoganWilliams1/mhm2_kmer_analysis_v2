@@ -2006,8 +2006,8 @@ auto search(const T &set, const V &val) -> std::pair<bool, decltype(std::begin(d
 
 /// A search function with a filter function
 template <typename T, typename V>
-auto search(const T &set, const V &val, const std::function<V(V)> &filter_function)
-    -> std::pair<bool, decltype(std::begin(detail::smart_deref(set)))> {
+auto search(const T &set, const V &val,
+            const std::function<V(V)> &filter_function) -> std::pair<bool, decltype(std::begin(detail::smart_deref(set)))> {
   using element_t = typename detail::element_type<T>::type;
   // do the potentially faster first search
   auto res = search(set, val);
@@ -2075,8 +2075,8 @@ class IsMember : public Validator {
     using element_t = typename detail::element_type<T>::type;             // Removes (smart) pointers if needed
     using item_t = typename detail::pair_adaptor<element_t>::first_type;  // Is value_type if not a map
 
-    using local_item_t = typename IsMemberType<item_t>::type;             // This will convert bad types to good ones
-                                                                          // (const char * to std::string)
+    using local_item_t = typename IsMemberType<item_t>::type;  // This will convert bad types to good ones
+                                                               // (const char * to std::string)
 
     // Make a local copy of the filter function, using a std::function if not one already
     std::function<local_item_t(local_item_t)> filter_fn = filter_function;

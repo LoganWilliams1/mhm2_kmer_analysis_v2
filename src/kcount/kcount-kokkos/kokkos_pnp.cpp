@@ -80,18 +80,18 @@ const uint64_t KOKKOS_TWINS[256] = {
     0xF0, 0xB0, 0x70, 0x30, 0xE0, 0xA0, 0x60, 0x20, 0xD0, 0x90, 0x50, 0x10, 0xC0, 0x80, 0x40, 0x00};
 
 struct kcount_gpu::ParseAndPackDriverState {
-//   Event_t event;
+  //   Event_t event;
   int rank_me;
 };
 
-KOKKOS_INLINE_FUNCTION void revcomp(uint64_t *longs, uint64_t *rc_longs, int kmer_len, int num_longs, Kokkos::View<uint64_t[256]> twins_v) {
+KOKKOS_INLINE_FUNCTION void revcomp(uint64_t *longs, uint64_t *rc_longs, int kmer_len, int num_longs,
+                                    Kokkos::View<uint64_t[256]> twins_v) {
   int last_long = (kmer_len + 31) / 32;
   for (size_t i = 0; i < last_long; i++) {
     uint64_t v = longs[i];
-    rc_longs[last_long - 1 - i] = (twins_v(v & 0xFF) << 56) | (twins_v((v >> 8) & 0xFF) << 48) |
-                                  (twins_v((v >> 16) & 0xFF) << 40) | (twins_v((v >> 24) & 0xFF) << 32) |
-                                  (twins_v((v >> 32) & 0xFF) << 24) | (twins_v((v >> 40) & 0xFF) << 16) |
-                                  (twins_v((v >> 48) & 0xFF) << 8) | (twins_v((v >> 56)));
+    rc_longs[last_long - 1 - i] = (twins_v(v & 0xFF) << 56) | (twins_v((v >> 8) & 0xFF) << 48) | (twins_v((v >> 16) & 0xFF) << 40) |
+                                  (twins_v((v >> 24) & 0xFF) << 32) | (twins_v((v >> 32) & 0xFF) << 24) |
+                                  (twins_v((v >> 40) & 0xFF) << 16) | (twins_v((v >> 48) & 0xFF) << 8) | (twins_v((v >> 56)));
   }
   uint64_t shift = (kmer_len % 32) ? 2 * (32 - (kmer_len % 32)) : 0;
   uint64_t shiftmask = (kmer_len % 32) ? (((((uint64_t)1) << shift) - 1) << (64 - shift)) : ((uint64_t)0);
@@ -150,7 +150,8 @@ KOKKOS_INLINE_FUNCTION uint64_t quick_hash(uint64_t v) {
   return v;
 }
 
-KOKKOS_FUNCTION uint64_t gpu_minimizer_hash_fast(int m, int kmer_len, int num_longs, uint64_t *longs, uint64_t *rc_longs, Kokkos::View<uint64_t[32]> mask_v) {
+KOKKOS_FUNCTION uint64_t gpu_minimizer_hash_fast(int m, int kmer_len, int num_longs, uint64_t *longs, uint64_t *rc_longs,
+                                                 Kokkos::View<uint64_t[32]> mask_v) {
   const int chunk_step = 32 - ((m + 3) / 4) * 4;  // chunk_step is a multiple of 4
 
   int base;
@@ -194,78 +195,85 @@ KOKKOS_FUNCTION uint64_t gpu_minimizer_hash_fast(int m, int kmer_len, int num_lo
   return quick_hash(minimizer);
 }
 
-void parse_and_pack(Kokkos::View<char*> seqs, int minimizer_len, int kmer_len, int num_longs, int seqs_len, Kokkos::View<int*> kmer_targets_v,
-                               int num_ranks, Kokkos::View<uint64_t[256]> twins_v, Kokkos::View<uint64_t[32]> mask_v) {
+void parse_and_pack(Kokkos::View<char *> seqs, int minimizer_len, int kmer_len, int num_longs, int seqs_len,
+                    Kokkos::View<int *> kmer_targets_v, int num_ranks, Kokkos::View<uint64_t[256]> twins_v,
+                    Kokkos::View<uint64_t[32]> mask_v) {
   int num_kmers = seqs_len - kmer_len + 1;
   const int MAX_LONGS = (MAX_BUILD_KMER + 31) / 32;
 
-  Kokkos::parallel_for("parse_and_pack", num_kmers, KOKKOS_LAMBDA (int i) {
-    uint64_t kmer[MAX_LONGS];
-    if (pack_seq_to_kmer(&(seqs(i)), kmer_len, num_longs, kmer)) {
-      uint64_t kmer_rc[MAX_LONGS];
-      revcomp(kmer, kmer_rc, kmer_len, num_longs, twins_v);
-      kmer_targets_v(i) = gpu_minimizer_hash_fast(minimizer_len, kmer_len, num_longs, kmer, kmer_rc, mask_v) % num_ranks;
-    } else {
-      // indicate invalid with -1
-      kmer_targets_v(i) = -1;
-    }
-  });
+  Kokkos::parallel_for(
+      "parse_and_pack", num_kmers, KOKKOS_LAMBDA(int i) {
+        uint64_t kmer[MAX_LONGS];
+        if (pack_seq_to_kmer(&(seqs(i)), kmer_len, num_longs, kmer)) {
+          uint64_t kmer_rc[MAX_LONGS];
+          revcomp(kmer, kmer_rc, kmer_len, num_longs, twins_v);
+          kmer_targets_v(i) = gpu_minimizer_hash_fast(minimizer_len, kmer_len, num_longs, kmer, kmer_rc, mask_v) % num_ranks;
+        } else {
+          // indicate invalid with -1
+          kmer_targets_v(i) = -1;
+        }
+      });
   Kokkos::fence();
 }
 
 KOKKOS_INLINE_FUNCTION bool is_valid_base(char base) { return (base != '_' && base != 'N'); }
 
-void build_supermers(Kokkos::View<char*> seqs_v, Kokkos::View<int*> kmer_targets_v, unsigned int num_kmers, int kmer_len, int seqs_len, 
-                      Kokkos::View<kcount_gpu::SupermerInfo*> supermers_v, Kokkos::View<unsigned int> num_supermers_v, unsigned int &num_valid_kmers, 
-                      int rank_me) {
+void build_supermers(Kokkos::View<char *> seqs_v, Kokkos::View<int *> kmer_targets_v, unsigned int num_kmers, int kmer_len,
+                     int seqs_len, Kokkos::View<kcount_gpu::SupermerInfo *> supermers_v, Kokkos::View<unsigned int> num_supermers_v,
+                     unsigned int &num_valid_kmers, int rank_me) {
   // builds a single supermer starting at a given kmer, but only if the kmer is a valid start to a supermer
 
   // reduce(my_valid_kmers, num_kmers, num_valid_kmers);
 
-  Kokkos::parallel_reduce("build_supermers", num_kmers, KOKKOS_LAMBDA(int i, unsigned int& my_valid_kmers) {
-    // unsigned int my_valid_kmers = 0;  
-    if (i == 0 && kmer_targets_v(i) != -1) my_valid_kmers++;
-    if (i > 0) {
-      int target = kmer_targets_v(i);
-      if (target != -1) {
-        my_valid_kmers++;
-        bool prev_target_ok = false;
-        if (i == 1) {
-          prev_target_ok = true;
-        } else {
-          if (kmer_targets_v(i - 1) != target) {
-            // prev kmer was a different or invalid target
-            prev_target_ok = true;
-          } else {
-            // prev kmer was the same target, but not a valid start to a supermer
-            if (!is_valid_base(seqs_v(i - 2)) || !is_valid_base(seqs_v(i - 1 + kmer_len))) { prev_target_ok = true; }
+  Kokkos::parallel_reduce(
+      "build_supermers", num_kmers,
+      KOKKOS_LAMBDA(int i, unsigned int &my_valid_kmers) {
+        // unsigned int my_valid_kmers = 0;
+        if (i == 0 && kmer_targets_v(i) != -1) my_valid_kmers++;
+        if (i > 0) {
+          int target = kmer_targets_v(i);
+          if (target != -1) {
+            my_valid_kmers++;
+            bool prev_target_ok = false;
+            if (i == 1) {
+              prev_target_ok = true;
+            } else {
+              if (kmer_targets_v(i - 1) != target) {
+                // prev kmer was a different or invalid target
+                prev_target_ok = true;
+              } else {
+                // prev kmer was the same target, but not a valid start to a supermer
+                if (!is_valid_base(seqs_v(i - 2)) || !is_valid_base(seqs_v(i - 1 + kmer_len))) {
+                  prev_target_ok = true;
+                }
+              }
+            }
+            // make sure this is the first kmer for this target
+            if (prev_target_ok && is_valid_base(seqs_v(i - 1)) && is_valid_base(seqs_v(i + kmer_len))) {
+              int supermer_start_i = i - 1;
+              int supermer_len = kmer_len + 2;
+              // build the supermer
+              for (int k = i + 1; k < num_kmers - 1; k++) {
+                auto next_target = kmer_targets_v(k);
+                int end_pos = supermer_start_i + supermer_len;
+                if (next_target == target && end_pos < seqs_len && is_valid_base(seqs_v(end_pos)))
+                  supermer_len++;
+                else
+                  break;
+              }
+              // get a slot for the supermer
+              int slot = Kokkos::atomic_fetch_add(&num_supermers_v(), 1);
+              // if (slot == 0) { printf("rank %d adding first supermer of this block to slot: %d with target: %d offset: %d len:
+              // %d\n", rank_me, slot, target, supermer_start_i, supermer_len); }
+              supermers_v(slot).target = target;
+              supermers_v(slot).offset = supermer_start_i;
+              supermers_v(slot).len = supermer_len;
+            }
           }
         }
-        // make sure this is the first kmer for this target
-        if (prev_target_ok && is_valid_base(seqs_v(i - 1)) && is_valid_base(seqs_v(i + kmer_len))) {
-          int supermer_start_i = i - 1;
-          int supermer_len = kmer_len + 2;
-          // build the supermer
-          for (int k = i + 1; k <  num_kmers - 1; k++) {
-            auto next_target = kmer_targets_v(k);
-            int end_pos = supermer_start_i + supermer_len;
-            if (next_target == target && end_pos < seqs_len && is_valid_base(seqs_v(end_pos)))
-              supermer_len++;
-            else
-              break;            
-          }
-          // get a slot for the supermer
-          int slot = Kokkos::atomic_fetch_add(&num_supermers_v(), 1);
-          // if (slot == 0) { printf("rank %d adding first supermer of this block to slot: %d with target: %d offset: %d len: %d\n", rank_me, slot, target, supermer_start_i, supermer_len); }
-          supermers_v(slot).target = target;
-          supermers_v(slot).offset = supermer_start_i;
-          supermers_v(slot).len = supermer_len;          
-        }
-
-      }
-    }
-  }, num_valid_kmers);
-Kokkos::fence();
+      },
+      num_valid_kmers);
+  Kokkos::fence();
 }
 
 KOKKOS_INLINE_FUNCTION uint8_t get_packed_val(char base) {
@@ -287,30 +295,31 @@ KOKKOS_INLINE_FUNCTION uint8_t get_packed_val(char base) {
   return 0;
 }
 
-void pack_seqs(Kokkos::View<char*> dev_seqs_v, Kokkos::View<char*>dev_packed_seqs_v, int seqs_len) {
-
+void pack_seqs(Kokkos::View<char *> dev_seqs_v, Kokkos::View<char *> dev_packed_seqs_v, int seqs_len) {
   int packed_seqs_len = (seqs_len + 1) / 2;
-  Kokkos::parallel_for("pack_seqs", packed_seqs_len, KOKKOS_LAMBDA (int i) {
-    int seqs_i = i * 2;
-    char packed = get_packed_val(dev_seqs_v(seqs_i));
-    if ((int)packed == 11) {
-      Kokkos::printf("INVALID dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i, dev_seqs_v(seqs_i),
-             packed << 4, packed, seqs_len, packed_seqs_len);
-    }
-    packed = packed << 4;
-    if (seqs_i + 1 < seqs_len) {
-      // do not overflow as each thread handles 1-2 characters in the sequence
-      char packed_ = get_packed_val(dev_seqs_v(seqs_i + 1));
-      if ((int)packed_ == 11) {
-        Kokkos::printf("INVALID dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
-               dev_seqs_v(seqs_i), seqs_i + 1, dev_seqs_v(seqs_i + 1), packed_ << 4, packed_, seqs_len, packed_seqs_len);
-      }
-      packed |= packed_;
-    }
+  Kokkos::parallel_for(
+      "pack_seqs", packed_seqs_len, KOKKOS_LAMBDA(int i) {
+        int seqs_i = i * 2;
+        char packed = get_packed_val(dev_seqs_v(seqs_i));
+        if ((int)packed == 11) {
+          Kokkos::printf("INVALID dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
+                         dev_seqs_v(seqs_i), packed << 4, packed, seqs_len, packed_seqs_len);
+        }
+        packed = packed << 4;
+        if (seqs_i + 1 < seqs_len) {
+          // do not overflow as each thread handles 1-2 characters in the sequence
+          char packed_ = get_packed_val(dev_seqs_v(seqs_i + 1));
+          if ((int)packed_ == 11) {
+            Kokkos::printf(
+                "INVALID dev_seqs[%d]=%d, dev_seqs[%d]=%d, after shifting:%d, packed:%d, seqs_len:%d, packed_seq_len:%d\n", seqs_i,
+                dev_seqs_v(seqs_i), seqs_i + 1, dev_seqs_v(seqs_i + 1), packed_ << 4, packed_, seqs_len, packed_seqs_len);
+          }
+          packed |= packed_;
+        }
 
-    dev_packed_seqs_v(i) = packed;
-  });
-Kokkos::fence();
+        dev_packed_seqs_v(i) = packed;
+      });
+  Kokkos::fence();
 }
 
 kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int upcxx_rank_n, int qual_offset, int kmer_len,
@@ -323,13 +332,12 @@ kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int 
     , minimizer_len(minimizer_len)
     , t_func(0)
     , t_kernel(0) {
-
   max_kmers = KCOUNT_SEQ_BLOCK_SIZE - kmer_len + 1;
 
-  dev_seqs_v = Kokkos::View<char*>("dev_seqs", KCOUNT_SEQ_BLOCK_SIZE);
-  dev_kmer_targets_v = Kokkos::View<int*>("dev_kmer_targets", max_kmers);
-  dev_supermers_v = Kokkos::View<SupermerInfo*>("dev_supermers", max_kmers);
-  dev_packed_seqs_v = Kokkos::View<char*>("dev_packed_seqs", (KCOUNT_SEQ_BLOCK_SIZE + 1) / 2);
+  dev_seqs_v = Kokkos::View<char *>("dev_seqs", KCOUNT_SEQ_BLOCK_SIZE);
+  dev_kmer_targets_v = Kokkos::View<int *>("dev_kmer_targets", max_kmers);
+  dev_supermers_v = Kokkos::View<SupermerInfo *>("dev_supermers", max_kmers);
+  dev_packed_seqs_v = Kokkos::View<char *>("dev_packed_seqs", (KCOUNT_SEQ_BLOCK_SIZE + 1) / 2);
   dev_num_supermers_v = Kokkos::View<unsigned int>("dev_num_supermers");
   // dev_num_valid_kmers_v = Kokkos::View<unsigned int>("dev_num_valid_kmers");
 
@@ -351,22 +359,19 @@ kcount_gpu::ParseAndPackGPUDriver::ParseAndPackGPUDriver(int upcxx_rank_me, int 
   for (int i = 0; i < 32; i++) {
     h_mask_v(i) = KOKKOS_0_MASK[i];
   }
-  Kokkos::deep_copy(mask_v, h_mask_v);  
+  Kokkos::deep_copy(mask_v, h_mask_v);
 
   // total storage required is approx KCOUNT_SEQ_BLOCK_SIZE * (1 + num_kmers_longs * sizeof(uint64_t) + sizeof(int) + 1)
-
 }
 
 kcount_gpu::ParseAndPackGPUDriver::~ParseAndPackGPUDriver() {
- //
+  //
 }
 
 bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, unsigned int &num_valid_kmers) {
-
   if (seqs.length() >= KCOUNT_SEQ_BLOCK_SIZE) return false;
   if (seqs.length() == 0) return false;
   if (seqs.length() < (unsigned int)kmer_len) return false;
-
 
   int num_kmers = seqs.length() - kmer_len + 1;
 
@@ -375,14 +380,16 @@ bool kcount_gpu::ParseAndPackGPUDriver::process_seq_block(const string &seqs, un
   }
   Kokkos::deep_copy(dev_seqs_v, h_seqs_v);
 
-  parse_and_pack(dev_seqs_v, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets_v, upcxx_rank_n, twins_v, mask_v);
+  parse_and_pack(dev_seqs_v, minimizer_len, kmer_len, num_kmer_longs, seqs.length(), dev_kmer_targets_v, upcxx_rank_n, twins_v,
+                 mask_v);
 
   h_num_supermers_v() = 0;
   // h_num_valid_kmers_v() = 0;
   Kokkos::deep_copy(dev_num_supermers_v, h_num_supermers_v);
   // Kokkos::deep_copy(dev_num_valid_kmers_v, h_num_valid_kmers_v);
 
-  build_supermers(dev_seqs_v, dev_kmer_targets_v, num_kmers, kmer_len, seqs.length(), dev_supermers_v, dev_num_supermers_v, num_valid_kmers, upcxx_rank_me);
+  build_supermers(dev_seqs_v, dev_kmer_targets_v, num_kmers, kmer_len, seqs.length(), dev_supermers_v, dev_num_supermers_v,
+                  num_valid_kmers, upcxx_rank_me);
 
   // Kokkos::deep_copy(h_num_valid_kmers_v, dev_num_valid_kmers_v);
   // num_valid_kmers = h_num_valid_kmers_v();

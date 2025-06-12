@@ -137,7 +137,7 @@ int CalculateNumberMismatch(StripedSmithWaterman::Alignment* al, int8_t const* r
       new_cigar_string << al->query_begin << 'S';
       query += al->query_begin;
     }
-  }                   // else it will be processed normally
+  }  // else it will be processed normally
 
   bool in_M = false;  // the previous is match
   bool in_X = false;  // the previous is mismatch

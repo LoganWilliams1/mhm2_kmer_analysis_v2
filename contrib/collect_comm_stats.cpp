@@ -15,7 +15,6 @@ vector<string> split_string(const string &content, string in_pattern) {
   return split_content;
 }
 
-
 // 0> Total gets:                  5758  avg/min/max/total sz = 420426.398/584/678504/2420815200
 // 0>  AMREQUEST_MEDIUM:         492466  avg/min/max/total sz = 111.411/0/4032/54866232
 // 0>  AMREQUEST_LONG:              192  avg/min/max/total sz = 17407.500/8/131072/3342240
@@ -51,7 +50,7 @@ int main(int argc, char **argv) {
   long num_am_long = 0;
   double avg_am_long_size = 0;
   long min_am_long_size = 0, max_am_long_size = 0, tot_am_long_size = 0;
-  
+
   while (getline(stats_file, line)) {
     auto tokens = split_string(line, "\\s+");
     if (tokens.size() < 3) continue;
@@ -68,21 +67,20 @@ int main(int argc, char **argv) {
   }
   barrier();
   auto [all_num_gets, all_min_gets_size, all_max_gets_size, all_tot_gets_size, gets_balance] =
-    reduce_sizes(num_gets, min_gets_size, max_gets_size, tot_gets_size);
+      reduce_sizes(num_gets, min_gets_size, max_gets_size, tot_gets_size);
   auto [all_num_am_medium, all_min_am_medium_size, all_max_am_medium_size, all_tot_am_medium_size, am_medium_balance] =
-    reduce_sizes(num_am_medium, min_am_medium_size, max_am_medium_size, tot_am_medium_size);
+      reduce_sizes(num_am_medium, min_am_medium_size, max_am_medium_size, tot_am_medium_size);
   auto [all_num_am_long, all_min_am_long_size, all_max_am_long_size, all_tot_am_long_size, am_long_balance] =
-    reduce_sizes(num_am_long, min_am_long_size, max_am_long_size, tot_am_long_size);
+      reduce_sizes(num_am_long, min_am_long_size, max_am_long_size, tot_am_long_size);
   if (!rank_me()) {
     cout << "Stats are (per rank): count   avg_sz   min_sz   max_sz   tot_sz   balance\n";
-    cout << "gets " << all_num_gets << " " << (double)all_tot_gets_size / all_num_gets << " " << all_min_gets_size
-         << " " << all_max_gets_size  << " " << all_tot_gets_size << " " << gets_balance << endl;
+    cout << "gets " << all_num_gets << " " << (double)all_tot_gets_size / all_num_gets << " " << all_min_gets_size << " "
+         << all_max_gets_size << " " << all_tot_gets_size << " " << gets_balance << endl;
     cout << "am_medium " << all_num_am_medium << " " << (double)all_tot_am_medium_size / all_num_am_medium << " "
-         << all_min_am_medium_size << " " << all_max_am_medium_size  << " " << all_tot_am_medium_size
-         << " " << am_medium_balance << endl;
+         << all_min_am_medium_size << " " << all_max_am_medium_size << " " << all_tot_am_medium_size << " " << am_medium_balance
+         << endl;
     cout << "am_long " << all_num_am_long << " " << (double)all_tot_am_long_size / all_num_am_long << " " << all_min_am_long_size
-         << " " << all_max_am_long_size  << " " << all_tot_am_long_size
-         << " " << am_long_balance << endl;
+         << " " << all_max_am_long_size << " " << all_tot_am_long_size << " " << am_long_balance << endl;
   }
   stats_file.close();
   upcxx::finalize();

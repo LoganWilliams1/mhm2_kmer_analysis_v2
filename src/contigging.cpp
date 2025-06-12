@@ -91,12 +91,11 @@ void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_lis
   int my_num_ctg_kmers = 0;
 
   dist_object<KmerDHT<MAX_K>> kmer_dht(world(), my_num_kmers, my_num_ctg_kmers, max_kmer_store, options.max_rpcs_in_flight,
-                                        options.use_qf, options.sequencing_depth);
+                                       options.use_qf, options.sequencing_depth);
   LOG_MEM("Allocated kmer_dht");
   barrier();
   begin_gasnet_stats("kmer_analysis k = " + to_string(kmer_len));
-  analyze_kmers(kmer_len, options.qual_offset, packed_reads_list, options.dmin_thres, kmer_dht,
-                options.dump_kmers);
+  analyze_kmers(kmer_len, options.qual_offset, packed_reads_list, options.dmin_thres, kmer_dht, options.dump_kmers);
   LOG_MEM("Analyzed kmers");
   end_gasnet_stats();
   stage_timers.analyze_kmers->stop();
@@ -105,17 +104,17 @@ void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_lis
   options.sequencing_depth = (int)avg_kmer_count;
   barrier();
   LOG_MEM("Analyzed kmers");
-    // stage_timers.dbjg_traversal->start();
-    // begin_gasnet_stats("dbjg_traversal k = " + to_string(kmer_len));
-    // traverse_debruijn_graph(kmer_len, kmer_dht, ctgs);
-    // end_gasnet_stats();
-    // LOG_MEM("Traversed dbg");
-    // stage_timers.dbjg_traversal->stop();
-    // if (is_debug) {
-    //   stage_timers.dump_ctgs->start();
-    //   ctgs.dump_contigs(uutigs_fname, 0, "uutig_");
-    //   stage_timers.dump_ctgs->stop();
-    // }
+  // stage_timers.dbjg_traversal->start();
+  // begin_gasnet_stats("dbjg_traversal k = " + to_string(kmer_len));
+  // traverse_debruijn_graph(kmer_len, kmer_dht, ctgs);
+  // end_gasnet_stats();
+  // LOG_MEM("Traversed dbg");
+  // stage_timers.dbjg_traversal->stop();
+  // if (is_debug) {
+  //   stage_timers.dump_ctgs->start();
+  //   ctgs.dump_contigs(uutigs_fname, 0, "uutig_");
+  //   stage_timers.dump_ctgs->stop();
+  // }
   // }
   LOG_MEM("Generated contigs k=" + to_string(kmer_len));
 
@@ -124,54 +123,54 @@ void contigging(int kmer_len, int &rlen_limit, PackedReadsList &packed_reads_lis
   size_t num_reads = PackedReads::get_total_local_num_reads(packed_reads_list);
   auto avg_num_reads = reduce_one(num_reads, op_fast_add, 0).wait() / rank_n();
   auto max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
-  SLOG_VERBOSE("Avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (balance ",
-                (double)avg_num_reads / max_num_reads, ")\n");
-      // if (options.shuffle_reads) {
-      //   stage_timers.shuffle_reads->start();
-      //   begin_gasnet_stats("shuffle_reads k = " + to_string(kmer_len));
-      //   shuffle_reads(options.qual_offset, packed_reads_list, ctgs);
-      //   end_gasnet_stats();
-      //   stage_timers.shuffle_reads->stop();
-      //   LOG_MEM("Shuffled reads");
-      //   num_reads = 0;
-      //   for (auto packed_reads : packed_reads_list) {
-      //     num_reads += packed_reads->get_local_num_reads();
-      //   }
-      //   avg_num_reads = reduce_one(num_reads, op_fast_add, 0).wait() / rank_n();
-      //   max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
-      //   SLOG_VERBOSE("After shuffle: avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (load balance ",
-      //                (double)avg_num_reads / max_num_reads, ")\n");
-      //   rlen_limit = 0;
-      //   for (auto packed_reads : packed_reads_list) {
-      //     rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
-      //   }
-      // }
-    // }
-    barrier();
-    // Alns alns;
-    // stage_timers.alignments->start();
-    // begin_gasnet_stats("alignment k = " + to_string(kmer_len));
-    // bool first_ctg_round = (kmer_len == options.kmer_lens[0]);
-    // auto [kernel_elapsed, aln_comms_elapsed] =
-    //     find_alignments<MAX_K>(kmer_len, packed_reads_list, max_kmer_store, options.max_rpcs_in_flight, ctgs, alns,
-    //                            KLIGN_SEED_SPACE, rlen_limit, options.optimize_for == "contiguity", 0, options.klign_rget_buf_size);
-    // end_gasnet_stats();
-    // stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
-    // stage_timers.aln_comms->inc_elapsed(aln_comms_elapsed);
-    // stage_timers.alignments->stop();
-    // barrier();
-    // LOG_MEM("Aligned reads to contigs");
-    // if (is_debug) alns.dump_single_file("ctg-alns-" + to_string(kmer_len) + ".blast", Alns::Format::BLAST);
-    // histogrammer.calculate_insert_size(alns);
-    // // insert size should never be larger than this; if it is that signals some error in the assembly
-    // barrier();
-    // stage_timers.localassm->start();
-    // begin_gasnet_stats("local_assembly k = " + to_string(kmer_len));
-    // localassm(LASSM_MAX_KMER_LEN, kmer_len, packed_reads_list, histogrammer.ins_avg, histogrammer.ins_stddev, options.qual_offset,
-    //           ctgs, alns);
-    // end_gasnet_stats();
-    // stage_timers.localassm->stop();
-    // LOG_MEM("Local assembly completed");
+  SLOG_VERBOSE("Avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (balance ", (double)avg_num_reads / max_num_reads,
+               ")\n");
+  // if (options.shuffle_reads) {
+  //   stage_timers.shuffle_reads->start();
+  //   begin_gasnet_stats("shuffle_reads k = " + to_string(kmer_len));
+  //   shuffle_reads(options.qual_offset, packed_reads_list, ctgs);
+  //   end_gasnet_stats();
+  //   stage_timers.shuffle_reads->stop();
+  //   LOG_MEM("Shuffled reads");
+  //   num_reads = 0;
+  //   for (auto packed_reads : packed_reads_list) {
+  //     num_reads += packed_reads->get_local_num_reads();
+  //   }
+  //   avg_num_reads = reduce_one(num_reads, op_fast_add, 0).wait() / rank_n();
+  //   max_num_reads = reduce_one(num_reads, op_fast_max, 0).wait();
+  //   SLOG_VERBOSE("After shuffle: avg reads per rank ", avg_num_reads, " max ", max_num_reads, " (load balance ",
+  //                (double)avg_num_reads / max_num_reads, ")\n");
+  //   rlen_limit = 0;
+  //   for (auto packed_reads : packed_reads_list) {
+  //     rlen_limit = max(rlen_limit, (int)packed_reads->get_max_read_len());
+  //   }
+  // }
+  // }
+  barrier();
+  // Alns alns;
+  // stage_timers.alignments->start();
+  // begin_gasnet_stats("alignment k = " + to_string(kmer_len));
+  // bool first_ctg_round = (kmer_len == options.kmer_lens[0]);
+  // auto [kernel_elapsed, aln_comms_elapsed] =
+  //     find_alignments<MAX_K>(kmer_len, packed_reads_list, max_kmer_store, options.max_rpcs_in_flight, ctgs, alns,
+  //                            KLIGN_SEED_SPACE, rlen_limit, options.optimize_for == "contiguity", 0, options.klign_rget_buf_size);
+  // end_gasnet_stats();
+  // stage_timers.kernel_alns->inc_elapsed(kernel_elapsed);
+  // stage_timers.aln_comms->inc_elapsed(aln_comms_elapsed);
+  // stage_timers.alignments->stop();
+  // barrier();
+  // LOG_MEM("Aligned reads to contigs");
+  // if (is_debug) alns.dump_single_file("ctg-alns-" + to_string(kmer_len) + ".blast", Alns::Format::BLAST);
+  // histogrammer.calculate_insert_size(alns);
+  // // insert size should never be larger than this; if it is that signals some error in the assembly
+  // barrier();
+  // stage_timers.localassm->start();
+  // begin_gasnet_stats("local_assembly k = " + to_string(kmer_len));
+  // localassm(LASSM_MAX_KMER_LEN, kmer_len, packed_reads_list, histogrammer.ins_avg, histogrammer.ins_stddev, options.qual_offset,
+  //           ctgs, alns);
+  // end_gasnet_stats();
+  // stage_timers.localassm->stop();
+  // LOG_MEM("Local assembly completed");
   // }
   Timings::wait_pending();
   barrier();

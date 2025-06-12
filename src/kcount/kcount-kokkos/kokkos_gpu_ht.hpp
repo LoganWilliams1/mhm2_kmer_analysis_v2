@@ -80,11 +80,11 @@ struct KmerArray {
 struct SupermerBuff {
   // char *seqs;
   // count_t *counts;
-  Kokkos::View<char*> seqs_v;
-  Kokkos::View<char*>::HostMirror h_seqs_v;
+  Kokkos::View<char *> seqs_v;
+  Kokkos::View<char *>::HostMirror h_seqs_v;
 
-  Kokkos::View<count_t*> counts_v;
-  Kokkos::View<count_t*>::HostMirror h_counts_v;
+  Kokkos::View<count_t *> counts_v;
+  Kokkos::View<count_t *>::HostMirror h_counts_v;
 };
 
 // Bytes used per element:
@@ -96,11 +96,11 @@ template <int MAX_K>
 struct KmerCountsMap {
   // Arrays for keys and values. They are separate because the keys get initialized with max number and the vals with zero
   // KmerArray<MAX_K> *keys = nullptr;
-  Kokkos::View<KmerArray<MAX_K>*> keys_v;
+  Kokkos::View<KmerArray<MAX_K> *> keys_v;
 
   // CountsArray *vals = nullptr;
-  Kokkos::View<CountsArray*> vals_v;
-  
+  Kokkos::View<CountsArray *> vals_v;
+
   uint64_t capacity = 0;
   uint64_t num = 0;
 
@@ -111,10 +111,10 @@ struct KmerCountsMap {
 template <int MAX_K>
 struct KmerExtsMap {
   // KmerArray<MAX_K> *keys = nullptr;
-  Kokkos::View<KmerArray<MAX_K>*> keys_v;
+  Kokkos::View<KmerArray<MAX_K> *> keys_v;
 
   // CountExts *vals = nullptr;
-  Kokkos::View<CountExts*> vals_v;
+  Kokkos::View<CountExts *> vals_v;
 
   int64_t capacity = 0;
 
@@ -144,8 +144,8 @@ class HashTableGPUDriver {
   uint64_t buff_len = 0;
   // std::vector<KmerArray<MAX_K>> output_keys;
   // std::vector<CountExts> output_vals;
-  typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror output_keys_v;
-  typename Kokkos::View<CountExts*>::HostMirror output_vals_v;
+  typename Kokkos::View<KmerArray<MAX_K> *>::HostMirror output_keys_v;
+  typename Kokkos::View<CountExts *>::HostMirror output_vals_v;
   size_t output_index = 0;
 
   KmerCountsMap<MAX_K> read_kmers_dev;
@@ -162,19 +162,18 @@ class HashTableGPUDriver {
   InsertStats ctg_kmers_stats;
   // InsertStats *gpu_insert_stats;
   typename Kokkos::View<InsertStats>::HostMirror read_kmers_stats_v;
-  typename Kokkos::View<InsertStats>::HostMirror ctg_kmers_stats_v;  
+  typename Kokkos::View<InsertStats>::HostMirror ctg_kmers_stats_v;
   typename Kokkos::View<InsertStats> gpu_insert_stats_v;
   int num_gpu_calls = 0;
 
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
   const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
-  const uint8_t KEY_EMPTY_BYTE = 0xff;  
+  const uint8_t KEY_EMPTY_BYTE = 0xff;
 
   void insert_supermer_block();
   void purge_invalid(uint64_t &num_purged, uint64_t &num_entries);
 
   typename Kokkos::View<uint64_t[256]> twins_v;
-
 
  public:
   PASS_TYPE pass_type;
@@ -196,7 +195,7 @@ class HashTableGPUDriver {
   void done_all_inserts(uint64_t &num_dropped, uint64_t &num_unique, uint64_t &num_purged);
 
   void begin_iterate();
-  
+
   std::pair<KmerArray<MAX_K> *, CountExts *> get_next_entry();
 
   void get_elapsed_time(double &insert_time, double &kernel_time);

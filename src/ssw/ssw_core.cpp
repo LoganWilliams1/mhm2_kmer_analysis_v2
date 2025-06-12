@@ -77,9 +77,6 @@
 #include <limits>
 #endif
 
-
-
-
 #if defined(__PPC64__)
 #include "sse_to_altivec.hpp"
 #elif defined(__x86_64__)
@@ -109,7 +106,7 @@
   {                       \
     int x = (i) - (w);    \
     x = x > 0 ? x : 0;    \
-    (u) = (j)-x + 1;      \
+    (u) = (j) - x + 1;    \
   }
 
 /* Convert the coordinate in the direction matrix into the coordinate in one line of the band. */
@@ -117,7 +114,7 @@
   {                          \
     int x = (i) - (w);       \
     x = x > 0 ? x : 0;       \
-    x = (j)-x;               \
+    x = (j) - x;             \
     (u) = x * 3 + p;         \
   }
 
@@ -172,10 +169,10 @@ const uint8_t encoded_ops[] = {
 static __m128i *qP_byte(const int8_t *read_num, const int8_t *mat, const int32_t readLen,
                         const int32_t n, /* the edge length of the squre matrix mat */
                         uint8_t bias) {
-  int32_t segLen = (readLen + 15) / 16;  /* Split the 128 bit register into 16 pieces.
-                                          * Each piece is 8 bit. Split the read into 16 segments.
-                                          * Calculat 16 segments in parallel.
-                                          */
+  int32_t segLen = (readLen + 15) / 16; /* Split the 128 bit register into 16 pieces.
+                                         * Each piece is 8 bit. Split the read into 16 segments.
+                                         * Calculat 16 segments in parallel.
+                                         */
   __m128i *vProfile = (__m128i *)malloc(n * segLen * sizeof(__m128i));
   int8_t *t = (int8_t *)vProfile;
   int32_t nt, i, j, segNum;
@@ -220,7 +217,7 @@ static alignment_end *sw_sse2_byte(const int8_t *ref,
     (m) = _mm_extract_epi16((vm), 0) & 0x00ff;          \
   } while (0)
 
-  uint8_t max = 0;                      /* the max alignment score */
+  uint8_t max = 0; /* the max alignment score */
   int32_t end_read = readLen - 1;
   int32_t end_ref = -1;                 /* 0_based best alignment ending point; Initialized as isn't aligned -1. */
   int32_t segLen = (readLen + 15) / 16; /* number of segment */
@@ -439,7 +436,7 @@ static alignment_end *sw_sse2_word(const int8_t *ref,
     (m) = _mm_extract_epi16((vm), 0) & 0xffff;           \
   } while (0)
 
-  uint16_t max = 0;                   /* the max alignment score */
+  uint16_t max = 0; /* the max alignment score */
   int32_t end_read = readLen - 1;
   int32_t end_ref = 0;                /* 1_based best alignment ending point; Initialized as isn't aligned - 0. */
   int32_t segLen = (readLen + 7) / 8; /* number of segment */
@@ -478,16 +475,16 @@ static alignment_end *sw_sse2_word(const int8_t *ref,
   }
   for (i = begin; LIKELY(i != end); i += step) {
     int32_t cmp;
-    __m128i e, vF = vZero;      /* Initialize F value to 0.
-                                 * Any errors to vH values will be corrected in the Lazy_F loop.
-                                 */
+    __m128i e, vF = vZero; /* Initialize F value to 0.
+                            * Any errors to vH values will be corrected in the Lazy_F loop.
+                            */
     __m128i vH = pvHStore[segLen - 1];
     vH = _mm_slli_si128(vH, 2); /* Shift the 128-bit value in vH left by 2 byte. */
 
     /* Swap the 2 H buffers. */
     __m128i *pv = pvHLoad;
 
-    __m128i vMaxColumn = vZero;                     /* vMaxColumn is used to record the max values of column i. */
+    __m128i vMaxColumn = vZero; /* vMaxColumn is used to record the max values of column i. */
 
     const __m128i *vP = vProfile + ref[i] * segLen; /* Right part of the vProfile */
     pvHLoad = pvHStore;
@@ -722,8 +719,8 @@ static cigar *banded_sw(const int8_t *ref, const int8_t *read, int32_t refLen, i
   // trace back
   i = readLen - 1;
   j = refLen - 1;
-  e = 0;      // Count the number of M, D or I.
-  l = 0;      // record length of current cigar
+  e = 0;  // Count the number of M, D or I.
+  l = 0;  // record length of current cigar
   op = prev_op = 'M';
   temp2 = 2;  // h
   while (LIKELY(i > 0)) {

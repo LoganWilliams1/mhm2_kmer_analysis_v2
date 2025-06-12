@@ -57,7 +57,6 @@ struct SupermerInfo {
 };
 
 class ParseAndPackGPUDriver {
-
   int upcxx_rank_me;
   int upcxx_rank_n;
   int max_kmers;
@@ -67,26 +66,24 @@ class ParseAndPackGPUDriver {
   int minimizer_len;
   double t_func = 0, t_malloc = 0, t_cp = 0, t_kernel = 0;
 
-  Kokkos::View<char*> dev_seqs_v;
-  Kokkos::View<int*> dev_kmer_targets_v;
-  Kokkos::View<SupermerInfo*> dev_supermers_v;
-  Kokkos::View<char*> dev_packed_seqs_v;
+  Kokkos::View<char *> dev_seqs_v;
+  Kokkos::View<int *> dev_kmer_targets_v;
+  Kokkos::View<SupermerInfo *> dev_supermers_v;
+  Kokkos::View<char *> dev_packed_seqs_v;
   Kokkos::View<unsigned int> dev_num_supermers_v;
   Kokkos::View<unsigned int> dev_num_valid_kmers_v;
 
-  Kokkos::View<char*>::HostMirror h_seqs_v;
-  Kokkos::View<char*>::HostMirror h_packed_seqs_v;
+  Kokkos::View<char *>::HostMirror h_seqs_v;
+  Kokkos::View<char *>::HostMirror h_packed_seqs_v;
   Kokkos::View<unsigned int>::HostMirror h_num_valid_kmers_v;
 
   Kokkos::View<uint64_t[256]> twins_v;
   Kokkos::View<uint64_t[32]> mask_v;
 
-
  public:
   std::string packed_seqs;
-  Kokkos::View<SupermerInfo*>::HostMirror h_supermers_v;
+  Kokkos::View<SupermerInfo *>::HostMirror h_supermers_v;
   Kokkos::View<unsigned int>::HostMirror h_num_supermers_v;
-  
 
   ParseAndPackGPUDriver(int upcxx_rank_me, int upcxx_rank_n, int qual_offset, int kmer_len, int num_kmer_longs, int minimizer_len,
                         double &init_time);

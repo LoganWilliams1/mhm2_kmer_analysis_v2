@@ -50,11 +50,10 @@
 
 #include <upcxx/upcxx.hpp>
 
-
 #include "upcxx_utils/colors.h"
 // #include "gpu-utils/gpu_common.hpp"
 
-//#include <Kokkos_Core.hpp>
+// #include <Kokkos_Core.hpp>
 #include "kokkos_gpu_ht.hpp"
 #include "prime.hpp"
 #include "kokkos_gpu_hash_funcs.hpp"
@@ -66,14 +65,14 @@
 namespace two_choice_filter {
 #define TCF_RESULT uint8_t
 struct TCF {
-//   static TCF *generate_on_device(bool *, int) { return nullptr; }
-//   static void free_on_device(TCF *) {}
-//   __device__ bool get_my_tile() { return false; }
-//   __device__ bool insert_with_delete(bool, uint64_t, uint8_t) { return false; }
-//   __device__ bool query(bool, uint64_t, TCF_RESULT &) { return false; }
-//   __device__ bool remove(bool, uint64_t) { return false; }
-//   int get_fill() { return 0; }
-//   int get_num_slots() { return 0; }
+  //   static TCF *generate_on_device(bool *, int) { return nullptr; }
+  //   static void free_on_device(TCF *) {}
+  //   __device__ bool get_my_tile() { return false; }
+  //   __device__ bool insert_with_delete(bool, uint64_t, uint8_t) { return false; }
+  //   __device__ bool query(bool, uint64_t, TCF_RESULT &) { return false; }
+  //   __device__ bool remove(bool, uint64_t) { return false; }
+  //   int get_fill() { return 0; }
+  //   int get_num_slots() { return 0; }
 };
 // __device__ uint8_t pack_extensions(char left, char right) { return 0; }
 // __device__ bool unpack_extensions(uint8_t storage, char &left, char &right) { return false; }
@@ -99,16 +98,16 @@ using namespace kcount_gpu;
 template <int MAX_K>
 KOKKOS_FUNCTION void kmer_set(KmerArray<MAX_K> &kmer1, const KmerArray<MAX_K> &kmer2) {
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
-  const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;  
+  const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
   int N_LONGS = kmer1.N_LONGS;
   uint64_t old_key;
   for (int i = 0; i < N_LONGS - 1; i++) {
     old_key = Kokkos::atomic_exchange((unsigned long long *)&(kmer1.longs[i]), kmer2.longs[i]);
-    //if (old_key != KEY_EMPTY) WARN("old key should be KEY_EMPTY");
+    // if (old_key != KEY_EMPTY) WARN("old key should be KEY_EMPTY");
     if (old_key != KEY_EMPTY) Kokkos::printf("old key should be KEY_EMPTY");
   }
   old_key = Kokkos::atomic_exchange((unsigned long long *)&(kmer1.longs[N_LONGS - 1]), kmer2.longs[N_LONGS - 1]);
-  //if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
+  // if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
   if (old_key != KEY_TRANSITION) Kokkos::printf("old key should be KEY_TRANSITION");
 }
 
@@ -160,8 +159,7 @@ KOKKOS_FUNCTION bool ext_conflict(ext_count_t *ext_counts, int start_idx) {
 }
 
 template <int MAX_K>
-void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerCountsMap<MAX_K> ctg_kmers,
-                                    uint64_t *insert_counts) {
+void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerCountsMap<MAX_K> ctg_kmers, uint64_t *insert_counts) {
   // unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
   // int8_t ext_map[4] = {'A', 'C', 'G', 'T'};
   // int N_LONGS = KmerArray<MAX_K>::N_LONGS;
@@ -178,8 +176,8 @@ void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerCountsMap<MA
   //     attempted_inserts++;
   //     const int MAX_PROBE = (read_kmers.capacity < KCOUNT_HT_MAX_PROBE ? read_kmers.capacity : KCOUNT_HT_MAX_PROBE);
   //     for (int j = 0; j < MAX_PROBE; j++) {
-  //       uint64_t old_key = atomicCAS((unsigned long long *)&(read_kmers.keys[slot].longs[N_LONGS - 1]), KEY_EMPTY, KEY_TRANSITION);
-  //       if (old_key == KEY_EMPTY) {
+  //       uint64_t old_key = atomicCAS((unsigned long long *)&(read_kmers.keys[slot].longs[N_LONGS - 1]), KEY_EMPTY,
+  //       KEY_TRANSITION); if (old_key == KEY_EMPTY) {
   //         new_inserts++;
   //         memcpy(&read_kmers.vals[slot], &ctg_kmers.vals[threadid], sizeof(CountsArray));
   //         kmer_set(read_kmers.keys[slot], kmer);
@@ -187,10 +185,9 @@ void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerCountsMap<MA
   //       } else if (old_key == kmer.longs[N_LONGS - 1]) {
   //         if (kmers_equal(read_kmers.keys[slot], kmer)) {
   //           // existing kmer from reads - only replace if the kmer is non-UU
-  //           // there is no need for atomics here because all ctg kmers are unique; hence only one thread will ever match this kmer
-  //           int8_t left_ext = get_ext(read_kmers.vals[slot], 0, ext_map);
-  //           int8_t right_ext = get_ext(read_kmers.vals[slot], 4, ext_map);
-  //           if (left_ext == 'X' || left_ext == 'F' || right_ext == 'X' || right_ext == 'F')
+  //           // there is no need for atomics here because all ctg kmers are unique; hence only one thread will ever match this
+  //           kmer int8_t left_ext = get_ext(read_kmers.vals[slot], 0, ext_map); int8_t right_ext = get_ext(read_kmers.vals[slot],
+  //           4, ext_map); if (left_ext == 'X' || left_ext == 'F' || right_ext == 'X' || right_ext == 'F')
   //             memcpy(&read_kmers.vals[slot], &ctg_kmers.vals[threadid], sizeof(CountsArray));
   //           break;
   //         }
@@ -207,89 +204,94 @@ void gpu_merge_ctg_kmers(KmerCountsMap<MAX_K> read_kmers, const KmerCountsMap<MA
 }
 
 template <int MAX_K>
-void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> compact_elems, uint64_t& num_purged, uint64_t& num_entries) {
+void gpu_compact_ht(KmerCountsMap<MAX_K> elems, KmerExtsMap<MAX_K> compact_elems, uint64_t &num_purged, uint64_t &num_entries) {
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
   uint64_t dropped_inserts = 0;
   uint64_t unique_inserts = 0;
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
 
-  Kokkos::View<KmerArray<MAX_K>*> keys_view = elems.keys_v;
+  Kokkos::View<KmerArray<MAX_K> *> keys_view = elems.keys_v;
 
-  Kokkos::View<CountsArray*> vals_view = elems.vals_v;
+  Kokkos::View<CountsArray *> vals_view = elems.vals_v;
 
-  Kokkos::View<KmerArray<MAX_K>*> compact_keys_view = compact_elems.keys_v;
+  Kokkos::View<KmerArray<MAX_K> *> compact_keys_view = compact_elems.keys_v;
 
-  Kokkos::View<CountExts*> compact_vals_view = compact_elems.vals_v;    
+  Kokkos::View<CountExts *> compact_vals_view = compact_elems.vals_v;
 
-  Kokkos::parallel_reduce("gpu_compact_ht", elems.capacity, KOKKOS_LAMBDA (int i, uint64_t& dropped_inserts, uint64_t& unique_inserts) {
-    if (vals_view(i).kmer_count) {
-      int8_t ext_map[4] = {'A', 'C', 'G', 'T'};
-      KmerArray<MAX_K> kmer = keys_view(i);
-      uint64_t slot = kmer_hash(kmer) % compact_elems.capacity;
-      auto start_slot = slot;
-      // we set a constraint on the max probe to track whether we are getting excessive collisions and need a bigger default
-      // compact table      
-      const int MAX_PROBE = (compact_elems.capacity < KCOUNT_HT_MAX_PROBE ? compact_elems.capacity : KCOUNT_HT_MAX_PROBE);
-      // look for empty slot in compact hash table
-      for (int j = 0; j < MAX_PROBE; j++) {
-        uint64_t old_key = 
-            Kokkos::atomic_compare_exchange((unsigned long long *)&(compact_keys_view(slot).longs[N_LONGS - 1]), KEY_EMPTY, kmer.longs[N_LONGS - 1]);
-        if (old_key == KEY_EMPTY) {
-          // found empty slot - there will be no duplicate keys since we're copying across from another hash table
-          unique_inserts++;
-          for (int k = 0; k < N_LONGS - 1; k++) {
-            compact_keys_view(slot).longs[k] = kmer.longs[k];
+  Kokkos::parallel_reduce(
+      "gpu_compact_ht", elems.capacity,
+      KOKKOS_LAMBDA(int i, uint64_t &dropped_inserts, uint64_t &unique_inserts) {
+        if (vals_view(i).kmer_count) {
+          int8_t ext_map[4] = {'A', 'C', 'G', 'T'};
+          KmerArray<MAX_K> kmer = keys_view(i);
+          uint64_t slot = kmer_hash(kmer) % compact_elems.capacity;
+          auto start_slot = slot;
+          // we set a constraint on the max probe to track whether we are getting excessive collisions and need a bigger default
+          // compact table
+          const int MAX_PROBE = (compact_elems.capacity < KCOUNT_HT_MAX_PROBE ? compact_elems.capacity : KCOUNT_HT_MAX_PROBE);
+          // look for empty slot in compact hash table
+          for (int j = 0; j < MAX_PROBE; j++) {
+            uint64_t old_key = Kokkos::atomic_compare_exchange((unsigned long long *)&(compact_keys_view(slot).longs[N_LONGS - 1]),
+                                                               KEY_EMPTY, kmer.longs[N_LONGS - 1]);
+            if (old_key == KEY_EMPTY) {
+              // found empty slot - there will be no duplicate keys since we're copying across from another hash table
+              unique_inserts++;
+              for (int k = 0; k < N_LONGS - 1; k++) {
+                compact_keys_view(slot).longs[k] = kmer.longs[k];
+              }
+              // compute exts
+              int8_t left_ext = get_ext(vals_view(i), 0, ext_map);
+              int8_t right_ext = get_ext(vals_view(i), 4, ext_map);
+              // if (vals_view(i).kmer_count < 2) WARN("elem should have been purged, count %d", vals_view(i).kmer_count);
+              if (vals_view(i).kmer_count < 2) Kokkos::printf("elem should have been purged, count %d", vals_view(i).kmer_count);
+              compact_vals_view(slot).count = vals_view(i).kmer_count;
+              compact_vals_view(slot).left = left_ext;
+              compact_vals_view(slot).right = right_ext;
+              break;
+            }
+            // quadratic probing - worse cache but reduced clustering
+            slot = (start_slot + (j + 1) * (j + 1)) % compact_elems.capacity;
+            if (j == MAX_PROBE - 1) dropped_inserts++;
           }
-          // compute exts
-          int8_t left_ext = get_ext(vals_view(i), 0, ext_map);
-          int8_t right_ext = get_ext(vals_view(i), 4, ext_map);
-          //if (vals_view(i).kmer_count < 2) WARN("elem should have been purged, count %d", vals_view(i).kmer_count);
-          if (vals_view(i).kmer_count < 2) Kokkos::printf("elem should have been purged, count %d", vals_view(i).kmer_count);
-          compact_vals_view(slot).count = vals_view(i).kmer_count;
-          compact_vals_view(slot).left = left_ext;
-          compact_vals_view(slot).right = right_ext;
-          break;
         }
-        // quadratic probing - worse cache but reduced clustering
-        slot = (start_slot + (j + 1) * (j+ 1)) % compact_elems.capacity;
-        if (j == MAX_PROBE - 1) dropped_inserts++;
-      }
-    }
-  }, num_purged, num_entries);
+      },
+      num_purged, num_entries);
 }
 
 template <int MAX_K>
-void gpu_purge_invalid(KmerCountsMap<MAX_K> elems, uint64_t& num_purged, uint64_t& num_entries) {
+void gpu_purge_invalid(KmerCountsMap<MAX_K> elems, uint64_t &num_purged, uint64_t &num_entries) {
   int N_LONGS = KmerArray<MAX_K>::N_LONGS;
 
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
 
-  Kokkos::View<KmerArray<MAX_K>*> keys_view = elems.keys_v;
+  Kokkos::View<KmerArray<MAX_K> *> keys_view = elems.keys_v;
 
-  Kokkos::View<CountsArray*> vals_view = elems.vals_v;
+  Kokkos::View<CountsArray *> vals_view = elems.vals_v;
 
   uint64_t capacity = elems.capacity;
 
-  Kokkos::parallel_reduce("gpu_purge_invalid", capacity, KOKKOS_LAMBDA (int i, uint64_t& local_purged, uint64_t& local_elems) {
-    if (vals_view(i).kmer_count) {
-      uint64_t ext_sum = 0;
-      for (int j = 0; j < 8; j++) ext_sum += vals_view(i).ext_counts[j];
-      if (vals_view(i).kmer_count < 2 || !ext_sum) {
-        vals_view(i).kmer_count = 0;
-        for (int j = 0; j < 8; j++) vals_view(i).ext_counts[j] = 0;
-        for (int j = 0; j < N_LONGS; j++) keys_view(i).longs[j] = KEY_EMPTY;
-        local_purged++;
-      } else {
-        local_elems++;
-      }
-    }
-  }, num_purged, num_entries);
+  Kokkos::parallel_reduce(
+      "gpu_purge_invalid", capacity,
+      KOKKOS_LAMBDA(int i, uint64_t &local_purged, uint64_t &local_elems) {
+        if (vals_view(i).kmer_count) {
+          uint64_t ext_sum = 0;
+          for (int j = 0; j < 8; j++) ext_sum += vals_view(i).ext_counts[j];
+          if (vals_view(i).kmer_count < 2 || !ext_sum) {
+            vals_view(i).kmer_count = 0;
+            for (int j = 0; j < 8; j++) vals_view(i).ext_counts[j] = 0;
+            for (int j = 0; j < N_LONGS; j++) keys_view(i).longs[j] = KEY_EMPTY;
+            local_purged++;
+          } else {
+            local_elems++;
+          }
+        }
+      },
+      num_purged, num_entries);
 }
-
 
 KOKKOS_INLINE_FUNCTION char to_base_func(int index, int pp) {
   if (index > 9) {
-    //WARN("index out of range for to_base: %d, packed seq pos %d", index, pp);
+    // WARN("index out of range for to_base: %d, packed seq pos %d", index, pp);
     Kokkos::printf("index out of range for to_base: %d, packed seq pos %d", index, pp);
     return 0;
   }
@@ -307,24 +309,22 @@ KOKKOS_INLINE_FUNCTION char to_base_func(int index, int pp) {
     default: return '0';
   }
   return '0';
-
 }
 
 void gpu_unpack_supermer_block(SupermerBuff unpacked_supermer_buff, SupermerBuff packed_supermer_buff, int buff_len) {
+  Kokkos::parallel_for(
+      "gpu_unpack_supermer_block", buff_len - 1, KOKKOS_LAMBDA(int i) {
+        uint8_t packed = packed_supermer_buff.seqs_v(i);
+        if (packed == '_') return;
+        uint8_t left_side = (packed & 240) >> 4;
+        unpacked_supermer_buff.seqs_v(i * 2) = to_base_func(left_side, packed);
+        if (packed_supermer_buff.counts_v.size() > 1) unpacked_supermer_buff.counts_v(i * 2) = packed_supermer_buff.counts_v(i);
+        uint8_t right_side = packed & 15;
+        unpacked_supermer_buff.seqs_v(i * 2 + 1) = to_base_func(right_side, packed);
+        if (packed_supermer_buff.counts_v.size() > 1) unpacked_supermer_buff.counts_v(i * 2 + 1) = packed_supermer_buff.counts_v(i);
+      });
 
-  Kokkos::parallel_for("gpu_unpack_supermer_block", buff_len - 1, KOKKOS_LAMBDA (int i) {
-    uint8_t packed = packed_supermer_buff.seqs_v(i);
-    if (packed == '_') return;
-    uint8_t left_side = (packed & 240) >> 4;
-    unpacked_supermer_buff.seqs_v(i * 2) = to_base_func(left_side, packed);
-    if (packed_supermer_buff.counts_v.size() > 1) unpacked_supermer_buff.counts_v(i * 2) = packed_supermer_buff.counts_v(i);
-    uint8_t right_side = packed & 15;
-    unpacked_supermer_buff.seqs_v(i * 2 + 1) = to_base_func(right_side, packed);
-    if (packed_supermer_buff.counts_v.size() > 1) unpacked_supermer_buff.counts_v(i * 2 + 1) = packed_supermer_buff.counts_v(i);
-  });  
-
-   Kokkos::fence();
-
+  Kokkos::fence();
 }
 
 KOKKOS_INLINE_FUNCTION bool is_valid_base(char base) {
@@ -402,14 +402,14 @@ const uint64_t KOKKOS_TWINS[256] = {
     0xC8, 0x88, 0x48, 0x08, 0xF4, 0xB4, 0x74, 0x34, 0xE4, 0xA4, 0x64, 0x24, 0xD4, 0x94, 0x54, 0x14, 0xC4, 0x84, 0x44, 0x04,
     0xF0, 0xB0, 0x70, 0x30, 0xE0, 0xA0, 0x60, 0x20, 0xD0, 0x90, 0x50, 0x10, 0xC0, 0x80, 0x40, 0x00};
 
-KOKKOS_INLINE_FUNCTION void revcomp(uint64_t *longs, uint64_t *rc_longs, int kmer_len, int num_longs, Kokkos::View<uint64_t[256]> twins_v) {
+KOKKOS_INLINE_FUNCTION void revcomp(uint64_t *longs, uint64_t *rc_longs, int kmer_len, int num_longs,
+                                    Kokkos::View<uint64_t[256]> twins_v) {
   int last_long = (kmer_len + 31) / 32;
   for (size_t i = 0; i < last_long; i++) {
     uint64_t v = longs[i];
-    rc_longs[last_long - 1 - i] = (twins_v(v & 0xFF) << 56) | (twins_v((v >> 8) & 0xFF) << 48) |
-                                  (twins_v((v >> 16) & 0xFF) << 40) | (twins_v((v >> 24) & 0xFF) << 32) |
-                                  (twins_v((v >> 32) & 0xFF) << 24) | (twins_v((v >> 40) & 0xFF) << 16) |
-                                  (twins_v((v >> 48) & 0xFF) << 8) | (twins_v((v >> 56)));
+    rc_longs[last_long - 1 - i] = (twins_v(v & 0xFF) << 56) | (twins_v((v >> 8) & 0xFF) << 48) | (twins_v((v >> 16) & 0xFF) << 40) |
+                                  (twins_v((v >> 24) & 0xFF) << 32) | (twins_v((v >> 32) & 0xFF) << 24) |
+                                  (twins_v((v >> 40) & 0xFF) << 16) | (twins_v((v >> 48) & 0xFF) << 8) | (twins_v((v >> 56)));
   }
   uint64_t shift = (kmer_len % 32) ? 2 * (32 - (kmer_len % 32)) : 0;
   uint64_t shiftmask = (kmer_len % 32) ? (((((uint64_t)1) << shift) - 1) << (64 - shift)) : ((uint64_t)0);
@@ -444,10 +444,9 @@ KOKKOS_INLINE_FUNCTION char comp_nucleotide(char ch) {
 }
 
 template <int MAX_K>
-KOKKOS_FUNCTION bool get_kmer_from_supermer(Kokkos::View<char*> seqs_view, Kokkos::View<count_t*> counts_view, uint32_t buff_len, int kmer_len, uint64_t *kmer, char &left_ext,
-                                       char &right_ext, count_t &count, unsigned int kokkos_index, Kokkos::View<uint64_t[256]> twins_v) {
-
-
+KOKKOS_FUNCTION bool get_kmer_from_supermer(Kokkos::View<char *> seqs_view, Kokkos::View<count_t *> counts_view, uint32_t buff_len,
+                                            int kmer_len, uint64_t *kmer, char &left_ext, char &right_ext, count_t &count,
+                                            unsigned int kokkos_index, Kokkos::View<uint64_t[256]> twins_v) {
   int num_kmers = buff_len - kmer_len + 1;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
   if (!pack_seq_to_kmer(&(seqs_view(kokkos_index)), kmer_len, N_LONGS, kmer)) return false;
@@ -464,12 +463,12 @@ KOKKOS_FUNCTION bool get_kmer_from_supermer(Kokkos::View<char*> seqs_view, Kokko
     if (bad_qual(right_ext)) right_ext = '0';
   }
   if (!is_valid_base(left_ext)) {
-    //WARN("threadid %d, invalid char for left nucleotide %d", kokkos_index, (uint8_t)left_ext);
+    // WARN("threadid %d, invalid char for left nucleotide %d", kokkos_index, (uint8_t)left_ext);
     Kokkos::printf("threadid %d, invalid char for left nucleotide %d", kokkos_index, (uint8_t)left_ext);
     return false;
   }
   if (!is_valid_base(right_ext)) {
-    //WARN("threadid %d, invalid char for right nucleotide %d", kokkos_index, (uint8_t)right_ext);
+    // WARN("threadid %d, invalid char for right nucleotide %d", kokkos_index, (uint8_t)right_ext);
     Kokkos::printf("threadid %d, invalid char for right nucleotide %d", kokkos_index, (uint8_t)right_ext);
     return false;
   }
@@ -494,9 +493,10 @@ KOKKOS_FUNCTION bool get_kmer_from_supermer(Kokkos::View<char*> seqs_view, Kokko
 }
 
 template <int MAX_K>
-KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, Kokkos::View<CountsArray*> vals_view, uint64_t capacity, uint64_t hash_val, KmerArray<MAX_K> &kmer, char left_ext,
-                                char right_ext, char prev_left_ext, char prev_right_ext, count_t kmer_count, uint64_t &new_inserts,
-                                uint64_t &dropped_inserts, bool ctg_kmers, bool use_qf, bool update_only) {
+KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K> *> keys_view, Kokkos::View<CountsArray *> vals_view,
+                                     uint64_t capacity, uint64_t hash_val, KmerArray<MAX_K> &kmer, char left_ext, char right_ext,
+                                     char prev_left_ext, char prev_right_ext, count_t kmer_count, uint64_t &new_inserts,
+                                     uint64_t &dropped_inserts, bool ctg_kmers, bool use_qf, bool update_only) {
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
   const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
@@ -511,12 +511,13 @@ KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, 
     // that will cause a deadlock. So we loop over all statements in each CAS spin to ensure that all threads get a
     // chance to execute
     do {
-      old_key = Kokkos::atomic_compare_exchange((unsigned long long *)&(keys_view(slot).longs[N_LONGS - 1]), KEY_EMPTY, KEY_TRANSITION);
+      old_key =
+          Kokkos::atomic_compare_exchange((unsigned long long *)&(keys_view(slot).longs[N_LONGS - 1]), KEY_EMPTY, KEY_TRANSITION);
       if (old_key != KEY_TRANSITION) {
         if (old_key == KEY_EMPTY) {
           if (update_only) {
             old_key = Kokkos::atomic_exchange((unsigned long long *)&(keys_view(slot).longs[N_LONGS - 1]), KEY_EMPTY);
-            //if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
+            // if (old_key != KEY_TRANSITION) WARN("old key should be KEY_TRANSITION");
             if (old_key != KEY_TRANSITION) Kokkos::printf("old key should be KEY_TRANSITION");
             return false;
           }
@@ -550,7 +551,7 @@ KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, 
       int prev_count = Kokkos::atomic_fetch_add(&vals_view(slot).kmer_count, kmer_count);
       if (!prev_count) new_inserts++;
     }
-    //FIXME: error: no matching function for call to 'min' w/ IntelOneAPI on GR CPU
+    // FIXME: error: no matching function for call to 'min' w/ IntelOneAPI on GR CPU
     ext_count_t kmer_count_uint16 = min(kmer_count, static_cast<uint32_t>(UINT16_MAX));
     inc_ext(left_ext, kmer_count_uint16, ext_counts);
     inc_ext(right_ext, kmer_count_uint16, ext_counts + 4);
@@ -567,74 +568,79 @@ KOKKOS_FUNCTION bool gpu_insert_kmer(Kokkos::View<KmerArray<MAX_K>*> keys_view, 
 }
 
 template <int MAX_K>
-void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBuff supermer_buff, uint32_t buff_len, int kmer_len, bool ctg_kmers, InsertStats& insert_stats, two_choice_filter::TCF *tcf, Kokkos::View<uint64_t[256]> twins_v) {
-
+void gpu_insert_supermer_block(KmerCountsMap<MAX_K> elems, SupermerBuff supermer_buff, uint32_t buff_len, int kmer_len,
+                               bool ctg_kmers, InsertStats &insert_stats, two_choice_filter::TCF *tcf,
+                               Kokkos::View<uint64_t[256]> twins_v) {
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
   const uint64_t KEY_TRANSITION = 0xfffffffffffffffe;
   const int N_LONGS = KmerArray<MAX_K>::N_LONGS;
 
   uint64_t att, dr, dr_qf, new_ins, u_qf;
 
-  Kokkos::View<char*> seqs_view = supermer_buff.seqs_v;
-  Kokkos::View<count_t*> counts_view = supermer_buff.counts_v;
+  Kokkos::View<char *> seqs_view = supermer_buff.seqs_v;
+  Kokkos::View<count_t *> counts_view = supermer_buff.counts_v;
 
-  Kokkos::View<KmerArray<MAX_K>*> keys_view = elems.keys_v;
-  Kokkos::View<CountsArray*> vals_view = elems.vals_v;
+  Kokkos::View<KmerArray<MAX_K> *> keys_view = elems.keys_v;
+  Kokkos::View<CountsArray *> vals_view = elems.vals_v;
   uint64_t capacity = elems.capacity;
 
-  Kokkos::parallel_reduce("gpu_insert_supermer_block", buff_len, KOKKOS_LAMBDA(const int& kokkos_index, uint64_t& attempted_inserts, uint64_t& dropped_inserts, uint64_t& dropped_qf, uint64_t& num_new_inserts, uint64_t& unique_qf) {
-    if (kokkos_index > 0) {
-      attempted_inserts++;
-      KmerArray<MAX_K> kmer;
-      char left_ext, right_ext;
-      uint32_t kmer_count;
-      if (get_kmer_from_supermer<MAX_K>(seqs_view, counts_view, buff_len, kmer_len, kmer.longs, left_ext, right_ext, kmer_count, kokkos_index, twins_v)) {
-        //if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) WARN("block equal to KEY_EMPTY");
-        if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) Kokkos::printf("block equal to KEY_EMPTY");
-        //if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) WARN("block equal to KEY_TRANSITION");
-        if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) Kokkos::printf("block equal to KEY_TRANSITION");
-        auto hash_val = kmer_hash(kmer);
-        char prev_left_ext = '0', prev_right_ext = '0';
-        // bool use_qf = (tcf != nullptr);
-        bool use_qf = false;
-        bool update_only = (use_qf && !ctg_kmers);
-        bool updated = gpu_insert_kmer(keys_view, vals_view, capacity, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count,
-                                      num_new_inserts, dropped_inserts, ctg_kmers, use_qf, update_only);
-    //   //   // if (update_only && !updated) {
-    //   //   //   auto packed = two_choice_filter::pack_extensions(left_ext, right_ext);
-    //   //   //   TCF_RESULT result = 0;
-    //   //   //   if (tcf->query(tcf->get_my_tile(), hash_val, result)) {
-    //   //   //     // found successfully
-    //   //   //     tcf->remove(tcf->get_my_tile(), hash_val);
-    //   //   //     two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
-    //   //   //     gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
-    //   //   //                     dropped_inserts, ctg_kmers, use_qf, false);
-    //   //   //   } else {
-    //   //   //     if (tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed)) {
-    //   //   //       // inserted successfully
-    //   //   //       num_unique_qf++;
-    //   //   //     } else {
-    //   //   //       // dropped
-    //   //   //       dropped_inserts_qf++;
-    //   //   //       // now insert it into the main hash table - this will be purged later if it's a singleton
-    //   //   //       gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count, new_inserts,
-    //   //   //                       dropped_inserts, ctg_kmers, false, false);
-    //   //   //     }
-    //   //   //   }
-    //   //   // }
-
-      }
-    }
-
-
-  }, att, dr, dr_qf, new_ins, u_qf);
+  Kokkos::parallel_reduce(
+      "gpu_insert_supermer_block", buff_len,
+      KOKKOS_LAMBDA(const int &kokkos_index, uint64_t &attempted_inserts, uint64_t &dropped_inserts, uint64_t &dropped_qf,
+                    uint64_t &num_new_inserts, uint64_t &unique_qf) {
+        if (kokkos_index > 0) {
+          attempted_inserts++;
+          KmerArray<MAX_K> kmer;
+          char left_ext, right_ext;
+          uint32_t kmer_count;
+          if (get_kmer_from_supermer<MAX_K>(seqs_view, counts_view, buff_len, kmer_len, kmer.longs, left_ext, right_ext, kmer_count,
+                                            kokkos_index, twins_v)) {
+            // if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) WARN("block equal to KEY_EMPTY");
+            if (kmer.longs[N_LONGS - 1] == KEY_EMPTY) Kokkos::printf("block equal to KEY_EMPTY");
+            // if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) WARN("block equal to KEY_TRANSITION");
+            if (kmer.longs[N_LONGS - 1] == KEY_TRANSITION) Kokkos::printf("block equal to KEY_TRANSITION");
+            auto hash_val = kmer_hash(kmer);
+            char prev_left_ext = '0', prev_right_ext = '0';
+            // bool use_qf = (tcf != nullptr);
+            bool use_qf = false;
+            bool update_only = (use_qf && !ctg_kmers);
+            bool updated =
+                gpu_insert_kmer(keys_view, vals_view, capacity, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext,
+                                kmer_count, num_new_inserts, dropped_inserts, ctg_kmers, use_qf, update_only);
+            //   //   // if (update_only && !updated) {
+            //   //   //   auto packed = two_choice_filter::pack_extensions(left_ext, right_ext);
+            //   //   //   TCF_RESULT result = 0;
+            //   //   //   if (tcf->query(tcf->get_my_tile(), hash_val, result)) {
+            //   //   //     // found successfully
+            //   //   //     tcf->remove(tcf->get_my_tile(), hash_val);
+            //   //   //     two_choice_filter::unpack_extensions(result, prev_left_ext, prev_right_ext);
+            //   //   //     gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext, kmer_count,
+            //   new_inserts,
+            //   //   //                     dropped_inserts, ctg_kmers, use_qf, false);
+            //   //   //   } else {
+            //   //   //     if (tcf->insert_with_delete(tcf->get_my_tile(), hash_val, packed)) {
+            //   //   //       // inserted successfully
+            //   //   //       num_unique_qf++;
+            //   //   //     } else {
+            //   //   //       // dropped
+            //   //   //       dropped_inserts_qf++;
+            //   //   //       // now insert it into the main hash table - this will be purged later if it's a singleton
+            //   //   //       gpu_insert_kmer(elems, hash_val, kmer, left_ext, right_ext, prev_left_ext, prev_right_ext,
+            //   kmer_count, new_inserts,
+            //   //   //                       dropped_inserts, ctg_kmers, false, false);
+            //   //   //     }
+            //   //   //   }
+            //   //   // }
+          }
+        }
+      },
+      att, dr, dr_qf, new_ins, u_qf);
 
   insert_stats.attempted = att;
   insert_stats.dropped = dr;
   insert_stats.dropped_qf = dr_qf;
   insert_stats.new_inserts = new_ins;
   insert_stats.num_unique_qf = u_qf;
-
 }
 
 template <int MAX_K>
@@ -642,42 +648,39 @@ struct HashTableGPUDriver<MAX_K>::HashTableDriverState {
   two_choice_filter::TCF *tcf = nullptr;
 };
 
-
 // Function to create & initialize Kokkos keys & values Views from KmerArray & CountsArray structs
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
-  
+
   printf("\n\n ... DEBUG_0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
-  // ht_capacity TIOGA:  1 248 138 943 
+  // ht_capacity TIOGA:  1 248 138 943
   printf("\n\n DEBUG_1 - ht_capacity: %d\n\n", ht_capacity);
   // MAX_K TIOGA:  32
   printf("\n\n DEBUG_2 - MAX_K:  %d\n\n", MAX_K);
-   
-   // Create 1D Kokkos View containing keys view with sized as "capacity"
-   keys_v = Kokkos::View<KmerArray<MAX_K>*>("CountsMap keys from capacity", capacity);
-   
-   // create 1D host space view of keys (suggested by Jan)
-   Kokkos::View<KmerArray<MAX_K>*, Kokkos::HostSpace> h_keys_v("CountsMap keys - HostSpace", capacity);
+
+  // Create 1D Kokkos View containing keys view with sized as "capacity"
+  keys_v = Kokkos::View<KmerArray<MAX_K> *>("CountsMap keys from capacity", capacity);
+
+  // create 1D host space view of keys (suggested by Jan)
+  Kokkos::View<KmerArray<MAX_K> *, Kokkos::HostSpace> h_keys_v("CountsMap keys - HostSpace", capacity);
 
   // initialize to hexadecimal integer
   for (int64_t i = 0; i < capacity; i++) {                 // rows
     for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {  // cols
       // FIXME: square brackets for "j" cols indexing variable needed b/c range specifier, "KmerArray<MAX_K>::N_LONGS" \
-      // is not a pointer 
+      // is not a pointer
       h_keys_v(i).longs[j] = 0xffffffffffffffff;
     }
   }
-  
+
   // Copy h_keys_v vals to keys_v
   Kokkos::deep_copy(keys_v, h_keys_v);
 
-  vals_v = Kokkos::View<CountsArray*>("CountsMap vals", capacity);
-  
+  vals_v = Kokkos::View<CountsArray *>("CountsMap vals", capacity);
+
   Kokkos::Profiling::popRegion();
-
 }
-
 
 template <int MAX_K>
 void KmerCountsMap<MAX_K>::clear() {
@@ -689,16 +692,16 @@ void KmerExtsMap<MAX_K>::init(int64_t ht_capacity) {
   const uint64_t KEY_EMPTY = 0xffffffffffffffff;
   capacity = ht_capacity;
 
-  keys_v = Kokkos::View<KmerArray<MAX_K>*>("ExtsMap keys", capacity);
-  typename Kokkos::View<KmerArray<MAX_K>*>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
+  keys_v = Kokkos::View<KmerArray<MAX_K> *>("ExtsMap keys", capacity);
+  typename Kokkos::View<KmerArray<MAX_K> *>::HostMirror h_keys_v = Kokkos::create_mirror_view(keys_v);
   for (int64_t i = 0; i < capacity; i++) {
     for (int j = 0; j < KmerArray<MAX_K>::N_LONGS; j++) {
       h_keys_v(i).longs[j] = 0xffffffffffffffff;
     }
   }
-  Kokkos::deep_copy(keys_v, h_keys_v);  
+  Kokkos::deep_copy(keys_v, h_keys_v);
 
-  vals_v = Kokkos::View<CountExts*>("ExtsMap vals", capacity);
+  vals_v = Kokkos::View<CountExts *>("ExtsMap vals", capacity);
 }
 
 template <int MAX_K>
@@ -809,16 +812,16 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
 
   // buffer on the device
 
-  packed_elem_buff_dev.seqs_v = Kokkos::View<char*>("packed_elem_buff_dev_seqs", KCOUNT_GPU_HASHTABLE_BLOCK_SIZE);
-  unpacked_elem_buff_dev.seqs_v = Kokkos::View<char*>("unpacked_elem_buff_dev_seqs", KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * 2);
+  packed_elem_buff_dev.seqs_v = Kokkos::View<char *>("packed_elem_buff_dev_seqs", KCOUNT_GPU_HASHTABLE_BLOCK_SIZE);
+  unpacked_elem_buff_dev.seqs_v = Kokkos::View<char *>("unpacked_elem_buff_dev_seqs", KCOUNT_GPU_HASHTABLE_BLOCK_SIZE * 2);
 
-  packed_elem_buff_dev.counts_v = Kokkos::View<count_t*>("packed_elem_buff_dev_counts");
-  unpacked_elem_buff_dev.counts_v = Kokkos::View<count_t*>("unpacked_elem_buff_dev_counts");
+  packed_elem_buff_dev.counts_v = Kokkos::View<count_t *>("packed_elem_buff_dev_counts");
+  unpacked_elem_buff_dev.counts_v = Kokkos::View<count_t *>("unpacked_elem_buff_dev_counts");
 
   // for transferring packed elements from host to gpu
   elem_buff_host.h_seqs_v = Kokkos::create_mirror_view(packed_elem_buff_dev.seqs_v);
   // these are not used for kmers from reads
-  elem_buff_host.h_counts_v = Kokkos::create_mirror_view(packed_elem_buff_dev.counts_v);   
+  elem_buff_host.h_counts_v = Kokkos::create_mirror_view(packed_elem_buff_dev.counts_v);
 
   msgs = log_msgs.str();
   warnings = log_warnings.str();
@@ -828,8 +831,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   for (int i = 0; i < 256; i++) {
     h_twins_v(i) = KOKKOS_TWINS[i];
   }
-  Kokkos::deep_copy(twins_v, h_twins_v);  
-
+  Kokkos::deep_copy(twins_v, h_twins_v);
 }
 
 template <int MAX_K>
@@ -871,14 +873,14 @@ void HashTableGPUDriver<MAX_K>::insert_supermer_block() {
   // if (is_ctg_kmers)
   //   ERROR_CHECK(Memcpy(packed_elem_buff_dev.counts, elem_buff_host.counts, buff_len * sizeof(count_t), MemcpyHostToDevice));
 
-
   gpu_unpack_supermer_block(unpacked_elem_buff_dev, packed_elem_buff_dev, buff_len);
-
 
   const uint32_t unpacked_buff_len = buff_len * 2;
 
-  // gpu_insert_supermer_block(is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev, unpacked_elem_buff_dev, buff_len * 2, kmer_len, is_ctg_kmers, gpu_insert_stats_v, dstate->tcf, twins_v);
-  gpu_insert_supermer_block(read_kmers_dev, unpacked_elem_buff_dev, unpacked_buff_len, kmer_len, is_ctg_kmers, read_kmers_stats, dstate->tcf, twins_v);
+  // gpu_insert_supermer_block(is_ctg_kmers ? ctg_kmers_dev : read_kmers_dev, unpacked_elem_buff_dev, buff_len * 2, kmer_len,
+  // is_ctg_kmers, gpu_insert_stats_v, dstate->tcf, twins_v);
+  gpu_insert_supermer_block(read_kmers_dev, unpacked_elem_buff_dev, unpacked_buff_len, kmer_len, is_ctg_kmers, read_kmers_stats,
+                            dstate->tcf, twins_v);
 
   num_gpu_calls++;
 }
@@ -926,7 +928,6 @@ void HashTableGPUDriver<MAX_K>::flush_inserts() {
   }
   // ERROR_CHECK(Memcpy(pass_type == READ_KMERS_PASS ? &read_kmers_stats : &ctg_kmers_stats, gpu_insert_stats, sizeof(InsertStats),
   //                    MemcpyDeviceToHost));
-
 }
 
 template <int MAX_K>
@@ -935,12 +936,12 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(uint64_t &num_dropped, uint64_t
   purge_invalid(num_purged, num_entries);
   read_kmers_dev.num = num_entries;
 
-  elem_buff_host.h_seqs_v = Kokkos::View<char*>::HostMirror();
-  elem_buff_host.h_counts_v = Kokkos::View<count_t*>::HostMirror();
-  packed_elem_buff_dev.seqs_v = Kokkos::View<char*>();
-  packed_elem_buff_dev.counts_v = Kokkos::View<count_t*>();
-  unpacked_elem_buff_dev.seqs_v = Kokkos::View<char*>();
-  unpacked_elem_buff_dev.counts_v = Kokkos::View<count_t*>();    
+  elem_buff_host.h_seqs_v = Kokkos::View<char *>::HostMirror();
+  elem_buff_host.h_counts_v = Kokkos::View<count_t *>::HostMirror();
+  packed_elem_buff_dev.seqs_v = Kokkos::View<char *>();
+  packed_elem_buff_dev.counts_v = Kokkos::View<count_t *>();
+  unpacked_elem_buff_dev.seqs_v = Kokkos::View<char *>();
+  unpacked_elem_buff_dev.counts_v = Kokkos::View<count_t *>();
   // overallocate to reduce collisions
   num_entries *= 1.3;
   // now compact the hash table entries
@@ -950,7 +951,7 @@ void HashTableGPUDriver<MAX_K>::done_all_inserts(uint64_t &num_dropped, uint64_t
   gpu_compact_ht(read_kmers_dev, compact_read_kmers_dev, num_dropped, num_unique);
 
   read_kmers_dev.clear();
- 
+
 #ifdef DEBUG
   if (num_unique != read_kmers_dev.num) WARN("mismatch in expected entries %lu != %lu", num_unique, read_kmers_dev.num);
 #endif
@@ -993,18 +994,15 @@ void HashTableGPUDriver<MAX_K>::done_ctg_kmer_inserts(uint64_t &attempted_insert
 }
 
 template <int MAX_K>
-void HashTableGPUDriver<MAX_K>::get_elapsed_time(double &insert_time, double &kernel_time) {
+void HashTableGPUDriver<MAX_K>::get_elapsed_time(double &insert_time, double &kernel_time) {}
 
-}
-
-template<int MAX_K>
+template <int MAX_K>
 void HashTableGPUDriver<MAX_K>::begin_iterate() {
   output_index = 0;
 }
 
 template <int MAX_K>
 pair<KmerArray<MAX_K> *, CountExts *> HashTableGPUDriver<MAX_K>::get_next_entry() {
-
   if (!output_keys_v.size() || output_index == output_keys_v.size()) return {nullptr, nullptr};
   output_index++;
   return {&(output_keys_v(output_index - 1)), &(output_vals_v(output_index - 1))};
