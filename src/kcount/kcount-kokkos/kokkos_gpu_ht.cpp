@@ -653,11 +653,8 @@ template <int MAX_K>
 void KmerCountsMap<MAX_K>::init(int64_t ht_capacity) {
   capacity = ht_capacity;
 
-  printf("\n\n ... DEBUG_0 - entering KmerCountsMap<MAX_K>::init function ... \n\n");
   // ht_capacity TIOGA:  1 248 138 943
-  printf("\n\n DEBUG_1 - ht_capacity: %d\n\n", ht_capacity);
   // MAX_K TIOGA:  32
-  printf("\n\n DEBUG_2 - MAX_K:  %d\n\n", MAX_K);
 
   // Create 1D Kokkos View containing keys view with sized as "capacity"
   keys_v = Kokkos::View<KmerArray<MAX_K> *>("CountsMap keys from capacity", capacity);
@@ -795,10 +792,7 @@ void HashTableGPUDriver<MAX_K>::init(int upcxx_rank_me, int upcxx_rank_n, int km
   // find the first prime number lower than the available slots, and no more than 3x the max number of elements
   primes::Prime prime;
   prime.set(max_read_kmers, false);
-  // JAN - max_read_kmers is 1118881598
-  printf("JAN - max_read_kmers is %zu\n\n", max_read_kmers);
   auto ht_capacity = prime.get();
-  printf("JAN - ht_capacity is %lu\n\n", ht_capacity);
 
   auto ht_bytes_used = ht_capacity * elem_size;
 
