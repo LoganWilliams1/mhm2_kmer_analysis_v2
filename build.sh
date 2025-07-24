@@ -49,7 +49,7 @@ elif [ "$1" == "clean" ]; then
 else
     mkdir -p $rootdir/.build
     cd $rootdir/.build
-    testing=0
+    testing=${MHM2_ENABLE_TESTING:-0}
     if [ "$1" == "Debug" ] || [ "$1" == "RelWithDebInfo" ]; then
       testing=1
     fi

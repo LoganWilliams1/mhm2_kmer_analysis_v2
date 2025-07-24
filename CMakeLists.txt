@@ -350,5 +350,9 @@ endif()
 
 install(FILES contrib/all_adapters.fa DESTINATION ${CMAKE_INSTALL_PREFIX}/share)
 
+option(MHM2_ENABLE_TESTING "Enable testing in MHM2" ON)
+if(MHM2_ENABLE_TESTING)
+  add_subdirectory(test)
+endif()
 
 add_subdirectory(contrib)
