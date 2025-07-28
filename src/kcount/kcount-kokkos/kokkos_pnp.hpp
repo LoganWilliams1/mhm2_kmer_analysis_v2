@@ -57,6 +57,7 @@ struct SupermerInfo {
 };
 
 class ParseAndPackGPUDriver {
+public:
   int upcxx_rank_me;
   int upcxx_rank_n;
   int max_kmers;
@@ -80,7 +81,7 @@ class ParseAndPackGPUDriver {
   Kokkos::View<uint64_t[256]> twins_v;
   Kokkos::View<uint64_t[32]> mask_v;
 
- public:
+ 
   std::string packed_seqs;
   Kokkos::View<SupermerInfo *>::HostMirror h_supermers_v;
   Kokkos::View<unsigned int>::HostMirror h_num_supermers_v;
